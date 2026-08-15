@@ -1,0 +1,592 @@
+META HORIZON CREATOR COMPETITION 
+GAME PROTOTYPE OFFICIAL RULES
+ 
+
+THIS CONTEST IS OPEN ONLY TO MEMBERS OF THE META HORIZON CREATOR PROGRAM (“MHCP”) THAT MEET THE ELIGIBILITY CRITERIA LISTED BELOW. 
+
+ 
+
+NO PURCHASE NECESSARY. A PURCHASE WILL NOT INCREASE YOUR CHANCES OF WINNING. INTERNET ACCESS, META ACCOUNT, AND MHCP ACCESS ARE REQUIRED TO PARTICIPATE.
+
+ 
+
+IMPORTANT: PLEASE READ THESE OFFICIAL RULES, WHICH ARE A CONTRACT, CAREFULLY. WITHOUT LIMITATION, THIS CONTRACT INCLUDES INDEMNITIES TO THE SPONSOR FROM YOU AND A LIMITATION OF YOUR RIGHTS AND REMEDIES. BY PARTICIPATING, YOU AGREE TO BE BOUND BY THESE OFFICIAL RULES AND REPRESENT THAT YOU SATISFY ALL OF THE ELIGIBILITY REQUIREMENTS. VOID WHERE PROHIBITED BY LAW.
+
+ 
+
+1. OVERVIEW 
+ 
+
+The Meta Horizon Creator Competition: Game Prototype Contest (“Contest”) is sponsored by Meta Platforms, Inc., 1 Hacker Way, Menlo Park, CA 94025 (“Sponsor”), and challenges creators to build a genuinely playable game prototype using AI tools. Winners receive a cash prize as described in these Official Rules and are separately eligible for a completion grant, governed by the Grant Terms attached as Addendum A.
+
+ 
+
+Eligible entrants can enter this Contest as an individual or a Team (defined below) during the Entry Period as further described below. These Official Rules (“Official Rules”) govern participation in the Contest.
+
+ 
+
+This is only a high-level summary of the Contest; read through these entire Official Rules to make sure you understand the details.
+
+ 
+
+2. DATES & TIMING
+ 
+
+Entry Period: August 17, 2026 10:00 AM PT – September 8, 2026 1:00 PM PT
+
+ 
+
+Judging Period: September 9, 2026 10:00 AM PT – September 30, 2026 6:00 PM PT
+
+ 
+
+Winner Announcement: On or after October 9, 2026
+
+ 
+
+Prize Delivery: Cash prizes will be delivered within forty-five (45) business days following the Winner Announcement, subject to the following requirements (including the winner’s timely provision of all required information and documentation and the absence of force majeure circumstances). The completion grant, where applicable, is governed entirely by the Grant Terms (Addendum A).
+
+ 
+
+3. ELIGIBILITY 
+ 
+
+Entry and participation in this Contest is open only to individuals and Teams as defined below. As of the start of the Entry Period (as defined above), all Entrants (as defined below) whether an individual or member of a Team must:
+
+ 
+
+a. be legal resident of one of the following eligible jurisdictions: Argentina, Australia, Austria, Belgium, Canada (excluding Quebec), Czech Republic, Denmark, Finland, France, Germany, Iceland, India, Ireland, Italy, Japan, Mexico, Netherlands, New Zealand, Norway, Philippines, Poland, Singapore, Spain, Sweden, Switzerland, Taiwan, UK, United States, Vietnam.
+
+     i. only selected creators are eligible in these jurisdictions: Argentina, Czech Republic, India, Japan, Mexico, Philippines, Singapore, Vietnam.
+
+b. be at least eighteen years of age and the age of majority in their jurisdiction of residence;
+
+c. have an active and valid Meta account; and
+
+d. be a current, active member of the Meta Horizon Creator Program as of August 10, 2026 PST and in good standing at the time of entry and at the time of prize fulfillment.
+
+ 
+
+Businesses or organizations that are politically affiliated (all as determined by Sponsor in its sole discretion) are not eligible to participate in the Contest. An association of between two (2) and ten (10) individuals that does not constitute a legally recognized entity, provided that each natural person comprising such association and meets the eligibility criteria listed above, can submit Entries and are referred to herein as a “Team.”
+
+ 
+
+Team participants must appoint and authorize one individual (the “Representative”) to represent, act, and participate, on their behalf. By entering on behalf of a Team, each Representative represents and warrants on behalf of their Team that they are authorized to act on behalf of their Team. Sponsor shall have no liability for any Representative who acts on behalf of a Team.
+
+ 
+
+Entrants may not be under any legal or contractual obligation that would prohibit their participation in any Contest. Any individual for whom participation in this Contest would mean a violation by them of any applicable law or of any agreement to which they are a party is ineligible to participate. Government and political officials, and employees, officers, directors, members, managers, agents, and representatives of Sponsor, or any other entities participating in the design, promotion, marketing, administration, or fulfillment of this Contest, or any of their respective corporate partners, parent companies, divisions, subsidiaries, affiliates, successors in interest, and advertising, promotion, and public relations agencies and any family (i.e., spouse, partner, parent, legal guardian, child, sibling, grandparent, grandchild, or in-law) or other member of the same household (whether or not related) (“Released Parties”) are also not eligible to enter or win this Contest.
+
+ 
+
+Entry Limit. Each individual is limited to submitting one (1) Entry in this Contest. For the avoidance of doubt, an Entry is submitted either (i) by an individual on their own behalf, or (ii) by a Team Representative on behalf of a Team. Participation as a non-Representative Team member does not constitute submitting an Entry.
+
+ 
+
+Permitted Participation Scenarios. Subject to the one-Entry limit above, an individual may participate in this Contest in any of the following ways:
+
+(i) as a solo entrant, submitting one Entry on their own behalf;
+
+(ii) as a solo entrant who submits one Entry on their own behalf and also participates as a non-Representative member of one or more Teams (because non-Representative membership does not count as an Entry); or
+
+(iii) as a Team Representative, submitting one Entry on that Team’s behalf (and optionally also serving as a non-Representative member of other Teams).
+
+ 
+
+Prohibition. An individual may not both submit an Entry as a solo entrant and serve as a Team Representative, as this would result in two Entries being attributed to that individual. Each individual may serve as the Representative of only one (1) Team.
+
+Any individual or Team (including each Team member) that enters or takes steps to participate in this Contest is referred to in these Official Rules as an “Entrant.”
+
+ 
+
+4. HOW TO ENTER 
+ 
+
+During the Entry Period, eligible Entrants will be invited to build a genuinely playable game prototype using AI tools in one of three genres: (1) Survival & Resource Management; (2) Simulation & Management; or (3) Tower Defense & Strategy. 
+
+ 
+
+Entrants can submit their prototype to the Contest by following the steps below:
+
+Build a genuinely playable prototype of a mobile game's core experience in one of the three genres using AI tools, output as a self-contained Three.js / HTML5 web build, and prepare the required submission package described in Section 5.
+
+Register on Devpost: From August 10, 2026 until the end of the Entry Period, go to the Devpost competition page at https://mhcp-game-prototype.devpost.com/. Click on “Join hackathon”. If you don’t have a Devpost account or aren’t signed in, you’ll need to create one for free or log in to access the submission page.
+
+Submit Your Prototype: Make sure to complete all required fields on the “Start project” page during the competition submission window and adhere to the specified requirements, including uploading your required submission artifacts (see Section 5).
+
+ 
+
+Successful completion of the steps above, together with all requirements stated in Section 5, including the associated prototype build, design-intent document, and build log, and all other Contest-related material or information submitted by an Entrant, constitutes an “Entry”. All Entries, and elements thereof, must comply with the Entry Requirements listed in Section 5 below to be considered for this Contest.
+
+ 
+
+Entries must be submitted in full (all steps above must be completed) by Entrant during the Entry Period in strict accordance with the instructions and restrictions in these Official Rules and any other instructions that Sponsor may provide through its authorized representatives or otherwise. Entries that are not actually completed and received by Sponsor during the Entry Period will not be considered for the Contest. Purported proof of entry (such as, without limitation, a screenshot of your purported entry) does not constitute proof of actual entry for purposes of this Contest. Purported entries that are incomplete, received outside the Entry Period, or contain obscene, offensive, or any other language or imagery communicating messages inconsistent with the positive images with which Sponsor wishes to associate itself (all as determined by Sponsor in its sole discretion) will be void. Those who do not abide by these Official Rules and the instructions of Sponsor and its representatives and provide all required information may, in Sponsor's sole discretion, be disqualified, any purported entry by such Entrant void, and Entrant may be excluded from future participation in the MHCP. Any Entry that is infringing, fraudulent, forged, altered, incomplete, lost, late, misdirected, mutilated, illegitimate, incomprehensible, or garbled will not be accepted and will be void. Entry made by someone on behalf of any other Entrant or any entity or group, made by another on your behalf (with the exception of a Team Representative), or originating at any online service other than as specifically described above (including, without limitation, through a commercial promotion subscription, notification, or entering service) will be declared invalid and disqualified for this Contest. RETAIN A COPY OF YOUR ENTRY AND ALL CONTENT SUBMITTED DURING THE CONTEST, AND ALL RECORDS OF YOUR PARTICIPATION. SPONSOR IS NOT RESPONSIBLE FOR PROVIDING A COPY OR REPORT OF ANY ELEMENT OF PARTICIPATION.
+
+ 
+
+5. ENTRY REQUIREMENTS
+Each Entry must meet all of the following requirements, as determined by Sponsor in its sole discretion, or the Entry may be disqualified:
+
+ 
+
+Submission Requirements
+
+The prototype must implement a complete, genuinely playable core loop: a repeatable cycle of player actions with real-time feedback, a clear goal and a win, lose, or reset state, and one or more forms of meaningful progression within a single play session. It must be playable and repeatable, not a static mockup or click-through.
+The prototype must be built using AI tools (prompt-built), and a build log must be submitted with the entry.
+The prototype must be single-player and built for portrait orientation. Winning prototypes are rebuilt as single-player, portrait games on the Early Access Creation Tools, and these constraints also form part of the Completion Checklist (Addendum A, Section 4).
+The submission must be original to the Entrant. The Entrant may build on their own prior Meta Horizon Creator Competition design, but the prototype may not be a game already published or live on the platform, and may not replicate an existing game. All content must be original or use assets the Entrant has rights to.
+The game prototype must fall within one of the following genres, as further described on the Devpost page at https://mhcp-game-prototype.devpost.com/: (1) Survival & Resource Management; (2) Simulation & Management; or (3) Tower Defense & Strategy. Entrants must select one genre at the time of submission.
+Any text in the submission, including the design-intent document, must be in English.
+ 
+
+Submission Fields on Devpost
+
+All required items added to the Submission of the Entry on Devpost which includes:
+
+The playable prototype build. Submit your prototype as a self-contained Three.js / HTML5 build. It must meet all of the following:
+Package. A single .zip file, no larger than 35MB, with index.html at the top level of the .zip and not inside a folder.
+Your game code. Your submitted index.html must contain all of your own game code, in readable, unminified form. You may develop across as many source files as you like, but you must assemble them into a single index.html before you submit.
+Third-party libraries. Libraries such as Three.js must be included in the .zip inside a folder named vendor, and referenced with relative paths. Do not embed them in index.html.
+Everything else your game needs. All assets, fonts, images, audio and data must be included in the .zip and referenced with relative paths.
+No network access. The build must not make any external network request while it is running.
+Builds that load resources from external URLs, including content delivery networks (CDNs), will fail validation.
+
+A design-intent document (500 words max, .docx, text-only): who the players are, what the game is, what the prototype contains, and the future-state vision. It must use the provided template and keep its fixed sections, and must not contain the creator's name or any other identifying information. Judges read it as context for playing the prototype; it is not itself ranked.
+A build log (markdown): a running record kept during the build, covering the decisions you lock and what happens each session. It shows the prototype was built with AI; not scored on quality.
+ 
+
+Disqualification
+
+Any Entry that fails to meet the Entry Requirements (this Section 5) or Content & Legal Requirements (Section 6), or that violates any other provision of these Official Rules, may be disqualified at Sponsor’s sole discretion.
+
+ 
+
+Without limiting the foregoing, the following will also result in disqualification:
+
+Entrant submitted more than one Entry (second Entry disqualified; first stands);
+Duplicate submission - same game prototype submitted by multiple creators (all duplicate Entries disqualified except the first received);
+Entrant does not clear sanction screening;
+Entrant submitted submission artifacts (the prototype build, design-intent document, build log, or any element thereof) containing hidden or embedded instructions, prompts, or text designed to influence, manipulate, or bias automated evaluation tools or AI-assisted review systems used in the judging process. This includes but is not limited to: concealed instructions in document metadata, hidden text layers, white-on-white text, invisible formatting, or file metadata that attempt to direct an evaluation system to alter its assessment of the Entry; 
+The submission is not genuinely playable (including static mockups, linked-screen click-throughs, slide decks, or video-only submissions).
+ 
+
+6. CONTENT & LEGAL REQUIREMENTS
+ 
+
+Each Entry and all elements thereof must comply with the following content and legal standards. These requirements are designed to ensure that all submissions are lawful, respect third-party rights, and are suitable for public presentation and promotion in connection with the Contest. Failure to comply with any of the following may result in disqualification at Sponsor’s sole discretion:
+
+ 
+
+a. Must not include: Any malware, spyware, viruses, or similar harmful code or content; Any content that is false, fraudulent, deceptive, misleading, defamatory, libelous, disparaging, harassing, threatening, profane, obscene, pornographic or otherwise objectionable.
+
+b. May not mention or depict any identifiable person other than Entrants.
+
+c. Must not infringe, misappropriate, plagiarize, or violate any rights of any third-party including, without limitation, copyright, trademark, trade secret, or rights of privacy or publicity.
+
+d. Must not contain or describe any harmful or illegal activity or content or in any way violate any federal, state, or local laws, rules, or regulations.
+
+e. Must be suitable for presentation in a public forum.
+
+f. Must not create or imply any association between Sponsor and any individual, entity, or anyone else or his, her, or its products and services.
+
+g. Must not contain any commercial or corporate advertising, recognizable branded products, or commercial artwork.
+
+ 
+
+You agree that your participation in this Contest and agreement to these Official Rules will not violate any agreement to which you are a signatory or party and that no such agreement otherwise limits your ability to participate in this Contest or grant the rights granted by you in these Official Rules.
+
+ 
+
+You agree to indemnify the Released Parties against any loss or expense that the Released Parties may sustain or incur on account of any and all claims from any third-party for any use by any Released Party of the Entry authorized pursuant to these Official Rules.
+
+ 
+
+Sponsor may at any time disqualify, remove, delete, edit, or restrict access to any Entry, in whole or in part, that violates these Official Rules, the Meta Community Standards, and/or other applicable policies.
+
+ 
+
+Entries must be made available free of charge and with sufficient access until the Winner Announcement to enable viewing, evaluation and use by Sponsor and Judges. Once the Entry Period has ended, you may not make any changes or alterations to your submission until the judging has concluded and the winners have been announced. Entrants must at all times comply with the letter and spirit of the Meta Horizon Creator Program Terms, Supplemental Meta Platforms Technologies Terms of Service and Meta Terms of Services, and any other use terms, policies, documentation, and other guidelines applicable to any platforms used to develop, host, operate, test, distribute, and display any Entry or to administer the Contest. This includes the Devpost Terms of Service, which provide additional terms for your participation in the Contest and your use of the Contest website. The Devpost Terms of Service are incorporated by reference into these Official Rules. If there is a conflict between the Devpost Terms of Service and these Official Rules, these Official Rules shall control with respect to this Contest only.
+
+ 
+
+Sponsor reserves the right in its sole discretion to disqualify any Entrant from the Contest if in Sponsor's sole discretion the Entrant or Entry does not comply with the Entry Requirements or if Entrant does not comply with any other requirement of these Official Rules.
+
+ 
+
+7. WINNER SELECTION & NOTIFICATION
+ 
+
+Sponsor reserves the sole right to determine the eligibility and judging methodologies for all submissions. This process may utilize expert panels, peer review, automated AI-driven analysis, or any combination thereof to ensure efficient, fair, and objective evaluation. Eligible Entries will be evaluated based on the Judging Criteria listed below by a panel of experts (“Judge(s)”) approximately during the Judging Period. Judges will select approximately twelve (12) winners across the genre and special-award categories. The Judges also have discretion to award additional discretionary Special Awards prizes based on the same criteria.
+
+ 
+
+Potential Winners will be notified via email and/or the MHCP Discord between Judging Period and Winner Announcement.
+
+ 
+
+Judging Process
+
+Phase One (Eligibility + AI-Assisted Ranking): Devpost will screen for completeness (all required submission artifacts present, file requirements met). Entries will be checked against the Disqualification Criteria in Section 5. AI-assisted evaluation tools will be used to assist with preliminary ranking of submissions; however, all advancement decisions will be reviewed and confirmed by qualified human reviewers. Submissions will be screened for attempts to manipulate automated evaluation systems, including embedded instructions or prompt injection, which will result in disqualification per Section 5. The competition team will review rankings and determine which submissions advance to Phase Two.
+Phase Two (Meta Judges): Meta judges will play and evaluate the shortlisted prototypes . Each judge will independently score entries. Prize winners, including special award category winners, will be selected from this evaluation. Entries will be evaluated based on the following criteria (the “Judging Criteria”)
+ 
+
+Judging Criteria
+
+Player Engagement (30%): Is it compelling? Would a player keep going and want to come back?
+Playability (25%): Does it actually work? Does it respond to input, run cleanly, and complete the core loop without breaking?
+Core Loop Design (20%): Is the core loop clear, coherent, and well-constructed?
+Focus (15%): Is it a tight, contained single-loop experience rather than an over-scoped sprawl?
+Originality (10%): Is it a fresh, creative take within the chosen genre? (Visual polish is intentionally not scored.)
+ 
+
+In the event of a tie, it will be resolved by Judges' vote. Each potential Winner, all natural people who are members of a winning Team (as determined and requested in Sponsor's sole discretion) may be required to complete, execute and return a form presented by Sponsor and other documents (collectively, the “Winner Documents”) according to Sponsor's instructions. Failure to comply with these requirements may result in disqualification from the Contest and forfeiture of any prize potentially won. The Winner Documents are each subject to verification by Sponsor and may require the Entrant to provide a copy of government-issued identification card or number therefrom. If any prize, prize notification, or other Contest-related communication is returned as undeliverable or if a selected potential Winner cannot be reached or does not respond as instructed after Sponsor has attempted to notify that potential Winner, that selected Winner may be disqualified and an alternate winner may be selected (time permitting and in Sponsor’s sole discretion). Sponsor will not be obligated to pursue more than two (2) alternate winners for any reason.
+
+ 
+
+8. PRIZES, QUANTITY, AND APPROXIMATE RETAIL VALUE (“ARV”)
+Each Winner receives a cash prize as set forth in the table below, paid following the Winner Announcement. Winners are also eligible for a completion grant, which is conditional on delivery of a qualifying build and is governed entirely by the Grant Terms (Addendum A). The completion grant is not guaranteed. 
+
+ 
+
+Limit one (1) prize per Entry. Cash Prizes will be awarded as follows:
+
+ 
+
+Quantity (# of winners)
+
+Award
+
+Cash Prize per Winner 
+
+1
+
+Survival & Resource Management - 1st Place
+
+$17,500
+
+1
+
+Survival & Resource Management - 2nd Place
+
+$14,000
+
+1
+
+Survival & Resource Management - 3rd Place
+
+$11,000
+
+1
+
+Simulation & Management - 1st Place
+
+$17,500
+
+1
+
+Simulation & Management - 2nd Place
+
+$14,000
+
+1
+
+Simulation & Management - 3rd Place
+
+$11,000
+
+1
+
+Tower Defense & Strategy - 1st Place
+
+$17,500
+
+1
+
+Tower Defense & Strategy - 2nd Place
+
+$14,000
+
+1
+
+Tower Defense & Strategy - 3rd Place
+
+$11,000
+
+1
+
+Most Innovative
+
+$7,500
+
+1
+
+Most Fun to Play
+
+$7,500
+
+1
+
+Most Satisfying Progression
+
+$7,500
+
+Total ARV of all cash prizes: Up to $150,000 USD. Winners are also eligible for completion grants of up to an additional $150,000 USD in aggregate, as detailed in the Grant Terms (Addendum A). Winner counts and award amounts may be adjusted based on the final confirmed genre list.
+
+ 
+
+Odds of winning depend on the number of eligible Entries received during the Entry Period and the skill of the Entrants as evaluated against the Judging Criteria.
+
+ 
+
+If a Team Entrant wins, the prize will be awarded to the Representative. Sponsor is not responsible for a potential Winner's inability to accept or use the prize for any reason. Prize details will be decided at Sponsor's sole discretion. No more than the stated prizes will be awarded, except for additional Special Awards that may be awarded at the Judges’ discretion pursuant to Section 7. Sponsor will not replace any lost, mutilated, or stolen prizes or prize elements or any prizes that are undeliverable or do not reach a Winner because of an incorrect or changed contact information. If a Winner does not accept or use the entire prize, the unaccepted or unused part of the prize will be forfeited, and Sponsor will have no further obligation with respect to that prize or portion thereof. No transfers, prize substitutions, or cash redemptions will be made, except at Sponsor's sole discretion. Winners are strictly prohibited from selling, auctioning, trading, or otherwise transferring any part of the prize, except with Sponsor's permission. Sponsor reserves the right to substitute any prize or portion thereof with another prize of equal or greater value for any reason.
+
+ 
+
+Prizes will be delivered to the Entrant, if an individual, or to the Entrant's Representative, if a Team. It will be the responsibility of the winning Entrant's Representative to allocate the prize among their Team’s participating members. A valid bank account may be required for the winner(s) of Prizes valued at one thousand ($1,000) USD or more. Where applicable, Sponsor shall be entitled to deduct and withhold from any payments as required under applicable tax law. All taxes are the sole responsibility of the Winner. If applicable, Winners of prizes valued at $600 or more will receive an IRS Form 1099 or Form 1042.
+
+SPECIAL AWARD CATEGORIES. In addition to the genre prizes, Meta may award one or more Special Prizes (Most Innovative, Most Fun to Play, and Most Satisfying Progression). Notwithstanding anything to the contrary in these Official Rules, entries considered for the Special Prizes will not be evaluated using the weighted judging criteria applicable to the genre prizes detailed in Section 7. Instead, each judge will score eligible entries evaluating innovativeness, fun and satisfying progression for each game they play for the applicable Special Award.
+
+9. PRIVACY AND DATA
+In order for Sponsor to administer the Contest, evaluate, display, and communicate with you about an Entry, conduct marketing and promotion of the Contest, Horizon, and Entries, verify and announce Winners, fulfill prizes, and comply with applicable law, Entries (including any personal data provided in the Entry and/or relating to your Meta accounts), will be collected and/or used and shared by, to, and among Sponsor and with third parties. By entering and participating in this Contest, each Entrant hereby consents to have your Entry used as described above. Entry information received by Sponsor will be treated in accordance with the Supplemental Meta Platforms Technologies Privacy Policy at https://www.meta.com/legal/privacy-policy. Entrants can access, delete, or correct personal data received by Sponsor by viewing their respective policies and following the instructions provided. Information collected from Entrants on the Devpost platform is subject to Devpost’s Privacy Policy, which is available at https://info.devpost.com/privacy.
+
+ 
+
+10. PUBLICITY; ENTRANTS OWNERSHIP OF ENTRIES AND LICENSE GRANTED
+LICENSE: All Entries and Projects remain the intellectual property of the individuals or organizations that developed them. By entering, except where prohibited by law, each Entrant grants to the Released Parties the irrevocable, transferable, sublicensable, absolute right and permission to use, edit, modify, copy, reproduce, and distribute the Entry, in whole or in part, in perpetuity and in any medium, in any language, throughout the world, for the purposes of evaluating Entries, administering this Contest, for internal research and development purposes, and for any marketing or promotional purposes, without further review, notice, approval, consideration, or compensation beyond the opportunity to win a prize in this Contest.
+
+ 
+
+By entering, each Entrant also grants to the Released Parties a non-exclusive, transferable, and sublicensable right and license to use, publish, post, edit, modify, copy, reproduce, and distribute their name, voice, face, likeness in any medium, in any language, throughout the world, for the purposes of evaluating Entries, administering the Contest, announcing Winners, and for any marketing or promotional purposes.
+
+ 
+
+Each Entrant waives and releases the Released Parties from any and all claims based on “moral rights” or “droit moral” or unfair competition with respect to Sponsor’s exploitation of any Entry.
+
+ 
+
+11. INDEMNITY; LIMITATION OF LIABILITY
+Each Entrant hereby acknowledges and agrees that the relationship between the Entrant and each of the Released Parties is not a confidential, fiduciary, or other special relationship, and that the Entrant's decision to participate in the Contest does not place any of the Released Parties in a position that is any different from the position held by members of the general public with regard to elements of the Entry, other than as set forth in these Official Rules.
+
+ 
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, EACH ENTRANT AGREES TO RELEASE, HOLD HARMLESS, AND INDEMNIFY EACH OF THE RELEASED PARTIES FROM AND AGAINST ANY LIABILITY WHATSOEVER FOR INJURIES OR DAMAGES OF ANY KIND SUSTAINED IN CONNECTION WITH THE ACCEPTANCE, USE, MISUSE, OR AWARDING OF A PRIZE OR WHILE PREPARING FOR, PARTICIPATING IN, AND/OR TRAVELING TO OR FROM ANY PRIZE OR CONTEST-RELATED ACTIVITY.
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL META OR ANY OF THE RELEASED PARTIES BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, DATA, GOODWILL, OR BUSINESS INTERRUPTION, ARISING OUT OF OR RELATING TO THE CONTEST OR THESE OFFICIAL RULES, REGARDLESS OF THE FORM OF ACTION, WHETHER IN CONTRACT, TORT (INCLUDING NEGLIGENCE), OR OTHERWISE, AND EVEN IF META HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+IN NO EVENT WILL THE AGGREGATE LIABILITY OF META AND THE RELEASED PARTIES ARISING OUT OF OR RELATING TO THE CONTEST OR THESE OFFICIAL RULES EXCEED THE GREATER OF (A) THE VALUE OF THE PRIZE ACTUALLY AWARDED TO THE APPLICABLE ENTRANT, IF ANY, AND (B) ONE HUNDRED U.S. DOLLARS ($100.00).
+
+ 
+
+12. DISPUTES / GOVERNING LAW
+Except where prohibited, as a condition of participating in this Contest, each Entrant agrees that any and all disputes must be resolved individually, without resort to any form of class action. This Contest will be governed under the internal laws of the State of California, USA. Any legal actions will be brought exclusively in the U.S. District Court for the Northern District of California or a state court in San Mateo County, California.
+
+ 
+
+If any provision of these Official Rules is held to be invalid, illegal, or unenforceable, the remaining provisions shall continue in full force and effect to the fullest extent permitted by law.
+
+ 
+
+13. ADDITIONAL DISCLAIMERS
+The Released Parties are not responsible and/or liable for: participation submitted by illegitimate means; any lost, late, incomplete, illegible, unintelligible, garbled, mutilated, or misdirected participation; any error, omission, interruption, defect or delay in transmission or communication; viruses or technical or mechanical malfunctions; or any force majeure event.
+
+ 
+
+14. GENERAL RULES
+Sponsor’s decisions will be final in all matters relating to this Contest. Sponsor reserves the right to restrict or void participation from any IP address if suspicious participation is detected. Sponsor reserves the right to disqualify any Entrant who attempts to tamper with or impair the administration, security, fairness, or proper play of this Contest.  Sponsor reserves the right to cancel, suspend, or modify the Contest, or any part thereof, if fraud, technical failures, human error, or any other cause beyond Sponsor’s reasonable control corrupts or impairs the administration, security, fairness, or proper play of the Contest. In such an event, Sponsor may, in its sole discretion, award prizes from among all eligible, non-suspect Entries received prior to and/or after such action, or as otherwise deemed fair and appropriate by Sponsor.
+
+ 
+
+15. WINNERS' LIST / OFFICIAL RULES
+To find out who won, visit the Devpost competition page at https://mhcp-game-prototype.devpost.com/ following the Winner Announcement date. For a copy of these Official Rules, visit the Devpost competition page at https://mhcp-game-prototype.devpost.com/ and see the Rules section.
+
+ 
+
+16. SPONSOR
+Meta Platforms, Inc., 1 Hacker Way, Menlo Park, CA 94025 USA
+
+©2026 Meta
+
+
+
+
+***
+
+ 
+
+ADDENDUM A
+META HORIZON CREATOR COMPETITION: 
+GAME PROTOTYPE COMPLETION GRANT TERMS
+ 
+
+These Completion Grant Terms (“Grant Terms”) set forth the terms governing the completion grant available to Winners of the Meta Horizon Creator Competition: Game Prototype Contest (“Contest”). These Grant Terms are ancillary to, and incorporated by reference into, the Contest Official Rules. By accepting the Winner Documents as described in Section 7 of the Official Rules, each Winner (“Grantee”) agrees to be bound by these Grant Terms.
+
+ 
+
+1. DEFINITIONS
+“Cash Prize” means the unconditional cash portion of the Total Award, paid following the Winner Announcement as described in the Official Rules.
+
+ 
+
+“Completion Checklist” means the objective pass/fail criteria set forth in Section 4 of this Grant Terms that Grantee must satisfy to receive the Completion Grant.
+
+ 
+
+“Completion Grant” means the conditional grant portion of the Total Award, disbursed only upon Grantee’s satisfaction of the Completion Checklist within the Rebuild Window.
+
+ 
+
+“Early Access Creation Tools” means Sponsor’s game creation platform that is in development, as made available to Grantee.
+
+ 
+
+“Qualifying Build” means a game built by Grantee on the Early Access Creation Tools that satisfies each criterion of the Completion Checklist.
+
+ 
+
+“Rebuild Window” means the period of eight (8) weeks commencing on the date designated by Sponsor in connection with the Winner Announcement (the “Rebuild Window Start Date”), during which Grantee must deliver the Qualifying Build. Any early access to the Early Access Creation Tools provided to Grantee before the Rebuild Window Start Date for testing, research, or other purposes will not advance the Rebuild Window Start Date.. The exact duration of the Rebuild Window may be further determined, reduced, or extended by Sponsor at any time in its sole discretion based on platform readiness, tooling availability, or other factors Sponsor deems relevant.
+
+ 
+
+“Total Award” means the combined value of the Cash Prize and the Completion Grant for Grantee’s award tier, as set forth in Section 8 of the Official Rules.
+
+ 
+
+2. GRANT STRUCTURE AND PAYMENT
+ 
+
+2.1 Total Award. Each Winner’s Total Award consists of two tranches: (a) the Cash Prize (fifty percent (50%) of the Total Award), detailed in Section 8 of the Official Rules; and (b) the Completion Grant (fifty percent (50%) of the Total Award), detailed below. The Completion Grant amounts per award tier are as follows: Genre 1st Place: $17,500; Genre 2nd Place: $14,000; Genre 3rd Place: $11,000; Special Category: $7,500.
+
+ 
+
+Total Completion Grant ceiling: Up to $150,000 USD in aggregate (conditional on all Winners delivering a Qualifying Build). The Completion Grant for each Winner is independent; forfeiture by one Winner does not affect another Winner’s grant.
+
+ 
+
+2.2 Cash Prize Payment. The Cash Prize is unconditional and will be paid within forty-five (45) business days following the Winner Announcement, subject to the Grantee’s timely provision of all required payment information. The Cash Prize is not contingent on completion of the Qualifying Build.
+
+ 
+
+2.3 Completion Grant Payment. The Completion Grant will be disbursed within thirty (30) business days after Sponsor confirms that Grantee has delivered a Qualifying Build satisfying the Completion Checklist. The Completion Grant is conditional on delivery and is not guaranteed.
+
+ 
+
+2.4 Payment Method. Both the Cash Prize and the Completion Grant will be paid through Sponsor’s existing prize/grant payment rails. A valid bank account is required for amounts of one thousand dollars ($1,000) or more. Where applicable, Sponsor shall be entitled to deduct and withhold from any payments as required under applicable tax law.
+
+ 
+
+3. PLATFORM ACCESS AND REBUILD WINDOW
+3.1 Access Grant. Sponsor will provide Grantee with controlled access to the Early Access Creation Tools solely for the purpose of rebuilding Grantee’s winning prototype into a playable game. Access is provided at no cost to Grantee.
+
+ 
+
+3.2 Rebuild Window. The Rebuild Window is eight (8) weeks, commencing on the Rebuild Window Start Date designated by Sponsor in connection with the Winner Announcement. Sponsor will communicate the Rebuild Window Start Date to Grantee at or around the Winner Announcement and will use reasonable efforts to onboard Grantee promptly thereafter.
+
+ 
+
+3.3 Deferred Access. If the Early Access Creation Tools are not in a state to support Grantee onboarding at the time of the Winner Announcement, Sponsor may defer access and the Rebuild Window until the platform is ready. Upon actual onboarding, Sponsor will designate a new Rebuild Window Start Date. Such deferral does not affect the Cash Prize.
+
+ 
+
+3.4 Non-U.S. Winners. For Winners residing outside the United States, access to the Early Access Creation Tools and the Completion Grant are deferred until the tools are available in Grantee’s region. Non-U.S. Winners retain their Cash Prize regardless of access timing. The Completion Grant remains available to non-U.S. Winners once access conditions are met.
+
+ 
+
+3.5 Platform Terms. Grantee’s use of the Early Access Creation Tools is governed by the Meta Horizon Creator Program Terms, Supplemental Meta Platforms Technologies Terms of Service, and any other applicable platform terms. This Grant Terms does not modify those terms.
+
+ 
+
+4. COMPLETION CHECKLIST
+4.1 Objective Criteria. The Completion Grant is disbursed upon Grantee’s delivery of a build that satisfies each of the following objective criteria. Completion is determined on a binary pass/fail basis by Sponsor. Subjective quality is expressly not a gating criterion:
+
+a. The build runs and is playable on the Early Access Creation Tools platform (verified via the platform’s publish → share → play loop);
+
+b. The build implements the core gameplay loop from Grantee’s winning prototype;
+
+c. The build is single-player;
+
+d. The build is in portrait orientation;
+
+e. The build includes at least one form of meaningful progression or escalation within a single play session, consistent with the Entry Requirements;
+
+f. A player can complete a full session from start to a win, lose, or reset state; and
+
+g. The build does not contain game-breaking bugs that prevent a player from completing the core loop.
+
+ 
+
+4.2 Verification. Sponsor will verify completion on a pass/fail basis. Sponsor will notify Grantee in writing whether the Qualifying Build has been accepted or whether specific Completion Checklist criteria have not been met. If criteria are not met, Grantee may resubmit a revised build; provided, however, that any such resubmission must be received before the expiration of the Rebuild Window. For the avoidance of doubt, no resubmissions will be accepted after the Rebuild Window has closed, and Grantee is solely responsible for managing its submission timing to allow for potential resubmission.
+
+ 
+
+5. TOOLING-BLOCKED CONTINGENCY
+5.1 If Grantee’s build is materially impaired by documented limitations of the Early Access Creation Tools (and not by Grantee’s own effort, choices, or failure to engage with the platform), Sponsor may, in its sole discretion: (a) waive or adjust the affected Completion Checklist criteria and disburse the Completion Grant in whole or in part; or (b) extend or defer the Rebuild Window to a later platform milestone at which the build can reasonably be completed. For the avoidance of doubt, this section does not create an entitlement to the Completion Grant absent delivery of a Qualifying Build, and the determination of the appropriate remedy rests with Sponsor.
+
+ 
+
+5.2 Sponsor will endeavor not to penalize Grantee for platform immaturity where Grantee has demonstrated good-faith engagement with the Early Access Creation Tools. The determination of whether a limitation is attributable to the Early Access Creation Tools (rather than Grantee’s effort) will be made by Sponsor in good faith in its sole discretion.
+
+ 
+
+6. GRANT CLASSIFICATION; NO SERVICES RELATIONSHIP
+6.1 This Grant Terms constitutes a grant, not a services contract. Grantee is not an employee, independent contractor, agent, or vendor of Sponsor. Grantee retains full autonomy over how the game is designed and built, including all creative, technical, and scheduling decisions.
+
+ 
+
+6.2 Sponsor may provide onboarding support and access to validation tooling (such as playtesting credits), but will not direct the build, impose iterative acceptance criteria, require revisions, or maintain an ongoing services relationship with Grantee. The Completion Checklist is the sole criterion for Completion Grant disbursement.
+
+ 
+
+6.3 Grantee acknowledges that the Early Access Creation Tools are in an early stage of development. Sponsor sets expectations up front that the platform is still maturing, and Grantee accepts the tools in their current state.
+
+ 
+
+7. INTELLECTUAL PROPERTY
+7.1 Ownership. Grantee retains all intellectual property rights in both the prototype submitted to the Contest and the game built on the Early Access Creation Tools. Nothing in this Grant Terms transfers or assigns any intellectual property from Grantee to Sponsor.
+
+ 
+
+7.2 License to Sponsor. By accepting the Completion Grant, Grantee grants to the Released Parties (as defined in the Official Rules) a non-exclusive, irrevocable, transferable, sublicensable right and license to use, edit, modify, copy, reproduce, and distribute the Qualifying Build, in whole or in part, in perpetuity and in any medium, in any language, throughout the world, for the purposes of evaluation, administration, internal research and development, showcases, and marketing or promotional purposes, without further review, notice, approval, consideration, or compensation. This license is the same in scope as the license granted with respect to Entries under Section 10 of the Official Rules, extended to the Qualifying Build.
+
+ 
+
+7.3 Platform License. Publication and distribution of the Qualifying Build on the Early Access Creation Tools platform are governed by the Meta Horizon Creator Program Terms and applicable platform terms of service, which Grantee agrees to comply with.
+
+ 
+
+8. FORFEITURE AND TERMINATION
+8.1 Forfeiture. If Grantee does not deliver a Qualifying Build satisfying the Completion Checklist within the Rebuild Window [as may be extended under Section 5], the Completion Grant is forfeited and Sponsor shall have no further obligation with respect to the Completion Grant. Forfeiture of the Completion Grant does not affect the Cash Prize, which is unconditional once paid.
+
+ 
+
+8.2 Termination for Cause. Sponsor may terminate this Grant Terms if Grantee breaches any material term of this Grant Terms or the Official Rules, or if Grantee is disqualified from the Contest for any reason set forth in the Official Rules. Upon termination for cause, the Completion Grant is forfeited.
+
+ 
+
+9. TEAMS
+9.1 If the Winner is a Team, the Team’s designated Representative is the sole Grantee under this Grant Terms and the sole recipient of both the Cash Prize and Completion Grant. It is the Representative’s responsibility to allocate the award among Team members. Sponsor has no obligation to any individual Team member other than the Representative.
+
+ 
+
+10. TAX
+10.1 All taxes arising from the Cash Prize and Completion Grant are the sole responsibility of Grantee. Where applicable, Sponsor shall be entitled to deduct and withhold from any payments as required under applicable tax law. If applicable, Grantee will receive an IRS Form 1099 or Form 1042 for amounts paid.
+
+ 
+
+11. GENERAL PROVISIONS
+11.1 Incorporation. The Official Rules are incorporated by reference into this Grant Terms. Capitalized terms used but not defined in this Grant Terms have the meanings given to them in the Official Rules. In the event of any conflict between this Grant Terms and the Official Rules with respect to the Completion Grant, this Grant Terms shall control.
+
+ 
+
+11.2 Governing Law. These Grant Terms will be governed by the internal laws of the State of California, USA, consistent with Section 12 of the Official Rules.
+
+ 
+
+11.3 Entire Agreement. These Grant Terms, together with the Official Rules, constitute the entire agreement between the parties with respect to the Completion Grant and supersede all prior or contemporaneous understandings regarding the same.
+
+ 
+
+11.4 Severability. If any provision of this Grant Terms is held to be invalid, illegal, or unenforceable, the remaining provisions shall continue in full force and effect.
+
+ 
+
+11.5 Acceptance. By completing and returning the Winner Documents as described in Section 7 of the Official Rules, Grantee acknowledges that they have read, understood, and agree to be bound by these Grant Terms. No separate signature is required for these Grant Terms beyond the Winner Documents.
