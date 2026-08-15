@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>WINDWARD</title>
+<style>
+  :root {
+    --ivory: #f2e8cf;
+    --gold: #d9a441;
+    --teal: #0e3a40;
+    --sea: #17555e;
+    --ink: #10151a;
+    --danger: #d9534f;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    color: var(--ivory);
+    touch-action: none;
+    user-select: none; -webkit-user-select: none;
+  }
+  #app { position: fixed; inset: 0; }
+  #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; }
+  #topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: calc(env(safe-area-inset-top, 0px) + 6px) 10px 4px 10px;
+    font-size: 15px; text-shadow: 0 1px 3px #000;
+  }
+  .res { display: flex; gap: 12px; align-items: center; }
+  .res b { color: var(--gold); font-size: 17px; }
+  #wavechip { font-size: 13px; letter-spacing: 1px; opacity: 0.9; text-align: right; }
+  #priestchip {
+    pointer-events: auto; position: absolute; top: 64px; right: 8px;
+    background: rgba(16,21,26,0.72); border: 1px solid rgba(242,232,207,0.35);
+    border-radius: 10px; padding: 5px 9px; font-size: 12px; text-align: center;
+  }
+  #priestchip.adrift { border-color: var(--danger); color: var(--danger); animation: pulse 0.9s infinite; }
+  @keyframes pulse { 50% { opacity: 0.45; } }
+
+  /* ---------- banners / tutorial ---------- */
+  #banner {
+    position: absolute; top: 18%; left: 0; right: 0; text-align: center;
+    pointer-events: none; opacity: 0; transition: opacity 0.4s;
+    text-shadow: 0 2px 8px #000;
+  }
+  #banner.show { opacity: 1; }
+  #banner .title { font-size: 24px; letter-spacing: 3px; color: var(--ivory); }
+  #banner .sub { font-size: 15px; font-style: italic; margin-top: 6px; color: #cfe3e6; }
+  #banner.poseidon .title { color: #7fd4dd; }
+  #tutorial {
+    position: absolute; bottom: 170px; left: 12px; right: 12px; text-align: center;
+    pointer-events: none; font-size: 16px; font-style: italic; color: var(--ivory);
+    text-shadow: 0 1px 4px #000; opacity: 0; transition: opacity 0.35s;
+  }
+  #tutorial.show { opacity: 1; }
+  #ticker {
+    position: absolute; bottom: 148px; left: 0; right: 0; text-align: center;
+    font-size: 12px; letter-spacing: 1px; color: #ffd9a0; pointer-events: none;
+    text-shadow: 0 1px 3px #000; opacity: 0; transition: opacity 0.3s;
+  }
+  #ticker.show { opacity: 1; }
+
+  /* ---------- bottom: hand + actions ---------- */
+  #bottombar {
+    margin-top: auto; pointer-events: auto;
+    padding: 6px 8px calc(env(safe-area-inset-bottom, 0px) + 8px) 8px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  #powers { display: flex; gap: 8px; justify-content: center; }
+  .powbtn {
+    pointer-events: auto; background: rgba(16,21,26,0.8); color: var(--ivory);
+    border: 1px solid rgba(217,164,65,0.6); border-radius: 10px;
+    font-family: inherit; font-size: 12px; padding: 6px 10px;
+  }
+  .powbtn:disabled { opacity: 0.35; }
+  .powbtn.armed { background: var(--gold); color: var(--ink); }
+  #hand { display: flex; gap: 8px; justify-content: center; align-items: stretch; }
+  .piece {
+    pointer-events: auto; width: 74px; height: 84px; border-radius: 12px;
+    background: rgba(16,21,26,0.82); border: 1.5px solid rgba(242,232,207,0.4);
+    color: var(--ivory); font-family: inherit; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px;
+  }
+  .piece.selected { border-color: var(--gold); background: rgba(64,50,20,0.9); box-shadow: 0 0 12px rgba(217,164,65,0.5); }
+  .piece.unaffordable { opacity: 0.4; }
+  .piece canvas { width: 44px; height: 44px; }
+  .piece .cost { font-size: 12px; color: var(--gold); }
+  #handside { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+  .sidebtn {
+    pointer-events: auto; background: rgba(16,21,26,0.8); color: var(--ivory);
+    border: 1px solid rgba(242,232,207,0.4); border-radius: 10px;
+    font-family: inherit; font-size: 11px; padding: 6px 8px;
+  }
+  .sidebtn:disabled { opacity: 0.35; }
+  #confirmrow { display: flex; gap: 10px; justify-content: center; min-height: 40px; }
+  #confirmrow button {
+    pointer-events: auto; font-family: inherit; font-size: 15px; letter-spacing: 1px;
+    border-radius: 12px; padding: 8px 22px; border: none;
+  }
+  #btn-confirm { background: var(--gold); color: var(--ink); font-weight: bold; }
+  #btn-cancel { background: rgba(16,21,26,0.85); color: var(--ivory); border: 1px solid rgba(242,232,207,0.4); }
+  .hidden { display: none !important; }
+
+  /* ---------- build menu ---------- */
+  #buildmenu {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 210px;
+    display: flex; gap: 6px; pointer-events: auto;
+    background: rgba(16,21,26,0.88); border: 1px solid rgba(242,232,207,0.35);
+    border-radius: 14px; padding: 8px;
+  }
+  #buildmenu button {
+    font-family: inherit; background: none; border: 1px solid rgba(242,232,207,0.3);
+    color: var(--ivory); border-radius: 10px; padding: 6px 8px; font-size: 11px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 58px;
+  }
+  #buildmenu button b { color: var(--gold); font-size: 12px; }
+  #buildmenu button:disabled { opacity: 0.35; }
+
+  /* ---------- screens ---------- */
+  .screen {
+    position: absolute; inset: 0; background: rgba(10,14,18,0.92);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; pointer-events: auto; z-index: 10; padding: 24px;
+  }
+  .screen h1 { font-size: 40px; letter-spacing: 8px; color: var(--ivory); font-weight: normal; }
+  .screen h2 { font-size: 18px; letter-spacing: 2px; color: var(--gold); font-weight: normal; }
+  .screen p { font-size: 14px; max-width: 300px; color: #cfd8d3; line-height: 1.5; }
+  .screen button {
+    font-family: inherit; font-size: 17px; letter-spacing: 2px; border: none;
+    background: var(--gold); color: var(--ink); padding: 12px 34px; border-radius: 12px;
+  }
+  .screen .seedrow { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .screen input {
+    font-family: monospace; font-size: 14px; width: 110px; text-align: center;
+    background: rgba(242,232,207,0.1); color: var(--ivory);
+    border: 1px solid rgba(242,232,207,0.4); border-radius: 8px; padding: 6px;
+  }
+  #skipbtn {
+    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 40px); left: 10px;
+    pointer-events: auto; background: rgba(16,21,26,0.6); color: rgba(242,232,207,0.8);
+    border: 1px solid rgba(242,232,207,0.3); border-radius: 8px;
+    font-family: inherit; font-size: 11px; letter-spacing: 1px; padding: 5px 10px;
+  }
+  #codex {
+    position: absolute; inset: auto 14px 220px 14px; background: rgba(16,21,26,0.94);
+    border: 1px solid rgba(217,164,65,0.5); border-radius: 12px; padding: 12px 14px;
+    font-size: 13px; line-height: 1.5; color: #e8dfc8; pointer-events: auto; z-index: 8;
+  }
+  #codex h3 { color: var(--gold); font-size: 14px; letter-spacing: 1px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="gl"></canvas>
+  <div id="hud">
+    <div id="topbar">
+      <div class="res">
+        <span>&#9099; <b id="supply">0</b></span>
+        <span>&#10022; <b id="favor">0</b></span>
+      </div>
+      <div id="wavechip">SEED <span id="seedchip">------</span><br><span id="waveinfo"></span></div>
+    </div>
+    <div id="priestchip" class="hidden">&#9865; PRIEST</div>
+    <div id="banner"><div class="title"></div><div class="sub"></div></div>
+    <div id="tutorial"></div>
+    <div id="ticker"></div>
+    <div id="codex" class="hidden"></div>
+    <div id="buildmenu" class="hidden"></div>
+    <div id="bottombar">
+      <div id="powers">
+        <button class="powbtn" id="pow-tailwind">TAILWIND<br>3 &#10022;</button>
+        <button class="powbtn" id="pow-windwall">WIND WALL<br>4 &#10022;</button>
+      </div>
+      <div id="confirmrow">
+        <button id="btn-confirm" class="hidden">CONFIRM</button>
+        <button id="btn-cancel" class="hidden">CANCEL</button>
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center;">
+        <div id="hand"></div>
+        <div id="handside">
+          <button class="sidebtn" id="btn-discard">DISCARD<br>1 &#10022;</button>
+          <button class="sidebtn" id="btn-tech">HYDROGEN<br>25&#9099; 6&#10022;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <button id="skipbtn" class="hidden">SKIP &#9656;</button>
+  <div id="startscreen" class="screen">
+    <h1>WINDWARD</h1>
+    <h2>ARCHIPELAGO OF THE GODS</h2>
+    <p>Bind the wind into roads of the sky. Hold them together while the sea god tears them open.</p>
+    <div class="seedrow">SEED <input id="seedinput" maxlength="8" autocomplete="off"></div>
+    <button id="startbtn">SET SAIL</button>
+  </div>
+  <div id="endscreen" class="screen hidden">
+    <h1 id="endtitle"></h1>
+    <p id="endtext"></p>
+    <div class="seedrow">SEED <span id="endseed" style="font-family:monospace"></span></div>
+    <button id="resetbtn">AGAIN</button>
+  </div>
+</div>
+<script src="vendor/three.min.js"></script>
+<script>
+/* @INJECT_GAME_CODE */
+</script>
+</body>
+</html>
