@@ -18,15 +18,29 @@
 // chokepoint) is what gives the map its priced-safety route (§20.3). Each
 // chain island is pulled toward its neighbour; the separation boundary
 // stops growth at exactly a two-cell water gap, which is one island hop.
-const MAP_ZONES = {
-  greatTempleA: { x0: 2, x1: 3, z0: 16, z1: 17, lo: 8, hi: 9, seed: 'h', pull: [[4, 17]] },
-  supplyA:      { x0: 7, x1: 9, z0: 17, z1: 18, lo: 5, hi: 6, seed: 'h', pull: [[5, 17], [9, 16]] },
-  sacredA:      { x0: 0, x1: 1, z0: 5, z1: 7, lo: 4, hi: 5 },
-  sacredP:      { x0: 10, x1: 11, z0: 8, z1: 9, lo: 5, hi: 6, seed: 'v', pull: [[10, 12], [8, 9]] },
-  chokepoint:   { x0: 6, x1: 6, z0: 9, z1: 10, lo: 4, hi: 5, seed: 'h', pull: [[7, 10]] },
-  neutralA:     { x0: 9, x1: 11, z0: 13, z1: 13, lo: 4, hi: 5, seed: 'h', pull: [[9, 15], [10, 12]] },
-  neutralP:     { x0: 0, x1: 1, z0: 10, z1: 12, lo: 4, hi: 5 }
-};
+// The corner clusters use absolute offsets (they must fit inside the Great
+// Temple's influence radius); the contested interior stretches with the map,
+// and stepping-stone filler islands are grown to keep the chain hoppable.
+function buildZones() {
+  const W = CONFIG.Grid.WIDTH, H = CONFIG.Grid.HEIGHT;
+  const fz = (f) => Math.round(f * (H - 1));
+  const cx = Math.floor(W / 2);
+  return {
+    greatTempleA: { x0: 2, x1: 3, z0: H - 4, z1: H - 3, lo: 8, hi: 9, seed: 'h', pull: [[4, H - 3]] },
+    supplyA:      { x0: 7, x1: Math.min(9, W - 3), z0: H - 3, z1: H - 2, lo: 5, hi: 6, seed: 'h', pull: [[5, H - 3], [9, H - 4]] },
+    sacredA:      { x0: 0, x1: 1, z0: fz(0.26), z1: fz(0.36), lo: 4, hi: 5 },
+    sacredP:      { x0: W - 2, x1: W - 1, z0: fz(0.41), z1: fz(0.46), lo: 5, hi: 6, seed: 'v', pull: [[W - 2, fz(0.55)], [W - 4, fz(0.44)]] },
+    chokepoint:   { x0: cx, x1: cx, z0: fz(0.45), z1: fz(0.51), lo: 4, hi: 5, seed: 'h', pull: [[cx + 1, fz(0.51)]] },
+    neutralA:     { x0: W - 3, x1: W - 1, z0: fz(0.62), z1: fz(0.66), lo: 4, hi: 5, seed: 'h', pull: [[W - 3, fz(0.73)], [W - 2, fz(0.56)]] },
+    neutralP:     { x0: 0, x1: 1, z0: fz(0.5), z1: fz(0.6), lo: 4, hi: 5 }
+  };
+}
+let MAP_ZONES = buildZones();
+
+// distances the spec authored for its 12x20 reference map scale with size
+function mapScale() {
+  return (CONFIG.Grid.WIDTH + CONFIG.Grid.HEIGHT) / (CONFIG.Grid.REF_WIDTH + CONFIG.Grid.REF_HEIGHT);
+}
 
 // Diagnostic counters (dev only; harmless at runtime).
 const MAPGEN_STATS = { growFail: {}, mirrorFail: {} };
@@ -110,6 +124,7 @@ function pickPlots(rng, cells, count, landSet) {
 
 function generateOnce(rng) {
   const MG = CONFIG.MapGen;
+  MAP_ZONES = buildZones();
   // Islands are kept MIN_ISLAND_SEPARATION apart (min cell distance >= 3,
   // i.e. two water cells between coasts — exactly an island-hop gap).
   const SEP = MG.MIN_ISLAND_SEPARATION - 1;
@@ -172,14 +187,68 @@ function generateOnce(rng) {
   if (!grow('neutralP', 'N')) return null;
   if (islands.length !== 9) return null;
 
+  // Stepping stones: on maps larger than the reference, the hop chain's
+  // gaps stretch beyond hop range. Grow small filler islands midway along
+  // any over-long link (island count scales with map size).
+  const minCellDist = (A, B) => {
+    let best = Infinity;
+    for (const [ax, az] of A.cells) for (const [bx, bz] of B.cells) {
+      best = Math.min(best, Math.max(Math.abs(ax - bx), Math.abs(az - bz)));
+    }
+    return best;
+  };
+  {
+    const byRole = {};
+    for (const isl of islands) byRole[isl.role] = isl;
+    const chainRoles = ['greatTempleA', 'supplyA', 'neutralA', 'sacredP', 'chokepoint'];
+    const chainIslands = chainRoles.map(r => byRole[r]);
+    for (let i = 0; i < chainIslands.length - 1; i++) {
+      let guard = 4;
+      while (minCellDist(chainIslands[i], chainIslands[i + 1]) > MG.FILLER_GAP_MAX && guard-- > 0) {
+        const A = chainIslands[i], B = chainIslands[i + 1];
+        const mid = [Math.round((A.center ? A.center[0] : blobCenter(A.cells)[0]) + (blobCenter(B.cells)[0] - blobCenter(A.cells)[0]) / 2),
+                     Math.round((blobCenter(A.cells)[1] + blobCenter(B.cells)[1]) / 2)];
+        let placed = null;
+        for (let attempt = 0; attempt < 10 && !placed; attempt++) {
+          const jx = mid[0] + Math.round((rng() * 2 - 1) * 2);
+          const jz = mid[1] + Math.round((rng() * 2 - 1) * 2);
+          if (!inBounds(jx, jz) || forbidden.has(cellKey(jx, jz))) continue;
+          const size = MG.FILLER_SIZE_LO + Math.floor(rng() * (MG.FILLER_SIZE_HI - MG.FILLER_SIZE_LO + 1));
+          const cells = growBlob(rng, [[jx, jz]], size, forbidden,
+            [blobCenter(A.cells).map(Math.round), blobCenter(B.cells).map(Math.round)]);
+          if (cells.length >= MG.FILLER_SIZE_LO) placed = cells;
+        }
+        if (!placed) break;
+        const filler = { role: 'filler', side: 'N', cells: placed };
+        islands.push(filler);
+        forbidden = new Set([...forbidden, ...forbiddenAround(placed, SEP)]);
+        chainIslands.splice(i + 1, 0, filler);
+      }
+    }
+    // scattered extras: one per SCATTER_PER_CELLS beyond the reference area
+    const extra = Math.max(0, Math.floor(
+      (CONFIG.Grid.WIDTH * CONFIG.Grid.HEIGHT - CONFIG.Grid.REF_WIDTH * CONFIG.Grid.REF_HEIGHT) / MG.SCATTER_PER_CELLS));
+    for (let i = 0; i < extra; i++) {
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const jx = 1 + Math.floor(rng() * (CONFIG.Grid.WIDTH - 2));
+        const jz = Math.round(CONFIG.Grid.HEIGHT * (0.18 + rng() * 0.64));
+        if (!inBounds(jx, jz) || forbidden.has(cellKey(jx, jz))) continue;
+        const size = MG.FILLER_SIZE_LO + Math.floor(rng() * (MG.FILLER_SIZE_HI - MG.FILLER_SIZE_LO + 1));
+        const cells = growBlob(rng, [[jx, jz]], size, forbidden, null);
+        if (cells.length < MG.FILLER_SIZE_LO) continue;
+        islands.push({ role: 'filler', side: 'N', cells });
+        forbidden = new Set([...forbidden, ...forbiddenAround(cells, SEP)]);
+        break;
+      }
+    }
+    islands.hopChain = chainIslands;   // consumed by the bridging pass below
+  }
+
   // Bridge the island-hop chain: each consecutive pair must offer a straight
   // two-cell water hop (aligned cells exactly 3 apart). Where growth left the
   // pair misaligned, extend one island by a lobe cell to line the hop up.
   {
-    const byRole = {};
-    for (const isl of islands) byRole[isl.role] = isl;
-    const chain = ['greatTempleA', 'supplyA', 'neutralA', 'sacredP', 'chokepoint'];
-    const cellsOf = r => byRole[r].cells;
+    const chainIslands = islands.hopChain;
     const allCells = () => islands.flatMap(i => i.cells.map(([x, z]) => ({ x, z, isl: i })));
     const hopAligned = (A, B) => {
       for (const [ax, az] of A) for (const [bx, bz] of B) {
@@ -187,8 +256,8 @@ function generateOnce(rng) {
       }
       return false;
     };
-    for (let ci = 0; ci < chain.length - 1; ci++) {
-      const I = byRole[chain[ci]], J = byRole[chain[ci + 1]];
+    for (let ci = 0; ci < chainIslands.length - 1; ci++) {
+      const I = chainIslands[ci], J = chainIslands[ci + 1];
       let guard = 3;
       while (!hopAligned(I.cells, J.cells) && guard-- > 0) {
         // candidate: a cell adjacent to I (or J), exactly 3 straight from a
@@ -238,6 +307,7 @@ function generateOnce(rng) {
     else if (isl.role.startsWith('supply')) isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * reserveRoll.supply);
     else if (isl.role.startsWith('neutral')) isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * reserveRoll.neutral);
     else if (isl.role === 'chokepoint') isl.reserve = Math.round(CONFIG.Mining.RESERVE_INTERIOR * reserveRoll.choke);
+    else if (isl.role === 'filler') isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * MG.FILLER_RESERVE_MULT * reserveRoll.neutral);
     else isl.reserve = Math.round(CONFIG.Mining.RESERVE_INTERIOR * reserveRoll.sacred);
   }
 
@@ -255,7 +325,8 @@ function generateOnce(rng) {
     }
     isl.templeCell = best;
     const isTempleIsle = isl.role.startsWith('greatTemple');
-    let plotCount = isTempleIsle ? CONFIG.Structures.PLOTS_PER_TEMPLE : CONFIG.Structures.PLOTS_PER_ISLAND;
+    let plotCount = isTempleIsle ? CONFIG.Structures.PLOTS_PER_TEMPLE
+      : isl.role === 'filler' ? 1 : CONFIG.Structures.PLOTS_PER_ISLAND;
     if (!isTempleIsle && i === extraPlotIdx) plotCount++;
     isl.plots = pickPlots(rng, isl.cells, Math.min(plotCount, isl.cells.length), land);
   });
@@ -289,7 +360,8 @@ function generateOnce(rng) {
       const gx = (fx / (W.FIELD_W - 1)) * (G.WIDTH - 1);
       const gz = (fz / (W.FIELD_H - 1)) * (G.HEIGHT - 1);
       const u = (gx - ccx) * perp[0] + (gz - ccz) * perp[1];   // perpendicular offset from the axis
-      let ang = axisAngle + shearRad * u;
+      const clampRad = MG.WIND_SHEAR_CLAMP_DEG * Math.PI / 180;
+      let ang = axisAngle + clamp(shearRad * u, -clampRad, clampRad);
       // smooth noise (bilinear over the 3x3 coarse grid)
       const nx = (fx / (W.FIELD_W - 1)) * 2, nz = (fz / (W.FIELD_H - 1)) * 2;
       const x0 = Math.floor(Math.min(nx, 1.999)), z0 = Math.floor(Math.min(nz, 1.999));
@@ -387,14 +459,18 @@ function validateMap(map) {
   }
 
   // 2. routes from the player's home reach the nearest interior island in
-  // 8..12 cells, measured from the Great Temple itself.
+  // 8..12 reference-map cells, measured from the Great Temple and scaled
+  // with map size.
   {
     let best = Infinity;
     for (const isl of interior) {
       const d = bfsDistance([gtA.templeCell], cellSet(isl.cells), null);
       if (d >= 0) best = Math.min(best, d);
     }
-    if (best < MG.HOME_TO_INTERIOR_MIN || best > MG.HOME_TO_INTERIOR_MAX) fails.push('home-to-interior:' + best);
+    const s = mapScale();
+    if (best < Math.floor(MG.HOME_TO_INTERIOR_MIN * s) || best > Math.ceil(MG.HOME_TO_INTERIOR_MAX * s)) {
+      fails.push('home-to-interior:' + best);
+    }
   }
 
   // 3 + 4. exposed island: the straight route (a shortest path — nothing
@@ -475,10 +551,10 @@ function validateMap(map) {
     if (Math.abs(dOut - dOutAtRet) < MG.CIRCUIT_DOT_SEPARATION) fails.push('circuit-separation');
   }
 
-  // 7. corner-to-corner (temple to temple) shortest path >= 18
+  // 7. corner-to-corner (temple to temple) shortest path >= 18, scaled
   {
     const d = bfsDistance([gtA.templeCell], new Set([cellKey(gtP.templeCell[0], gtP.templeCell[1])]), null);
-    if (d < MG.CORNER_TO_CORNER_MIN) fails.push('corner-to-corner:' + d);
+    if (d < Math.floor(MG.CORNER_TO_CORNER_MIN * mapScale())) fails.push('corner-to-corner:' + d);
   }
 
   // 8. no two islands within MIN_ISLAND_SEPARATION cells (Chebyshev)

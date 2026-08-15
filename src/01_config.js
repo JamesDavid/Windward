@@ -4,9 +4,19 @@
 // ================================================================
 'use strict';
 
+// The world is sized in portrait screens: COLS x ROWS tiles of roughly
+// CELLS_X x CELLS_Z grid cells each. Bigger maps generate extra neutral
+// stepping-stone islands automatically. (2x3 by default; try 3x5.)
+const MAP_SIZE = { SCREEN_COLS: 2, SCREEN_ROWS: 3, CELLS_X: 6, CELLS_Z: 10 };
+
 const CONFIG = Object.freeze({
 
-  Grid: { WIDTH: 12, HEIGHT: 20, CELL_SECONDS: 1.0 },
+  Grid: {
+    WIDTH: MAP_SIZE.SCREEN_COLS * MAP_SIZE.CELLS_X,
+    HEIGHT: MAP_SIZE.SCREEN_ROWS * MAP_SIZE.CELLS_Z,
+    CELL_SECONDS: 1.0,
+    REF_WIDTH: 12, REF_HEIGHT: 20   // the spec's reference map; distances scale from it
+  },
 
   MapGen: {
     USE_TIME_NONCE: true,
@@ -29,7 +39,12 @@ const CONFIG = Object.freeze({
     TEMPLE_ISLAND_SIZE_MIN: 8, TEMPLE_ISLAND_SIZE_MAX: 10,
     SHIELD_ISLAND_MAX_DIST: 6,
     WIND_NOISE_DEGREES: 15,
-    WIND_SHEAR_DEG_PER_CELL: 30
+    WIND_SHEAR_DEG_PER_CELL: 30,
+    WIND_SHEAR_CLAMP_DEG: 150,
+    FILLER_GAP_MAX: 4,           // chain gaps wider than this grow a stepping stone
+    FILLER_SIZE_LO: 3, FILLER_SIZE_HI: 4,
+    FILLER_RESERVE_MULT: 0.5,
+    SCATTER_PER_CELLS: 90        // one extra scattered neutral per this many cells beyond the reference map
   },
 
   Wind: {
@@ -92,6 +107,7 @@ const CONFIG = Object.freeze({
     AEGIS:    { COST: 12, HP: 130, INTERCEPT: 0.70, ARC_DEG: 120 },
     BULWARK:  { COST: 12, HP: 160, INTERCEPT: 0.70, ARC_DEG: 120 },
     PORTS_GUN: 1, PORTS_SHIELD: 2, PORTS_ALTAR: 0,
+    SHIELD_COVER_RADIUS: 2.5,
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
     DESTRUCTION_DAMAGE: 50
@@ -189,7 +205,10 @@ const CONFIG = Object.freeze({
 
   Render: {
     AIR_ALTITUDE: 1.15, SEA_ALTITUDE: 0.04, ISLAND_HEIGHT: 0.34,
-    CAM_HEIGHT: 26.0, CAM_BACK: 11.5, CAM_FOV: 46, CAM_LOOK_Z: 1.7,
+    CAM_HEIGHT: 13.8, CAM_BACK: 6.1, CAM_FOV: 46,
+    PAN_MARGIN: 1.0,
+    TAP_DRAG_THRESHOLD_PX: 10,
+    SHROUD_OPACITY: 0.93,
     WHITECAP_COUNT: 90, RIBBON_PARTICLES: 4,
     FRAYED_DESAT: 0.45
   }

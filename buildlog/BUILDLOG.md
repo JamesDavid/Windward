@@ -89,6 +89,7 @@ ENTRY TEMPLATE — copy for each session.
 | 1 | Set up repo, commit spec + rules + build log scaffold | `ddd8dea` | chore: initial spec and build log scaffold |
 | 2 | Build pipeline (src -> single index.html), CONFIG block, seeded PRNG, wind field, map generator with the 11 validation invariants + headless node tests | `949c777` | feat: build pipeline, CONFIG, wind field, deterministic map generator |
 | 3 | Game state, route pieces + sockets + placement legality, support BFS with island conduction, progressive collapse + reconnection, headless tests | `c670ec3` | feat: game state, route network, support graph, progressive collapse |
+| 4 | Renderer (islands, temples, sea, wind tells), tap placement UI with wind-multiplier ghost, portrait camera framing, first screenshots | `2760056` | feat: renderer, portrait scene, tap placement UI, main loop |
 
 **What I built:** Development skeleton the spec asks for (§33F.1): game logic in `src/*.js`, `build.js` concatenates into one readable unminified `index.html` with the frozen `CONFIG` block first. Three.js r147 (UMD build, works from `file://`) vendored under `/vendor`. Wind field (6×10 vector field, bilinear, ±30° drift). Deterministic map generator: zone-constrained island growth, mirror-then-perturb for the economic corners, all 11 validator invariants from §20A.5, re-roll with verified golden-seed fallback. Headless node test harness runs the pure game logic without a browser: determinism, convergence (200/200 random seeds resolve without fallback), golden seed verified.
 

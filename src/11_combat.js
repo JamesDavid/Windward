@@ -1,0 +1,190 @@
+// ================================================================
+// COMBAT (§33A, §33B, §33C) — continuous, no rolls, no armour types.
+// Both sides attack the other's road. Air segments are attackable only
+// over open water; sea segments are sheltered within one cell of a
+// coast. Shields physically absorb for what stands behind them.
+// ================================================================
+
+function angDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return Math.abs(d);
+}
+
+function overWaterPos(state, fx, fz) {
+  return !state.map.land.has(cellKey(Math.round(fx), Math.round(fz)));
+}
+
+// ---- damage funnel: every hit passes through here ----
+// target: {kind:'segment'|'structure'|'greatTemple'|'mover', ref, side, pos}
+function applyDamage(state, target, amount, sourcePos) {
+  if (state.wave.wrath) amount *= CONFIG.Wrath.DAMAGE_MULT;
+
+  // Wind Wall (§33A.8): one endpoint, damage reduced 75%
+  if (target.side === 'A' && state.time < state.powers.windwallUntil && state.powers.windwallCell) {
+    const wc = state.powers.windwallCell;
+    if (Math.hypot(target.pos[0] - wc[0], target.pos[1] - wc[1]) <= 1.2) {
+      amount *= 1 - CONFIG.Powers.WIND_WALL.DAMAGE_REDUCTION;
+    }
+  }
+
+  // shields intercept for structures and segments behind them (§14.3)
+  if (sourcePos && (target.kind === 'segment' || target.kind === 'structure' || target.kind === 'greatTemple')) {
+    for (const sh of state.structures) {
+      if (sh.type !== 'shield' || sh.owner !== target.side || sh.hp <= 0 || sh.buildProgress < 1) continue;
+      if (!structureSupported(state, sh)) continue;
+      if (Math.hypot(target.pos[0] - sh.cell[0], target.pos[1] - sh.cell[1]) > CONFIG.Structures.SHIELD_COVER_RADIUS) continue;
+      const toAttacker = Math.atan2(sourcePos[1] - sh.cell[1], sourcePos[0] - sh.cell[0]);
+      if (angDiff(toAttacker, sh.facing) > sh.arc / 2) continue;
+      const absorbed = amount * sh.intercept;
+      amount -= absorbed;
+      damageStructure(state, sh, absorbed, 'intercept');
+      break;   // one shield per hit
+    }
+  }
+
+  switch (target.kind) {
+    case 'segment': damageSegment(state, target.ref, amount); break;
+    case 'structure': damageStructure(state, target.ref, amount, 'combat'); break;
+    case 'greatTemple': {
+      const gt = state.greatTemple[target.side];
+      gt.hp -= amount;
+      Events.emit('greatTempleHit', { side: target.side });
+      break;
+    }
+    case 'mover': {
+      const m = target.ref;
+      let dmg = amount;
+      if (m.kind === 'hauler' && state.hydrogen[m.owner]) dmg *= CONFIG.Airship.HYDROGEN_DAMAGE_MULT;
+      m.hull -= dmg;
+      m.lastHitAt = state.time;
+      if (m.hull <= 0) {
+        if (m.kind === 'priest') {
+          m.state = 'dead';
+          m.respawnAt = state.time + CONFIG.Priest.SUCCESSION_SECONDS;
+          Events.emit('priestDead', { side: m.owner });
+        } else if (m.kind === 'hauler') {
+          m.state = 'dead';
+          Events.emit('convoyLost', { ent: m });
+        } else {
+          m.dead = true;
+          Events.emit('craftDestroyed', { craft: m });
+        }
+      }
+      break;
+    }
+  }
+}
+
+// ---- target enumeration ----
+function enemyMovers(state, side) {
+  const foe = side === 'A' ? 'P' : 'A';
+  const out = [];
+  for (const h of state.haulers) {
+    if (h.owner === foe && h.state !== 'dead' && h.state !== 'idle') out.push(h);
+  }
+  const p = state.priests[foe];
+  if (p && (p.state === 'transit' || p.state === 'adrift')) out.push(p);
+  if (side === 'A') for (const c of state.craft) if (!c.dead) out.push(c);
+  return out;
+}
+
+function enemySegments(state, side) {
+  const foe = side === 'A' ? 'P' : 'A';
+  const out = [];
+  for (const s of state.segments.values()) {
+    if (s.owner !== foe) continue;
+    if (foe === 'A' && !s.overWater) continue;       // island crossings untouchable (§33B.1)
+    if (foe === 'P' && s.sheltered) continue;         // lee shore (§33B.2a)
+    out.push(s);
+  }
+  return out;
+}
+
+function enemyStructureTargets(state, side) {
+  const foe = side === 'A' ? 'P' : 'A';
+  const out = [];
+  for (const st of state.structures) {
+    if (st.owner === foe && st.hp > 0) out.push({ kind: 'structure', ref: st, side: foe, pos: st.cell });
+  }
+  const gt = state.greatTemple[foe];
+  if (gt.hp > 0) out.push({ kind: 'greatTemple', ref: gt, side: foe, pos: gt.cell });
+  return out;
+}
+
+function segMid(s) { return [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2]; }
+
+// visibility gate: the AI obeys fog too (§14B.5); both sides may only
+// target what they can currently see
+function canSee(state, side, pos) {
+  return state.vision[side].has(cellKey(Math.round(pos[0]), Math.round(pos[1])));
+}
+
+// ---- gun resolution ----
+function gunTick(state, st, dt) {
+  if (st.hp <= 0 || st.buildProgress < 1 || (st.type !== 'vane' && st.type !== 'bolt' && st.type !== 'mast')) return;
+  if (!structureSupported(state, st)) return;   // nothing fires without support (§14.4.3)
+  const side = st.owner;
+  let dps = st.dps, range = st.type === 'vane' ? st.radius : st.range;
+
+  // Fog Bank halves player gun range and damage in region (§33A.8)
+  if (side === 'A' && state.powers.fog && state.time < state.powers.fog.until) {
+    const f = state.powers.fog;
+    if (Math.hypot(st.cell[0] - f.cell[0], st.cell[1] - f.cell[1]) <= CONFIG.Powers.FOG_BANK.RADIUS) {
+      dps *= CONFIG.Powers.FOG_BANK.BOLT_PENALTY;
+      range *= CONFIG.Powers.FOG_BANK.BOLT_PENALTY;
+    }
+  }
+
+  const inRange = (pos) => Math.hypot(pos[0] - st.cell[0], pos[1] - st.cell[1]) <= range;
+
+  // masts and siphon-type sources cannot hit airships over land (§33C.6)
+  const moverTargets = enemyMovers(state, side).filter(m => {
+    if (!inRange(m.pos) || !canSee(state, side, m.pos)) return false;
+    if (side === 'P' && !overWaterPos(state, m.pos[0], m.pos[1])) return false;
+    return true;
+  }).map(m => ({ kind: 'mover', ref: m, side: m.owner, pos: m.pos }));
+
+  const structTargets = enemyStructureTargets(state, side).filter(t => inRange(t.pos) && canSee(state, side, t.pos));
+  const segTargets = enemySegments(state, side)
+    .filter(s => inRange(segMid(s)) && canSee(state, side, segMid(s)))
+    .map(s => ({ kind: 'segment', ref: s, side: s.owner, pos: segMid(s) }));
+
+  if (st.type === 'vane') {
+    // radial: hits every valid target in radius
+    for (const t of [...moverTargets, ...structTargets, ...segTargets]) {
+      applyDamage(state, t, dps * dt, st.cell);
+    }
+    return;
+  }
+
+  // directional: prefer craft > structures > segments, nearest first (§33A.1)
+  const pick = moverTargets.concat(structTargets, segTargets)
+    .sort((a, b) =>
+      Math.hypot(a.pos[0] - st.cell[0], a.pos[1] - st.cell[1]) -
+      Math.hypot(b.pos[0] - st.cell[0], b.pos[1] - st.cell[1]));
+  // stable class priority
+  const target = moverTargets.length ? pick.find(t => t.kind === 'mover')
+    : structTargets.length ? pick.find(t => t.kind === 'structure' || t.kind === 'greatTemple')
+    : pick[0];
+  if (!target) return;
+
+  // rotate slowly toward the target; fire only inside the arc
+  const want = Math.atan2(target.pos[1] - st.cell[1], target.pos[0] - st.cell[0]);
+  const d = want - st.facing;
+  const wrapped = Math.atan2(Math.sin(d), Math.cos(d));
+  const maxTurn = (st.turn || 1) * dt;
+  st.facing += clamp(wrapped, -maxTurn, maxTurn);
+  if (angDiff(want, st.facing) <= (st.arc || Math.PI * 2) / 2) {
+    applyDamage(state, target, dps * dt, st.cell);
+    st.firingAt = target.pos.slice();
+    st.lastFired = state.time;
+  }
+}
+
+// ---- craft attacks (transports, siphons, heavies) are resolved in the
+// wave system where their movement lives; combatTick runs the guns ----
+function combatTick(state, dt) {
+  for (const st of state.structures) gunTick(state, st, dt);
+}

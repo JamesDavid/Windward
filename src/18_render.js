@@ -5,7 +5,7 @@
 // ================================================================
 
 const Palette = {
-  sea: 0x16606e, seaDeep: 0x0e4652,
+  sea: 0x104b58, seaDeep: 0x0e4652,
   limestone: 0xede2c8, limestoneShade: 0xd8c9a8,
   canopy: 0x5d8f56, canopyDark: 0x47714a,
   ivory: 0xf5ecd7, gold: 0xd9a441, bronze: 0x8c6a2f,
@@ -37,23 +37,22 @@ function initRenderer() {
   const canvas = document.getElementById('gl');
   R.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   R.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  R.renderer.outputEncoding = THREE.sRGBEncoding;
   R.scene = new THREE.Scene();
   R.scene.background = new THREE.Color(0x0d3540);
-  R.scene.fog = new THREE.Fog(0x0d3540, 26, 44);
+  R.scene.fog = new THREE.Fog(0x0d3540, 17, 32);
 
   R.camera = new THREE.PerspectiveCamera(CONFIG.Render.CAM_FOV, 1, 0.1, 100);
   R.raycaster = new THREE.Raycaster();
   R.groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-  const sun = new THREE.DirectionalLight(0xfff2dd, 1.05);
+  const sun = new THREE.DirectionalLight(0xfff2dd, 0.95);
   sun.position.set(6, 14, 4);
   R.scene.add(sun);
-  R.scene.add(new THREE.HemisphereLight(0xcfe8ef, 0x2a4a3a, 0.75));
+  R.scene.add(new THREE.HemisphereLight(0xbcdce4, 0x27453a, 0.5));
 
   // the Aegean
   const sea = new THREE.Mesh(
-    new THREE.PlaneGeometry(46, 64),
+    new THREE.PlaneGeometry(CONFIG.Grid.WIDTH * 4, CONFIG.Grid.HEIGHT * 3),
     new THREE.MeshLambertMaterial({ color: Palette.sea })
   );
   sea.rotation.x = -Math.PI / 2;
@@ -71,15 +70,32 @@ function initRenderer() {
   R.initialized = true;
 }
 
+// The map is larger than the screen on purpose: the camera keeps its
+// fixed oblique angle and the player pans by dragging. Fog of war and
+// room to build both come from the viewport being a window, not a wall.
 function onResize() {
   const w = window.innerWidth, h = window.innerHeight;
   R.renderer.setSize(w, h, false);
   R.camera.aspect = w / h;
-  // fixed oblique portrait framing: pull back until the whole map fits
-  const fit = Math.max(1, (9 / 16) / (w / h) * 0.92);
-  R.camera.position.set(0, CONFIG.Render.CAM_HEIGHT * fit, CONFIG.Render.CAM_BACK * fit);
-  R.camera.lookAt(0, 0, CONFIG.Render.CAM_LOOK_Z);
   R.camera.updateProjectionMatrix();
+  updateCamera();
+}
+
+function updateCamera() {
+  if (!R.camTarget) R.camTarget = { x: 0, z: 0 };
+  const fit = Math.max(1, (9 / 16) / (R.camera.aspect) * 0.92);
+  const t = R.camTarget;
+  const mx = (CONFIG.Grid.WIDTH - 1) / 2 + CONFIG.Render.PAN_MARGIN;
+  const mz = (CONFIG.Grid.HEIGHT - 1) / 2 + CONFIG.Render.PAN_MARGIN;
+  t.x = clamp(t.x, -mx, mx);
+  t.z = clamp(t.z, -mz, mz + 1);
+  R.camera.position.set(t.x, CONFIG.Render.CAM_HEIGHT * fit, t.z + CONFIG.Render.CAM_BACK * fit);
+  R.camera.lookAt(t.x, 0, t.z);
+}
+
+function panCameraTo(wx, wz) {
+  R.camTarget = { x: wx, z: wz };
+  updateCamera();
 }
 
 // ---------------- static map ----------------
@@ -234,8 +250,18 @@ function syncSegments(state) {
       R.segMeshes.set(k, mesh);
       R.scene.add(mesh);
     }
+    // fog: enemy segments need vision, or memory at reduced brightness (§14B.2)
+    const segVis = typeof segmentVisibility === 'function' ? segmentVisibility(state, s) : 'full';
+    mesh.visible = segVis !== 'hidden';
     const mat = mesh.userData.mat;
     const isAir = mesh.userData.isAir;
+    if (segVis === 'dim') {
+      mat.color.setHex(0x3a4d52);
+      mat.emissiveIntensity = 0.05;
+      mat.opacity = 0.3;
+      if (mesh.userData.stripe) mesh.userData.stripe.material.opacity = 0.1;
+      continue;
+    }
     const stripe = mesh.userData.stripe;
     if (s.supportState === 'SUPPORTED') {
       mat.color.setHex(isAir ? Palette.ivory : 0x062630);
@@ -351,8 +377,8 @@ function renderTick(state, dt) {
   R.renderer.render(R.scene, R.camera);
 }
 
-// tap -> grid cell (or null)
-function pickCell(clientX, clientY) {
+// pointer -> ground-plane point (world coords), or null
+function pickGround(clientX, clientY) {
   const rect = R.renderer.domElement.getBoundingClientRect();
   const ndc = new THREE.Vector2(
     ((clientX - rect.left) / rect.width) * 2 - 1,
@@ -360,6 +386,13 @@ function pickCell(clientX, clientY) {
   R.raycaster.setFromCamera(ndc, R.camera);
   const pt = new THREE.Vector3();
   if (!R.raycaster.ray.intersectPlane(R.groundPlane, pt)) return null;
+  return pt;
+}
+
+// tap -> grid cell (or null)
+function pickCell(clientX, clientY) {
+  const pt = pickGround(clientX, clientY);
+  if (!pt) return null;
   const [gx, gz] = gridFromWorld(pt.x, pt.z);
   if (!inBounds(gx, gz)) return null;
   return [gx, gz];

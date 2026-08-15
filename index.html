@@ -54,7 +54,7 @@
   #banner .sub { font-size: 15px; font-style: italic; margin-top: 6px; color: #cfe3e6; }
   #banner.poseidon .title { color: #7fd4dd; }
   #tutorial {
-    position: absolute; bottom: 170px; left: 12px; right: 12px; text-align: center;
+    position: absolute; bottom: 258px; left: 12px; right: 12px; text-align: center;
     pointer-events: none; font-size: 16px; font-style: italic; color: var(--ivory);
     text-shadow: 0 1px 4px #000; opacity: 0; transition: opacity 0.35s;
   }
@@ -196,7 +196,7 @@
     <h2>ARCHIPELAGO OF THE GODS</h2>
     <p>Bind the wind into roads of the sky. Hold them together while the sea god tears them open.</p>
     <div class="seedrow">SEED <input id="seedinput" maxlength="8" autocomplete="off"></div>
-    <button id="startbtn">SET SAIL</button>
+    <button id="startbtn">TAKE THE WIND</button>
   </div>
   <div id="endscreen" class="screen hidden">
     <h1 id="endtitle"></h1>
@@ -218,9 +218,19 @@
 // ================================================================
 'use strict';
 
+// The world is sized in portrait screens: COLS x ROWS tiles of roughly
+// CELLS_X x CELLS_Z grid cells each. Bigger maps generate extra neutral
+// stepping-stone islands automatically. (2x3 by default; try 3x5.)
+const MAP_SIZE = { SCREEN_COLS: 2, SCREEN_ROWS: 3, CELLS_X: 6, CELLS_Z: 10 };
+
 const CONFIG = Object.freeze({
 
-  Grid: { WIDTH: 12, HEIGHT: 20, CELL_SECONDS: 1.0 },
+  Grid: {
+    WIDTH: MAP_SIZE.SCREEN_COLS * MAP_SIZE.CELLS_X,
+    HEIGHT: MAP_SIZE.SCREEN_ROWS * MAP_SIZE.CELLS_Z,
+    CELL_SECONDS: 1.0,
+    REF_WIDTH: 12, REF_HEIGHT: 20   // the spec's reference map; distances scale from it
+  },
 
   MapGen: {
     USE_TIME_NONCE: true,
@@ -243,7 +253,12 @@ const CONFIG = Object.freeze({
     TEMPLE_ISLAND_SIZE_MIN: 8, TEMPLE_ISLAND_SIZE_MAX: 10,
     SHIELD_ISLAND_MAX_DIST: 6,
     WIND_NOISE_DEGREES: 15,
-    WIND_SHEAR_DEG_PER_CELL: 30
+    WIND_SHEAR_DEG_PER_CELL: 30,
+    WIND_SHEAR_CLAMP_DEG: 150,
+    FILLER_GAP_MAX: 4,           // chain gaps wider than this grow a stepping stone
+    FILLER_SIZE_LO: 3, FILLER_SIZE_HI: 4,
+    FILLER_RESERVE_MULT: 0.5,
+    SCATTER_PER_CELLS: 90        // one extra scattered neutral per this many cells beyond the reference map
   },
 
   Wind: {
@@ -306,6 +321,7 @@ const CONFIG = Object.freeze({
     AEGIS:    { COST: 12, HP: 130, INTERCEPT: 0.70, ARC_DEG: 120 },
     BULWARK:  { COST: 12, HP: 160, INTERCEPT: 0.70, ARC_DEG: 120 },
     PORTS_GUN: 1, PORTS_SHIELD: 2, PORTS_ALTAR: 0,
+    SHIELD_COVER_RADIUS: 2.5,
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
     DESTRUCTION_DAMAGE: 50
@@ -403,7 +419,10 @@ const CONFIG = Object.freeze({
 
   Render: {
     AIR_ALTITUDE: 1.15, SEA_ALTITUDE: 0.04, ISLAND_HEIGHT: 0.34,
-    CAM_HEIGHT: 26.0, CAM_BACK: 11.5, CAM_FOV: 46, CAM_LOOK_Z: 1.7,
+    CAM_HEIGHT: 13.8, CAM_BACK: 6.1, CAM_FOV: 46,
+    PAN_MARGIN: 1.0,
+    TAP_DRAG_THRESHOLD_PX: 10,
+    SHROUD_OPACITY: 0.93,
     WHITECAP_COUNT: 90, RIBBON_PARTICLES: 4,
     FRAYED_DESAT: 0.45
   }
@@ -607,15 +626,29 @@ class WindField {
 // chokepoint) is what gives the map its priced-safety route (§20.3). Each
 // chain island is pulled toward its neighbour; the separation boundary
 // stops growth at exactly a two-cell water gap, which is one island hop.
-const MAP_ZONES = {
-  greatTempleA: { x0: 2, x1: 3, z0: 16, z1: 17, lo: 8, hi: 9, seed: 'h', pull: [[4, 17]] },
-  supplyA:      { x0: 7, x1: 9, z0: 17, z1: 18, lo: 5, hi: 6, seed: 'h', pull: [[5, 17], [9, 16]] },
-  sacredA:      { x0: 0, x1: 1, z0: 5, z1: 7, lo: 4, hi: 5 },
-  sacredP:      { x0: 10, x1: 11, z0: 8, z1: 9, lo: 5, hi: 6, seed: 'v', pull: [[10, 12], [8, 9]] },
-  chokepoint:   { x0: 6, x1: 6, z0: 9, z1: 10, lo: 4, hi: 5, seed: 'h', pull: [[7, 10]] },
-  neutralA:     { x0: 9, x1: 11, z0: 13, z1: 13, lo: 4, hi: 5, seed: 'h', pull: [[9, 15], [10, 12]] },
-  neutralP:     { x0: 0, x1: 1, z0: 10, z1: 12, lo: 4, hi: 5 }
-};
+// The corner clusters use absolute offsets (they must fit inside the Great
+// Temple's influence radius); the contested interior stretches with the map,
+// and stepping-stone filler islands are grown to keep the chain hoppable.
+function buildZones() {
+  const W = CONFIG.Grid.WIDTH, H = CONFIG.Grid.HEIGHT;
+  const fz = (f) => Math.round(f * (H - 1));
+  const cx = Math.floor(W / 2);
+  return {
+    greatTempleA: { x0: 2, x1: 3, z0: H - 4, z1: H - 3, lo: 8, hi: 9, seed: 'h', pull: [[4, H - 3]] },
+    supplyA:      { x0: 7, x1: Math.min(9, W - 3), z0: H - 3, z1: H - 2, lo: 5, hi: 6, seed: 'h', pull: [[5, H - 3], [9, H - 4]] },
+    sacredA:      { x0: 0, x1: 1, z0: fz(0.26), z1: fz(0.36), lo: 4, hi: 5 },
+    sacredP:      { x0: W - 2, x1: W - 1, z0: fz(0.41), z1: fz(0.46), lo: 5, hi: 6, seed: 'v', pull: [[W - 2, fz(0.55)], [W - 4, fz(0.44)]] },
+    chokepoint:   { x0: cx, x1: cx, z0: fz(0.45), z1: fz(0.51), lo: 4, hi: 5, seed: 'h', pull: [[cx + 1, fz(0.51)]] },
+    neutralA:     { x0: W - 3, x1: W - 1, z0: fz(0.62), z1: fz(0.66), lo: 4, hi: 5, seed: 'h', pull: [[W - 3, fz(0.73)], [W - 2, fz(0.56)]] },
+    neutralP:     { x0: 0, x1: 1, z0: fz(0.5), z1: fz(0.6), lo: 4, hi: 5 }
+  };
+}
+let MAP_ZONES = buildZones();
+
+// distances the spec authored for its 12x20 reference map scale with size
+function mapScale() {
+  return (CONFIG.Grid.WIDTH + CONFIG.Grid.HEIGHT) / (CONFIG.Grid.REF_WIDTH + CONFIG.Grid.REF_HEIGHT);
+}
 
 // Diagnostic counters (dev only; harmless at runtime).
 const MAPGEN_STATS = { growFail: {}, mirrorFail: {} };
@@ -699,6 +732,7 @@ function pickPlots(rng, cells, count, landSet) {
 
 function generateOnce(rng) {
   const MG = CONFIG.MapGen;
+  MAP_ZONES = buildZones();
   // Islands are kept MIN_ISLAND_SEPARATION apart (min cell distance >= 3,
   // i.e. two water cells between coasts — exactly an island-hop gap).
   const SEP = MG.MIN_ISLAND_SEPARATION - 1;
@@ -761,14 +795,68 @@ function generateOnce(rng) {
   if (!grow('neutralP', 'N')) return null;
   if (islands.length !== 9) return null;
 
+  // Stepping stones: on maps larger than the reference, the hop chain's
+  // gaps stretch beyond hop range. Grow small filler islands midway along
+  // any over-long link (island count scales with map size).
+  const minCellDist = (A, B) => {
+    let best = Infinity;
+    for (const [ax, az] of A.cells) for (const [bx, bz] of B.cells) {
+      best = Math.min(best, Math.max(Math.abs(ax - bx), Math.abs(az - bz)));
+    }
+    return best;
+  };
+  {
+    const byRole = {};
+    for (const isl of islands) byRole[isl.role] = isl;
+    const chainRoles = ['greatTempleA', 'supplyA', 'neutralA', 'sacredP', 'chokepoint'];
+    const chainIslands = chainRoles.map(r => byRole[r]);
+    for (let i = 0; i < chainIslands.length - 1; i++) {
+      let guard = 4;
+      while (minCellDist(chainIslands[i], chainIslands[i + 1]) > MG.FILLER_GAP_MAX && guard-- > 0) {
+        const A = chainIslands[i], B = chainIslands[i + 1];
+        const mid = [Math.round((A.center ? A.center[0] : blobCenter(A.cells)[0]) + (blobCenter(B.cells)[0] - blobCenter(A.cells)[0]) / 2),
+                     Math.round((blobCenter(A.cells)[1] + blobCenter(B.cells)[1]) / 2)];
+        let placed = null;
+        for (let attempt = 0; attempt < 10 && !placed; attempt++) {
+          const jx = mid[0] + Math.round((rng() * 2 - 1) * 2);
+          const jz = mid[1] + Math.round((rng() * 2 - 1) * 2);
+          if (!inBounds(jx, jz) || forbidden.has(cellKey(jx, jz))) continue;
+          const size = MG.FILLER_SIZE_LO + Math.floor(rng() * (MG.FILLER_SIZE_HI - MG.FILLER_SIZE_LO + 1));
+          const cells = growBlob(rng, [[jx, jz]], size, forbidden,
+            [blobCenter(A.cells).map(Math.round), blobCenter(B.cells).map(Math.round)]);
+          if (cells.length >= MG.FILLER_SIZE_LO) placed = cells;
+        }
+        if (!placed) break;
+        const filler = { role: 'filler', side: 'N', cells: placed };
+        islands.push(filler);
+        forbidden = new Set([...forbidden, ...forbiddenAround(placed, SEP)]);
+        chainIslands.splice(i + 1, 0, filler);
+      }
+    }
+    // scattered extras: one per SCATTER_PER_CELLS beyond the reference area
+    const extra = Math.max(0, Math.floor(
+      (CONFIG.Grid.WIDTH * CONFIG.Grid.HEIGHT - CONFIG.Grid.REF_WIDTH * CONFIG.Grid.REF_HEIGHT) / MG.SCATTER_PER_CELLS));
+    for (let i = 0; i < extra; i++) {
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const jx = 1 + Math.floor(rng() * (CONFIG.Grid.WIDTH - 2));
+        const jz = Math.round(CONFIG.Grid.HEIGHT * (0.18 + rng() * 0.64));
+        if (!inBounds(jx, jz) || forbidden.has(cellKey(jx, jz))) continue;
+        const size = MG.FILLER_SIZE_LO + Math.floor(rng() * (MG.FILLER_SIZE_HI - MG.FILLER_SIZE_LO + 1));
+        const cells = growBlob(rng, [[jx, jz]], size, forbidden, null);
+        if (cells.length < MG.FILLER_SIZE_LO) continue;
+        islands.push({ role: 'filler', side: 'N', cells });
+        forbidden = new Set([...forbidden, ...forbiddenAround(cells, SEP)]);
+        break;
+      }
+    }
+    islands.hopChain = chainIslands;   // consumed by the bridging pass below
+  }
+
   // Bridge the island-hop chain: each consecutive pair must offer a straight
   // two-cell water hop (aligned cells exactly 3 apart). Where growth left the
   // pair misaligned, extend one island by a lobe cell to line the hop up.
   {
-    const byRole = {};
-    for (const isl of islands) byRole[isl.role] = isl;
-    const chain = ['greatTempleA', 'supplyA', 'neutralA', 'sacredP', 'chokepoint'];
-    const cellsOf = r => byRole[r].cells;
+    const chainIslands = islands.hopChain;
     const allCells = () => islands.flatMap(i => i.cells.map(([x, z]) => ({ x, z, isl: i })));
     const hopAligned = (A, B) => {
       for (const [ax, az] of A) for (const [bx, bz] of B) {
@@ -776,8 +864,8 @@ function generateOnce(rng) {
       }
       return false;
     };
-    for (let ci = 0; ci < chain.length - 1; ci++) {
-      const I = byRole[chain[ci]], J = byRole[chain[ci + 1]];
+    for (let ci = 0; ci < chainIslands.length - 1; ci++) {
+      const I = chainIslands[ci], J = chainIslands[ci + 1];
       let guard = 3;
       while (!hopAligned(I.cells, J.cells) && guard-- > 0) {
         // candidate: a cell adjacent to I (or J), exactly 3 straight from a
@@ -827,6 +915,7 @@ function generateOnce(rng) {
     else if (isl.role.startsWith('supply')) isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * reserveRoll.supply);
     else if (isl.role.startsWith('neutral')) isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * reserveRoll.neutral);
     else if (isl.role === 'chokepoint') isl.reserve = Math.round(CONFIG.Mining.RESERVE_INTERIOR * reserveRoll.choke);
+    else if (isl.role === 'filler') isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * MG.FILLER_RESERVE_MULT * reserveRoll.neutral);
     else isl.reserve = Math.round(CONFIG.Mining.RESERVE_INTERIOR * reserveRoll.sacred);
   }
 
@@ -844,7 +933,8 @@ function generateOnce(rng) {
     }
     isl.templeCell = best;
     const isTempleIsle = isl.role.startsWith('greatTemple');
-    let plotCount = isTempleIsle ? CONFIG.Structures.PLOTS_PER_TEMPLE : CONFIG.Structures.PLOTS_PER_ISLAND;
+    let plotCount = isTempleIsle ? CONFIG.Structures.PLOTS_PER_TEMPLE
+      : isl.role === 'filler' ? 1 : CONFIG.Structures.PLOTS_PER_ISLAND;
     if (!isTempleIsle && i === extraPlotIdx) plotCount++;
     isl.plots = pickPlots(rng, isl.cells, Math.min(plotCount, isl.cells.length), land);
   });
@@ -878,7 +968,8 @@ function generateOnce(rng) {
       const gx = (fx / (W.FIELD_W - 1)) * (G.WIDTH - 1);
       const gz = (fz / (W.FIELD_H - 1)) * (G.HEIGHT - 1);
       const u = (gx - ccx) * perp[0] + (gz - ccz) * perp[1];   // perpendicular offset from the axis
-      let ang = axisAngle + shearRad * u;
+      const clampRad = MG.WIND_SHEAR_CLAMP_DEG * Math.PI / 180;
+      let ang = axisAngle + clamp(shearRad * u, -clampRad, clampRad);
       // smooth noise (bilinear over the 3x3 coarse grid)
       const nx = (fx / (W.FIELD_W - 1)) * 2, nz = (fz / (W.FIELD_H - 1)) * 2;
       const x0 = Math.floor(Math.min(nx, 1.999)), z0 = Math.floor(Math.min(nz, 1.999));
@@ -976,14 +1067,18 @@ function validateMap(map) {
   }
 
   // 2. routes from the player's home reach the nearest interior island in
-  // 8..12 cells, measured from the Great Temple itself.
+  // 8..12 reference-map cells, measured from the Great Temple and scaled
+  // with map size.
   {
     let best = Infinity;
     for (const isl of interior) {
       const d = bfsDistance([gtA.templeCell], cellSet(isl.cells), null);
       if (d >= 0) best = Math.min(best, d);
     }
-    if (best < MG.HOME_TO_INTERIOR_MIN || best > MG.HOME_TO_INTERIOR_MAX) fails.push('home-to-interior:' + best);
+    const s = mapScale();
+    if (best < Math.floor(MG.HOME_TO_INTERIOR_MIN * s) || best > Math.ceil(MG.HOME_TO_INTERIOR_MAX * s)) {
+      fails.push('home-to-interior:' + best);
+    }
   }
 
   // 3 + 4. exposed island: the straight route (a shortest path — nothing
@@ -1064,10 +1159,10 @@ function validateMap(map) {
     if (Math.abs(dOut - dOutAtRet) < MG.CIRCUIT_DOT_SEPARATION) fails.push('circuit-separation');
   }
 
-  // 7. corner-to-corner (temple to temple) shortest path >= 18
+  // 7. corner-to-corner (temple to temple) shortest path >= 18, scaled
   {
     const d = bfsDistance([gtA.templeCell], new Set([cellKey(gtP.templeCell[0], gtP.templeCell[1])]), null);
-    if (d < MG.CORNER_TO_CORNER_MIN) fails.push('corner-to-corner:' + d);
+    if (d < Math.floor(MG.CORNER_TO_CORNER_MIN * mapScale())) fails.push('corner-to-corner:' + d);
   }
 
   // 8. no two islands within MIN_ISLAND_SEPARATION cells (Chebyshev)
@@ -1672,6 +1767,1785 @@ function refreshInfluence(state) {
 }
 
 // ============================================================
+// ECONOMY
+// ============================================================
+
+// ================================================================
+// ECONOMY (§11, §33A.2, §33D) — two resources. Supply is mined into
+// island stockpiles and credited only on delivery; Favor accrues from
+// uncontested influence. The Great Temple provides a small baseline.
+// ================================================================
+
+function economyTick(state, dt) {
+  // continuous accruals, granted in INCOME_TICK batches for readable pulses
+  state.incomeTimer += dt;
+  if (state.incomeTimer >= CONFIG.Economy.INCOME_TICK_SECONDS) {
+    state.incomeTimer -= CONFIG.Economy.INCOME_TICK_SECONDS;
+    for (const side of ['A', 'P']) {
+      if (state.greatTemple[side].hp <= 0) continue;
+      let supply = CONFIG.Economy.TEMPLE_SUPPLY_PER_10S;
+      let favor = CONFIG.Economy.TEMPLE_FAVOR_PER_10S;
+      // influence Favor: 1 per 4 uncontested cells covered by a supported
+      // island Temple (§11.2). The Great Temple's own influence mints no
+      // Favor — ground must be taken and held for the god to be honoured.
+      let cells = 0;
+      for (const isl of state.map.islands) {
+        if (isl.role.startsWith('greatTemple')) continue;
+        if (!islandConducts(state, isl, side) || !islandSupported(state, isl, side)) continue;
+        const r = CONFIG.Influence.TEMPLE_RADIUS;
+        const [tx, tz] = isl.temple.cell;
+        for (let z = Math.max(0, Math.floor(tz - r)); z <= Math.min(CONFIG.Grid.HEIGHT - 1, Math.ceil(tz + r)); z++) {
+          for (let x = Math.max(0, Math.floor(tx - r)); x <= Math.min(CONFIG.Grid.WIDTH - 1, Math.ceil(tx + r)); x++) {
+            const k = cellKey(x, z);
+            if (dist2d(x, z, tx, tz) <= r && !state.influence.contested.has(k)) cells++;
+          }
+        }
+      }
+      favor += Math.floor(cells / CONFIG.Influence.FAVOR_CELL_DIVISOR) *
+        CONFIG.Influence.FAVOR_PER_10S_PER_4_CELLS;
+      if (state.wave.wrath) favor = Math.round(favor * CONFIG.Wrath.FAVOR_MULT);
+      state.res[side].supply += supply;
+      state.res[side].favor += favor;
+      if (side === 'A') Events.emit('income', { supply, favor });
+    }
+  }
+
+  // mining into local stockpiles (§33D.1) — only while controlled, connected
+  // or not (stockpiles pile up at severed islands; that is the visual)
+  for (const isl of state.map.islands) {
+    if (isl.role.startsWith('greatTemple')) continue;
+    if (!isl.owner || isl.minedOut) continue;
+    if (!(isl.temple && isl.temple.owner === isl.owner && isl.temple.hp > 0 && isl.temple.buildProgress >= 1)) continue;
+    const mined = Math.min(CONFIG.Mining.RATE_PER_SECOND * dt, isl.reserve);
+    isl.reserve -= mined;
+    isl.stockpile += mined;
+    if (isl.reserve <= 0) {
+      isl.reserve = 0;
+      isl.minedOut = true;
+      Events.emit('islandDepleted', { island: isl });
+    }
+  }
+}
+
+// Hydrogen unlock (§33E): fleet-wide, instant, one purchase.
+function buyHydrogen(state, side) {
+  const T = CONFIG.Tech;
+  if (state.hydrogen[side]) return false;
+  const r = state.res[side];
+  if (r.supply < T.HYDROGEN_COST_SUPPLY || r.favor < T.HYDROGEN_COST_FAVOR) return false;
+  r.supply -= T.HYDROGEN_COST_SUPPLY;
+  r.favor -= T.HYDROGEN_COST_FAVOR;
+  state.hydrogen[side] = true;
+  for (const h of state.haulers) {
+    if (h.owner === side) h.capacity = CONFIG.Hauler.HYDROGEN_CAPACITY;
+  }
+  Events.emit('hydrogenUnlocked', { side });
+  return true;
+}
+
+function haulerCapacity(state, side) {
+  return state.hydrogen[side] ? CONFIG.Hauler.HYDROGEN_CAPACITY : CONFIG.Hauler.HOTAIR_CAPACITY;
+}
+
+// Fleet cap: yards support 2 each; the Great Temple counts as a yard (§14.7.6).
+function fleetCap(state, side) {
+  let cap = state.greatTemple[side].hp > 0 ? CONFIG.Yard.GREAT_TEMPLE_SUPPORTS : 0;
+  for (const st of state.structures) {
+    if (st.owner === side && st.type === 'yard' && st.hp > 0 && st.buildProgress >= 1) cap += CONFIG.Yard.SUPPORTS;
+  }
+  return cap;
+}
+
+// ============================================================
+// HAULERS
+// ============================================================
+
+// ================================================================
+// HAULERS, TRANSIT, ADRIFT, AND THE PRIEST (§12, §33C, §33D, §33G, §14.8)
+// Ships follow the network and only the network. Cut the road beneath
+// one and it tumbles downwind, bleeding hull, until it touches a
+// supported friendly segment or dies.
+// ================================================================
+
+// ---- network graph for transit ----
+// Adjacency over cells: supported segments, plus orthogonal adjacency
+// inside islands that conduct for the side (temples bridge islands).
+function buildNetGraph(state, side) {
+  const adj = new Map();
+  const link = (ka, kb) => {
+    if (!adj.has(ka)) adj.set(ka, new Set());
+    if (!adj.has(kb)) adj.set(kb, new Set());
+    adj.get(ka).add(kb);
+    adj.get(kb).add(ka);
+  };
+  for (const s of state.segments.values()) {
+    if (s.owner !== side || s.supportState !== 'SUPPORTED') continue;
+    link(cellKey(s.a[0], s.a[1]), cellKey(s.b[0], s.b[1]));
+  }
+  for (const isl of state.map.islands) {
+    if (!islandConducts(state, isl, side) || !islandSupported(state, isl, side)) continue;
+    for (const [x, z] of isl.cells) {
+      for (const [dx, dz] of DIRS4) {
+        if (isl.cellSet.has(cellKey(x + dx, z + dz))) link(cellKey(x, z), cellKey(x + dx, z + dz));
+      }
+    }
+  }
+  return adj;
+}
+
+function findNetPath(state, side, fromCell, toCells) {
+  const adj = buildNetGraph(state, side);
+  const target = new Set(toCells.map(c => cellKey(c[0], c[1])));
+  const start = cellKey(fromCell[0], fromCell[1]);
+  if (!adj.has(start)) return null;
+  const prev = new Map([[start, null]]);
+  let frontier = [start];
+  while (frontier.length) {
+    const next = [];
+    for (const k of frontier) {
+      if (target.has(k)) {
+        const path = [];
+        let cur = k;
+        while (cur !== null) { path.push(keyCell(cur)); cur = prev.get(cur); }
+        path.reverse();
+        return path;
+      }
+      for (const n of adj.get(k) || []) {
+        if (!prev.has(n)) { prev.set(n, k); next.push(n); }
+      }
+    }
+    frontier = next;
+  }
+  return null;
+}
+
+// ---- shared transit-entity movement ----
+// ent: {pos:[fx,fz], path, legIndex, legT, owner, kind}
+function legSpeed(state, ent, a, b) {
+  const isAir = ent.owner === 'A';
+  const dx = b[0] - a[0], dz = b[1] - a[1];
+  const len = Math.hypot(dx, dz) || 1;
+  let mult = state.wind.multiplier((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, dx / len, dz / len, isAir);
+  const base = ent.kind === 'priest' ? CONFIG.Priest.SPEED : CONFIG.Hauler.SPEED;
+  if (ent.owner === 'A' && state.time < state.powers.tailwindUntil) mult *= CONFIG.Powers.TAILWIND.SPEED_MULT;
+  return base * mult;
+}
+
+// Does the leg the entity is riding still exist and hold?
+function legIntact(state, ent, a, b) {
+  const side = ent.owner;
+  const ia = islandAt(state, a[0], a[1]), ib = islandAt(state, b[0], b[1]);
+  if (ia && ia === ib) return islandConducts(state, ia, side) && islandSupported(state, ia, side);
+  const seg = state.segments.get(side + ':' + segKey(a[0], a[1], b[0], b[1]));
+  return !!(seg && seg.supportState === 'SUPPORTED');
+}
+
+// advance along path; returns 'moving' | 'arrived' | 'adrift'
+function advanceOnPath(state, ent, dt) {
+  if (!ent.path || ent.legIndex >= ent.path.length - 1) return 'arrived';
+  const a = ent.path[ent.legIndex], b = ent.path[ent.legIndex + 1];
+  if (!legIntact(state, ent, a, b)) return 'adrift';
+  ent.legT += legSpeed(state, ent, a, b) * dt;
+  while (ent.legT >= 1) {
+    ent.legT -= 1;
+    ent.legIndex++;
+    if (ent.legIndex >= ent.path.length - 1) {
+      const end = ent.path[ent.path.length - 1];
+      ent.pos = [end[0], end[1]];
+      return 'arrived';
+    }
+  }
+  const na = ent.path[ent.legIndex], nb = ent.path[ent.legIndex + 1];
+  ent.pos = [lerp(na[0], nb[0], ent.legT), lerp(na[1], nb[1], ent.legT)];
+  return 'moving';
+}
+
+// nearest supported friendly segment within radius (for adrift rebound)
+function nearestSupportedCell(state, side, fx, fz, radius) {
+  let best = null, bd = radius;
+  for (const s of state.segments.values()) {
+    if (s.owner !== side || s.supportState !== 'SUPPORTED') continue;
+    for (const c of [s.a, s.b]) {
+      const d = Math.hypot(c[0] - fx, c[1] - fz);
+      if (d <= bd) { bd = d; best = c; }
+    }
+  }
+  return best;
+}
+
+function enterAdrift(state, ent) {
+  ent.state = 'adrift';
+  ent.path = null;
+  Events.emit('wentAdrift', { ent });
+}
+
+function adriftTick(state, ent, dt) {
+  const w = state.wind.at(ent.pos[0], ent.pos[1]);
+  const mult = ent.owner === 'A' ? 1 : CONFIG.Adrift.SEA_BEARING_MULT;
+  ent.pos[0] += w.x * CONFIG.Adrift.SPEED * mult * dt;
+  ent.pos[1] += w.z * CONFIG.Adrift.SPEED * mult * dt;
+  ent.hull -= CONFIG.Adrift.ATTRITION_PER_SECOND * dt;
+  if (ent.hull <= 0 ||
+      ent.pos[0] < -1 || ent.pos[0] > CONFIG.Grid.WIDTH ||
+      ent.pos[1] < -1 || ent.pos[1] > CONFIG.Grid.HEIGHT) {
+    return 'lost';
+  }
+  const cell = nearestSupportedCell(state, ent.owner, ent.pos[0], ent.pos[1], CONFIG.Adrift.REBOUND_RADIUS);
+  if (cell) {
+    ent.pos = [cell[0], cell[1]];
+    Events.emit('rebound', { ent });
+    return 'rebound';
+  }
+  return 'drifting';
+}
+
+// ---- haulers ----
+function spawnHauler(state, side) {
+  const h = {
+    id: eid(), kind: 'hauler', owner: side,
+    pos: state.greatTemple[side].cell.slice(),
+    hull: CONFIG.Airship.HULL, maxHull: CONFIG.Airship.HULL,
+    capacity: haulerCapacity(state, side),
+    cargo: 0,
+    state: 'idle', path: null, legIndex: 0, legT: 0,
+    targetIsland: null, timer: 0, lastHitAt: -99
+  };
+  state.haulers.push(h);
+  return h;
+}
+
+function buyHauler(state, side) {
+  const alive = state.haulers.filter(h => h.owner === side && h.state !== 'dead').length;
+  if (alive >= fleetCap(state, side)) return false;
+  if (state.res[side].supply < CONFIG.Hauler.COST) return false;
+  state.res[side].supply -= CONFIG.Hauler.COST;
+  spawnHauler(state, side);   // build time abstracted to instant spawn at temple
+  Events.emit('haulerBuilt', { side });
+  return true;
+}
+
+// island worth collecting from, favouring big stockpiles
+function pickCollectionTarget(state, side) {
+  let best = null, bs = 1;   // require at least 1 in the pile
+  for (const isl of state.map.islands) {
+    if (isl.owner !== side || isl.role.startsWith('greatTemple')) continue;
+    if (!islandConducts(state, isl, side) || !islandSupported(state, isl, side)) continue;
+    const claimed = state.haulers.filter(h => h.owner === side && h.targetIsland === isl.id &&
+      (h.state === 'toIsland' || h.state === 'dwelling')).length;
+    const score = isl.stockpile - claimed * haulerCapacity(state, side);
+    if (score > bs) { bs = score; best = isl; }
+  }
+  return best;
+}
+
+function updateHauler(state, h, dt) {
+  const side = h.owner;
+  // regeneration (§33C.2)
+  if (h.state !== 'adrift' && h.hull < h.maxHull && state.time - h.lastHitAt > CONFIG.Airship.REGEN_DELAY) {
+    const isl = islandAt(state, Math.round(h.pos[0]), Math.round(h.pos[1]));
+    const overFriendly = isl && isl.owner === side;
+    h.hull = Math.min(h.maxHull, h.hull + (overFriendly ? CONFIG.Airship.MOORING_REGEN : CONFIG.Airship.REGEN_PER_SECOND) * dt);
+  }
+
+  switch (h.state) {
+    case 'idle': {
+      const target = pickCollectionTarget(state, side);
+      if (target) {
+        const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], target.cells);
+        if (path && path.length > 1) {
+          h.targetIsland = target.id;
+          h.path = path; h.legIndex = 0; h.legT = 0;
+          h.state = 'toIsland';
+        }
+      }
+      break;
+    }
+    case 'toIsland': {
+      const r = advanceOnPath(state, h, dt);
+      if (r === 'adrift') { enterAdrift(state, h); break; }
+      if (r === 'arrived') { h.state = 'dwelling'; h.timer = CONFIG.Hauler.DWELL_SECONDS; }
+      break;
+    }
+    case 'dwelling': {
+      h.timer -= dt;
+      if (h.timer <= 0) {
+        const isl = state.map.islands[h.targetIsland];
+        const take = Math.min(h.capacity, Math.floor(isl ? isl.stockpile : 0));
+        if (isl) isl.stockpile -= take;
+        h.cargo = take;
+        const home = state.greatTemple[side];
+        const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [home.cell]);
+        if (path) { h.path = path; h.legIndex = 0; h.legT = 0; h.state = 'toHome'; }
+        else enterAdrift(state, h);   // road home is gone
+      }
+      break;
+    }
+    case 'toHome': {
+      const r = advanceOnPath(state, h, dt);
+      if (r === 'adrift') { enterAdrift(state, h); break; }
+      if (r === 'arrived') { h.state = 'unloading'; h.timer = CONFIG.Hauler.UNLOAD_SECONDS; }
+      break;
+    }
+    case 'unloading': {
+      h.timer -= dt;
+      if (h.timer <= 0) {
+        state.res[side].supply += h.cargo;
+        if (h.cargo > 0) Events.emit('delivery', { side, amount: h.cargo });
+        h.cargo = 0;
+        h.targetIsland = null;
+        h.state = 'idle';
+      }
+      break;
+    }
+    case 'adrift': {
+      const r = adriftTick(state, h, dt);
+      if (r === 'lost') {
+        h.state = 'dead';
+        Events.emit('convoyLost', { ent: h });
+      } else if (r === 'rebound') {
+        h.state = h.cargo > 0 ? 'toHome' : 'idle';
+        if (h.state === 'toHome') {
+          const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [state.greatTemple[side].cell]);
+          if (path) { h.path = path; h.legIndex = 0; h.legT = 0; }
+          else h.state = 'idle';
+        }
+      }
+      break;
+    }
+  }
+}
+
+// ---- the priest (§14.8) ----
+function spawnPriest(state, side) {
+  const p = {
+    id: eid(), kind: 'priest', owner: side,
+    pos: state.greatTemple[side].cell.slice(),
+    hull: CONFIG.Priest.HULL, maxHull: CONFIG.Priest.HULL,
+    state: 'idle',                 // idle | transit | consecrating | adrift | dead
+    path: null, legIndex: 0, legT: 0,
+    islandId: state.greatTemple[side].island.id,
+    consecrating: null,            // {islandId, plot}
+    respawnAt: 0, lastHitAt: -99
+  };
+  state.priests[side] = p;
+  return p;
+}
+
+// Tap a destination island: refused unless the side's supported network
+// reaches it (§14.8.2). Returns true when he sets sail.
+function sendPriest(state, side, isl) {
+  const p = state.priests[side];
+  if (!p || p.state === 'dead' || p.state === 'consecrating' || p.state === 'adrift') return false;
+  const path = findNetPath(state, side, [Math.round(p.pos[0]), Math.round(p.pos[1])], isl.cells);
+  if (!path || path.length < 1) return false;
+  p.path = path; p.legIndex = 0; p.legT = 0;
+  p.state = 'transit';
+  p.islandId = null;
+  p.targetIslandId = isl.id;
+  Events.emit('priestSails', { side });
+  return true;
+}
+
+function priestOnIsland(state, side, isl) {
+  const p = state.priests[side];
+  if (!p || p.state === 'dead' || p.state === 'adrift' || p.state === 'transit') return false;
+  return isl.cellSet.has(cellKey(Math.round(p.pos[0]), Math.round(p.pos[1])));
+}
+
+function updatePriest(state, side, dt) {
+  const p = state.priests[side];
+  if (!p) return;
+  switch (p.state) {
+    case 'transit': {
+      const r = advanceOnPath(state, p, dt);
+      if (r === 'adrift') { enterAdrift(state, p); break; }
+      if (r === 'arrived') {
+        p.state = 'idle';
+        p.islandId = p.targetIslandId;
+        Events.emit('priestArrived', { side });
+      }
+      break;
+    }
+    case 'consecrating': {
+      const job = p.consecrating;
+      const isl = state.map.islands[job.islandId];
+      // interrupted? temple destroyed mid-build is handled by structures
+      if (!isl.temple || isl.temple.owner !== side) { p.state = 'idle'; p.consecrating = null; break; }
+      if (isl.temple.buildProgress >= 1) { p.state = 'idle'; p.consecrating = null; }
+      break;
+    }
+    case 'adrift': {
+      const r = adriftTick(state, p, dt);
+      if (r === 'lost') {
+        p.state = 'dead';
+        p.respawnAt = state.time + CONFIG.Priest.SUCCESSION_SECONDS;
+        Events.emit('priestDead', { side });
+      } else if (r === 'rebound') {
+        p.state = 'idle';
+        const isl = islandAt(state, Math.round(p.pos[0]), Math.round(p.pos[1]));
+        p.islandId = isl ? isl.id : null;
+      }
+      break;
+    }
+    case 'dead': {
+      if (state.time >= p.respawnAt) {
+        p.state = 'idle';
+        p.hull = p.maxHull;
+        p.pos = state.greatTemple[side].cell.slice();
+        p.islandId = state.greatTemple[side].island.id;
+        Events.emit('priestSucceeded', { side });
+      }
+      break;
+    }
+  }
+}
+
+function updateTransit(state, dt) {
+  for (const h of state.haulers) if (h.state !== 'dead') updateHauler(state, h, dt);
+  updatePriest(state, 'A', dt);
+  updatePriest(state, 'P', dt);
+}
+
+// ============================================================
+// STRUCTURES
+// ============================================================
+
+// ================================================================
+// STRUCTURES (§14, §14.6, §14.7, §15) — guns, shields, temples, yards.
+// Structures are network nodes with outgoing ports, not caps. Temples
+// claim islands and crumble rival connections. Destruction of an
+// inline structure always breaks its outward segment.
+// ================================================================
+
+function structureStats(side, type) {
+  const S = CONFIG.Structures;
+  const isA = side === 'A';
+  switch (type) {
+    case 'vane': {
+      const d = isA ? S.VANE : S.DRUM;
+      return { cost: d.COST, hp: d.HP, dps: d.DPS, radius: d.RADIUS, ports: S.PORTS_GUN, buildTime: CONFIG.BuildTimes.GUN };
+    }
+    case 'bolt': {
+      const d = isA ? S.BOLT_DIR : S.LANCE;
+      return { cost: d.COST, hp: d.HP, dps: d.DPS, range: d.RANGE, arc: d.ARC_DEG * Math.PI / 180, turn: d.TURN_DEG_S * Math.PI / 180, ports: S.PORTS_GUN, buildTime: CONFIG.BuildTimes.GUN };
+    }
+    case 'shield': {
+      const d = isA ? S.AEGIS : S.BULWARK;
+      return { cost: d.COST, hp: d.HP, intercept: d.INTERCEPT, arc: d.ARC_DEG * Math.PI / 180, ports: S.PORTS_SHIELD, buildTime: CONFIG.BuildTimes.SHIELD };
+    }
+    case 'temple':
+      return { cost: S.TEMPLE.COST, hp: S.TEMPLE.HP, radius: S.TEMPLE.RADIUS, ports: 0, buildTime: CONFIG.BuildTimes.TEMPLE };
+    case 'yard':
+      return { cost: CONFIG.Yard.COST, hp: isA ? CONFIG.Yard.HP_AEOLUS : CONFIG.Yard.HP_POSEIDON, ports: 0, buildTime: CONFIG.BuildTimes.YARD };
+    case 'mast': {
+      // Poseidon's gauntlet piece (§33C.6): moored, AI-built, anti-air
+      const d = CONFIG.Craft.SIPHON_MAST;
+      return { cost: S.BOLT_DIR.COST, hp: d.HP, dps: d.DPS, range: d.RANGE, arc: Math.PI * 2, ports: 0, buildTime: CONFIG.BuildTimes.GUN };
+    }
+  }
+}
+
+function structureSupported(state, st) {
+  if (st.hp <= 0) return false;
+  if (st.site === 'plot') {
+    const isl = state.map.islands[st.islandId];
+    if (st.type === 'temple') {
+      // a temple is its own anchor question: it needs the island connected home
+      return islandSupported(state, isl, st.owner);
+    }
+    return islandConducts(state, isl, st.owner) && islandSupported(state, isl, st.owner);
+  }
+  return segmentSupportedAtCell(state, st.owner, st.cell[0], st.cell[1]);
+}
+
+// May `side` place `type` at this endpoint cell / plot? Returns a reason
+// string when refused, or null when allowed.
+function whyNotBuild(state, side, type, at) {
+  const stats = structureStats(side, type);
+  if (state.res[side].supply < stats.cost) return 'NOT ENOUGH SUPPLY';
+  if (CONFIG.Influence.GATES_CONSTRUCTION && !state.influence[side].has(cellKey(at.cell[0], at.cell[1]))) return 'BEYOND YOUR INFLUENCE';
+  if (at.site === 'endpoint') {
+    if (type === 'temple' || type === 'yard') return 'ISLAND PLOTS ONLY';
+    if (structureAt(state, at.cell[0], at.cell[1])) return 'OCCUPIED';
+    if (!segmentSupportedAtCell(state, side, at.cell[0], at.cell[1])) return 'NO SUPPORTED ROUTE';
+    const deg = nodeDegrees(state, side).get(cellKey(at.cell[0], at.cell[1])) || 0;
+    if (deg !== 1) return 'ENDPOINTS ONLY';
+  } else {
+    const isl = state.map.islands[at.islandId];
+    const plot = isl.plots[at.plotIdx];
+    if (plot.structure) return 'PLOT OCCUPIED';
+    if (type === 'temple') {
+      if (isl.role.startsWith('greatTemple')) return 'HOLY GROUND';
+      if (isl.temple && isl.temple.hp > 0) return 'A TEMPLE STANDS';
+      if (CONFIG.Priest.REQUIRED_FOR_TEMPLE && !priestOnIsland(state, side, isl)) return 'THE PRIEST MUST BE PRESENT';
+    } else {
+      if (isl.owner !== side) return 'NOT YOUR ISLAND';
+    }
+  }
+  return null;
+}
+
+function buildStructure(state, side, type, at, facing) {
+  if (whyNotBuild(state, side, type, at)) return null;
+  const stats = structureStats(side, type);
+  state.res[side].supply -= stats.cost;
+  const st = {
+    id: eid(), owner: side, type,
+    cell: at.cell.slice(),
+    site: at.site,
+    islandId: at.islandId !== undefined ? at.islandId : null,
+    plotIdx: at.plotIdx !== undefined ? at.plotIdx : null,
+    hp: stats.hp * CONFIG.BuildTimes.UNDER_CONSTRUCTION_HP_FRACTION,
+    maxHp: stats.hp,
+    buildProgress: stats.buildTime === 0 ? 1 : 0,
+    buildTime: stats.buildTime,
+    ports: stats.ports || 0,
+    dps: stats.dps || 0,
+    range: stats.range || stats.radius || 0,
+    radius: stats.radius || 0,
+    arc: stats.arc || 0,
+    turn: stats.turn || 0,
+    intercept: stats.intercept || 0,
+    facing: facing !== undefined ? facing : defaultFacing(state, side, at.cell),
+    lastHitAt: -99
+  };
+  state.structures.push(st);
+  if (at.site === 'plot') {
+    const isl = state.map.islands[at.islandId];
+    isl.plots[at.plotIdx].structure = st;
+    if (type === 'temple') {
+      isl.temple = { owner: side, hp: st.hp, buildProgress: 0, cell: st.cell, structure: st };
+      const p = state.priests[side];
+      p.state = 'consecrating';
+      p.consecrating = { islandId: isl.id, plotIdx: at.plotIdx };
+      Events.emit('consecrationStarted', { side, island: isl });
+    }
+  }
+  Events.emit('structureBuilt', { st });
+  return st;
+}
+
+function defaultFacing(state, side, cell) {
+  const foe = state.greatTemple[side === 'A' ? 'P' : 'A'];
+  return Math.atan2(foe.cell[1] - cell[1], foe.cell[0] - cell[0]);
+}
+
+// build-progress + temple completion (the claim moment, §14.6)
+function structuresTick(state, dt) {
+  for (const st of state.structures) {
+    if (st.hp <= 0 || st.buildProgress >= 1) continue;
+    // temples only rise while the priest stands on the island (§14.8.1)
+    if (st.type === 'temple') {
+      const isl = state.map.islands[st.islandId];
+      if (!priestOnIsland(state, st.owner, isl)) continue;
+    }
+    st.buildProgress = Math.min(1, st.buildProgress + dt / st.buildTime);
+    if (st.buildProgress >= 1) {
+      st.hp = Math.min(st.maxHp, st.hp + st.maxHp * (1 - CONFIG.BuildTimes.UNDER_CONSTRUCTION_HP_FRACTION));
+      if (st.type === 'temple') completeTempleClaim(state, st);
+      Events.emit('structureComplete', { st });
+    }
+  }
+  // mirror temple hp onto island record
+  for (const isl of state.map.islands) {
+    if (isl.temple && isl.temple.structure) {
+      isl.temple.hp = isl.temple.structure.hp;
+      isl.temple.buildProgress = isl.temple.structure.buildProgress;
+    }
+  }
+}
+
+function completeTempleClaim(state, st) {
+  const isl = state.map.islands[st.islandId];
+  const side = st.owner;
+  const foe = side === 'A' ? 'P' : 'A';
+  isl.owner = side;
+  isl.temple.buildProgress = 1;
+  // crumble every opposing connection to this island, from the island inward
+  for (const s of [...state.segments.values()]) {
+    if (s.owner !== foe) continue;
+    const touches = isl.cellSet.has(cellKey(s.a[0], s.a[1])) || isl.cellSet.has(cellKey(s.b[0], s.b[1]));
+    if (touches) destroySegment(state, s, 'claim');
+  }
+  // rival structures on the island's plots fall with their footing
+  for (const plot of isl.plots) {
+    if (plot.structure && plot.structure.owner === foe) killStructure(state, plot.structure, 'claim');
+  }
+  recalcSupport(state, side);
+  recalcSupport(state, foe);
+  Events.emit('islandClaimed', { island: isl, side });
+}
+
+function damageStructure(state, st, amount, source) {
+  if (st.hp <= 0) return;
+  st.lastHitAt = state.time;
+  st.hp -= amount;
+  if (st.hp <= 0) {
+    st.hp = 0;
+    killStructure(state, st, source);
+  }
+}
+
+function killStructure(state, st, cause) {
+  st.hp = 0;
+  if (st.site === 'plot' && st.islandId !== null) {
+    const isl = state.map.islands[st.islandId];
+    if (st.plotIdx !== null) isl.plots[st.plotIdx].structure = null;
+    if (st.type === 'temple') {
+      isl.temple = null;
+      isl.owner = null;          // back to neutral, open to all (§14.6.5)
+      Events.emit('templeFallen', { island: isl, side: st.owner });
+      recalcSupport(state, 'A');
+      recalcSupport(state, 'P');
+    }
+  } else if (st.site === 'endpoint') {
+    // the explosion always destroys the outward adjacent segment (§33A.5)
+    const touching = [...state.segments.values()].filter(s =>
+      s.owner === st.owner &&
+      ((s.a[0] === st.cell[0] && s.a[1] === st.cell[1]) || (s.b[0] === st.cell[0] && s.b[1] === st.cell[1])));
+    if (touching.length) {
+      const sup = state.supportedCells && state.supportedCells[st.owner];
+      const outwardness = (s) => {
+        // outward = endpoint farther from the supported side (falls back to temple distance)
+        const other = (s.a[0] === st.cell[0] && s.a[1] === st.cell[1]) ? s.b : s.a;
+        const gt = state.greatTemple[st.owner].cell;
+        return Math.abs(other[0] - gt[0]) + Math.abs(other[1] - gt[1]);
+      };
+      touching.sort((a, b) => outwardness(b) - outwardness(a));
+      const victim = touching[0];
+      victim.hp -= CONFIG.Structures.DESTRUCTION_DAMAGE;
+      Events.emit('structureExploded', { st });
+      if (victim.hp <= 0) destroySegment(state, victim, 'explosion');
+      else recalcSupport(state, st.owner);
+    }
+  }
+  state.structures = state.structures.filter(x => x !== st);
+  Events.emit('structureDestroyed', { st, cause });
+}
+
+// segments take damage too
+function damageSegment(state, seg, amount) {
+  seg.hp -= amount;
+  if (seg.hp <= 0) destroySegment(state, seg, 'combat');
+}
+
+// ============================================================
+// COMBAT
+// ============================================================
+
+// ================================================================
+// COMBAT (§33A, §33B, §33C) — continuous, no rolls, no armour types.
+// Both sides attack the other's road. Air segments are attackable only
+// over open water; sea segments are sheltered within one cell of a
+// coast. Shields physically absorb for what stands behind them.
+// ================================================================
+
+function angDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return Math.abs(d);
+}
+
+function overWaterPos(state, fx, fz) {
+  return !state.map.land.has(cellKey(Math.round(fx), Math.round(fz)));
+}
+
+// ---- damage funnel: every hit passes through here ----
+// target: {kind:'segment'|'structure'|'greatTemple'|'mover', ref, side, pos}
+function applyDamage(state, target, amount, sourcePos) {
+  if (state.wave.wrath) amount *= CONFIG.Wrath.DAMAGE_MULT;
+
+  // Wind Wall (§33A.8): one endpoint, damage reduced 75%
+  if (target.side === 'A' && state.time < state.powers.windwallUntil && state.powers.windwallCell) {
+    const wc = state.powers.windwallCell;
+    if (Math.hypot(target.pos[0] - wc[0], target.pos[1] - wc[1]) <= 1.2) {
+      amount *= 1 - CONFIG.Powers.WIND_WALL.DAMAGE_REDUCTION;
+    }
+  }
+
+  // shields intercept for structures and segments behind them (§14.3)
+  if (sourcePos && (target.kind === 'segment' || target.kind === 'structure' || target.kind === 'greatTemple')) {
+    for (const sh of state.structures) {
+      if (sh.type !== 'shield' || sh.owner !== target.side || sh.hp <= 0 || sh.buildProgress < 1) continue;
+      if (!structureSupported(state, sh)) continue;
+      if (Math.hypot(target.pos[0] - sh.cell[0], target.pos[1] - sh.cell[1]) > CONFIG.Structures.SHIELD_COVER_RADIUS) continue;
+      const toAttacker = Math.atan2(sourcePos[1] - sh.cell[1], sourcePos[0] - sh.cell[0]);
+      if (angDiff(toAttacker, sh.facing) > sh.arc / 2) continue;
+      const absorbed = amount * sh.intercept;
+      amount -= absorbed;
+      damageStructure(state, sh, absorbed, 'intercept');
+      break;   // one shield per hit
+    }
+  }
+
+  switch (target.kind) {
+    case 'segment': damageSegment(state, target.ref, amount); break;
+    case 'structure': damageStructure(state, target.ref, amount, 'combat'); break;
+    case 'greatTemple': {
+      const gt = state.greatTemple[target.side];
+      gt.hp -= amount;
+      Events.emit('greatTempleHit', { side: target.side });
+      break;
+    }
+    case 'mover': {
+      const m = target.ref;
+      let dmg = amount;
+      if (m.kind === 'hauler' && state.hydrogen[m.owner]) dmg *= CONFIG.Airship.HYDROGEN_DAMAGE_MULT;
+      m.hull -= dmg;
+      m.lastHitAt = state.time;
+      if (m.hull <= 0) {
+        if (m.kind === 'priest') {
+          m.state = 'dead';
+          m.respawnAt = state.time + CONFIG.Priest.SUCCESSION_SECONDS;
+          Events.emit('priestDead', { side: m.owner });
+        } else if (m.kind === 'hauler') {
+          m.state = 'dead';
+          Events.emit('convoyLost', { ent: m });
+        } else {
+          m.dead = true;
+          Events.emit('craftDestroyed', { craft: m });
+        }
+      }
+      break;
+    }
+  }
+}
+
+// ---- target enumeration ----
+function enemyMovers(state, side) {
+  const foe = side === 'A' ? 'P' : 'A';
+  const out = [];
+  for (const h of state.haulers) {
+    if (h.owner === foe && h.state !== 'dead' && h.state !== 'idle') out.push(h);
+  }
+  const p = state.priests[foe];
+  if (p && (p.state === 'transit' || p.state === 'adrift')) out.push(p);
+  if (side === 'A') for (const c of state.craft) if (!c.dead) out.push(c);
+  return out;
+}
+
+function enemySegments(state, side) {
+  const foe = side === 'A' ? 'P' : 'A';
+  const out = [];
+  for (const s of state.segments.values()) {
+    if (s.owner !== foe) continue;
+    if (foe === 'A' && !s.overWater) continue;       // island crossings untouchable (§33B.1)
+    if (foe === 'P' && s.sheltered) continue;         // lee shore (§33B.2a)
+    out.push(s);
+  }
+  return out;
+}
+
+function enemyStructureTargets(state, side) {
+  const foe = side === 'A' ? 'P' : 'A';
+  const out = [];
+  for (const st of state.structures) {
+    if (st.owner === foe && st.hp > 0) out.push({ kind: 'structure', ref: st, side: foe, pos: st.cell });
+  }
+  const gt = state.greatTemple[foe];
+  if (gt.hp > 0) out.push({ kind: 'greatTemple', ref: gt, side: foe, pos: gt.cell });
+  return out;
+}
+
+function segMid(s) { return [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2]; }
+
+// visibility gate: the AI obeys fog too (§14B.5); both sides may only
+// target what they can currently see
+function canSee(state, side, pos) {
+  return state.vision[side].has(cellKey(Math.round(pos[0]), Math.round(pos[1])));
+}
+
+// ---- gun resolution ----
+function gunTick(state, st, dt) {
+  if (st.hp <= 0 || st.buildProgress < 1 || (st.type !== 'vane' && st.type !== 'bolt' && st.type !== 'mast')) return;
+  if (!structureSupported(state, st)) return;   // nothing fires without support (§14.4.3)
+  const side = st.owner;
+  let dps = st.dps, range = st.type === 'vane' ? st.radius : st.range;
+
+  // Fog Bank halves player gun range and damage in region (§33A.8)
+  if (side === 'A' && state.powers.fog && state.time < state.powers.fog.until) {
+    const f = state.powers.fog;
+    if (Math.hypot(st.cell[0] - f.cell[0], st.cell[1] - f.cell[1]) <= CONFIG.Powers.FOG_BANK.RADIUS) {
+      dps *= CONFIG.Powers.FOG_BANK.BOLT_PENALTY;
+      range *= CONFIG.Powers.FOG_BANK.BOLT_PENALTY;
+    }
+  }
+
+  const inRange = (pos) => Math.hypot(pos[0] - st.cell[0], pos[1] - st.cell[1]) <= range;
+
+  // masts and siphon-type sources cannot hit airships over land (§33C.6)
+  const moverTargets = enemyMovers(state, side).filter(m => {
+    if (!inRange(m.pos) || !canSee(state, side, m.pos)) return false;
+    if (side === 'P' && !overWaterPos(state, m.pos[0], m.pos[1])) return false;
+    return true;
+  }).map(m => ({ kind: 'mover', ref: m, side: m.owner, pos: m.pos }));
+
+  const structTargets = enemyStructureTargets(state, side).filter(t => inRange(t.pos) && canSee(state, side, t.pos));
+  const segTargets = enemySegments(state, side)
+    .filter(s => inRange(segMid(s)) && canSee(state, side, segMid(s)))
+    .map(s => ({ kind: 'segment', ref: s, side: s.owner, pos: segMid(s) }));
+
+  if (st.type === 'vane') {
+    // radial: hits every valid target in radius
+    for (const t of [...moverTargets, ...structTargets, ...segTargets]) {
+      applyDamage(state, t, dps * dt, st.cell);
+    }
+    return;
+  }
+
+  // directional: prefer craft > structures > segments, nearest first (§33A.1)
+  const pick = moverTargets.concat(structTargets, segTargets)
+    .sort((a, b) =>
+      Math.hypot(a.pos[0] - st.cell[0], a.pos[1] - st.cell[1]) -
+      Math.hypot(b.pos[0] - st.cell[0], b.pos[1] - st.cell[1]));
+  // stable class priority
+  const target = moverTargets.length ? pick.find(t => t.kind === 'mover')
+    : structTargets.length ? pick.find(t => t.kind === 'structure' || t.kind === 'greatTemple')
+    : pick[0];
+  if (!target) return;
+
+  // rotate slowly toward the target; fire only inside the arc
+  const want = Math.atan2(target.pos[1] - st.cell[1], target.pos[0] - st.cell[0]);
+  const d = want - st.facing;
+  const wrapped = Math.atan2(Math.sin(d), Math.cos(d));
+  const maxTurn = (st.turn || 1) * dt;
+  st.facing += clamp(wrapped, -maxTurn, maxTurn);
+  if (angDiff(want, st.facing) <= (st.arc || Math.PI * 2) / 2) {
+    applyDamage(state, target, dps * dt, st.cell);
+    st.firingAt = target.pos.slice();
+    st.lastFired = state.time;
+  }
+}
+
+// ---- craft attacks (transports, siphons, heavies) are resolved in the
+// wave system where their movement lives; combatTick runs the guns ----
+function combatTick(state, dt) {
+  for (const st of state.structures) gunTick(state, st, dt);
+}
+
+// ============================================================
+// WAVES
+// ============================================================
+
+// ================================================================
+// WAVES (§16, §16A, §17, §18) — nine authored, telegraphed assaults.
+// Waves launch from Poseidon's temple nearest the player's forward
+// holdings; strength scales with his temple count, floored so he
+// always attacks. Wave 5 is the scripted strike on the most forward
+// player structure. Wave 8 is the Age of Wrath.
+// ================================================================
+
+function waveInterval(index) {
+  const W = CONFIG.Waves;
+  if (index + 1 >= W.LATE_FROM_WAVE) return W.INTERVAL_LATE;
+  if (index + 1 >= W.MID_FROM_WAVE) return W.INTERVAL_MID;
+  return W.INTERVAL_EARLY;
+}
+
+// Poseidon's standing complete island temples
+function poseidonTempleCount(state) {
+  let n = 0;
+  for (const isl of state.map.islands) {
+    if (isl.temple && isl.temple.owner === 'P' && isl.temple.hp > 0 && isl.temple.buildProgress >= 1) n++;
+  }
+  return n;
+}
+
+function waveStrength(state) {
+  const W = CONFIG.Waves;
+  return clamp(W.STRENGTH_BASE + W.STRENGTH_PER_TEMPLE * poseidonTempleCount(state), W.STRENGTH_MIN, W.STRENGTH_MAX);
+}
+
+// the player's most forward holding (largest distance from their temple)
+function forwardHolding(state) {
+  const gt = state.greatTemple.A.cell;
+  let best = gt, bd = -1;
+  for (const st of state.structures) {
+    if (st.owner !== 'A' || st.hp <= 0) continue;
+    const d = Math.abs(st.cell[0] - gt[0]) + Math.abs(st.cell[1] - gt[1]);
+    if (d > bd) { bd = d; best = st.cell; }
+  }
+  for (const s of state.segments.values()) {
+    if (s.owner !== 'A') continue;
+    const d = Math.abs(s.a[0] - gt[0]) + Math.abs(s.a[1] - gt[1]);
+    if (d > bd) { bd = d; best = s.a; }
+  }
+  return best;
+}
+
+// wave origin: his conducting temple nearest the player's forward holdings,
+// else his Great Temple (§16A.3)
+function waveOrigin(state) {
+  const fwd = forwardHolding(state);
+  let best = null, bd = Infinity;
+  for (const isl of state.map.islands) {
+    if (isl.temple && isl.temple.owner === 'P' && isl.temple.hp > 0 && isl.temple.buildProgress >= 1) {
+      const d = dist2d(isl.temple.cell[0], isl.temple.cell[1], fwd[0], fwd[1]);
+      if (d < bd) { bd = d; best = { cell: isl.temple.cell, island: isl }; }
+    }
+  }
+  if (!best) best = { cell: state.greatTemple.P.cell, island: state.gtP };
+  return best;
+}
+
+// nearest water cell to a cell (spawn point / approach goal)
+function nearestWater(state, cell, avoid) {
+  let frontier = [[cell[0], cell[1]]];
+  const seen = new Set([cellKey(cell[0], cell[1])]);
+  while (frontier.length) {
+    const next = [];
+    for (const [x, z] of frontier) {
+      if (!state.map.land.has(cellKey(x, z))) return [x, z];
+      for (const [dx, dz] of DIRS4) {
+        const k = cellKey(x + dx, z + dz);
+        if (!inBounds(x + dx, z + dz) || seen.has(k)) continue;
+        seen.add(k);
+        next.push([x + dx, z + dz]);
+      }
+    }
+    frontier = next;
+  }
+  return cell;
+}
+
+function waterPath(state, from, to) {
+  const start = nearestWater(state, [Math.round(from[0]), Math.round(from[1])]);
+  const goal = nearestWater(state, [Math.round(to[0]), Math.round(to[1])]);
+  return bfsPath([start], new Set([cellKey(goal[0], goal[1])]), (x, z) => !state.map.land.has(cellKey(x, z)));
+}
+
+function spawnCraft(state, kind, origin, script) {
+  const def = kind === 'transport' ? CONFIG.Craft.TRANSPORT : kind === 'siphon' ? CONFIG.Craft.SIPHON : CONFIG.Craft.HEAVY;
+  const c = {
+    id: eid(), kind, owner: 'P',
+    pos: nearestWater(state, origin.cell).map(v => v + 0),
+    hull: def.HP, maxHull: def.HP,
+    dps: def.DPS, range: Math.max(def.RANGE, 1.1), speed: def.SPEED,
+    path: null, legIndex: 0, legT: 0,
+    target: null, retargetAt: 0,
+    script: script || null,   // wave-5 scripted strike carries a fixed target
+    dead: false
+  };
+  state.craft.push(c);
+  return c;
+}
+
+function launchWave(state) {
+  const W = CONFIG.Waves;
+  const idx = state.wave.index;               // 0-based
+  const comp = W.COMPOSITION[idx];
+  const mult = waveStrength(state);
+  const origin = state.wave.origin || waveOrigin(state);
+  const count = comp.map(n => Math.max(n > 0 ? 1 : 0, Math.round(n * mult)));
+
+  // wave 5's heavies are scripted onto the most forward player structure (§18)
+  let scriptTarget = null;
+  if (idx + 1 === 5) {
+    let bd = -1;
+    const gt = state.greatTemple.A.cell;
+    for (const st of state.structures) {
+      if (st.owner !== 'A' || st.hp <= 0 || st.site !== 'endpoint') continue;
+      const d = Math.abs(st.cell[0] - gt[0]) + Math.abs(st.cell[1] - gt[1]);
+      if (d > bd) { bd = d; scriptTarget = st; }
+    }
+  }
+
+  for (let i = 0; i < count[0]; i++) spawnCraft(state, 'transport', origin);
+  for (let i = 0; i < count[1]; i++) spawnCraft(state, 'siphon', origin);
+  for (let i = 0; i < count[2]; i++) spawnCraft(state, 'heavy', origin, scriptTarget ? { structureId: scriptTarget.id } : null);
+
+  // divine escalation (§19.2)
+  if (idx + 1 >= 6) castTidalSurge(state);
+  if (idx + 1 >= 7) castFogBank(state);
+  if (idx + 1 === CONFIG.Wrath.WAVE) {
+    state.wave.wrath = true;
+    Events.emit('ageOfWrath', {});
+  }
+  Events.emit('waveLaunched', { index: idx });
+}
+
+function castTidalSurge(state) {
+  // a supernatural wave centred on the player's most forward over-water
+  // structure; sheltered ground is untouched (§33B.1)
+  let center = null, bd = -1;
+  const gt = state.greatTemple.A.cell;
+  for (const st of state.structures) {
+    if (st.owner !== 'A' || st.hp <= 0 || st.site !== 'endpoint') continue;
+    if (!overWaterPos(state, st.cell[0], st.cell[1])) continue;
+    const d = Math.abs(st.cell[0] - gt[0]) + Math.abs(st.cell[1] - gt[1]);
+    if (d > bd) { bd = d; center = st.cell; }
+  }
+  if (!center) return;
+  const P = CONFIG.Powers.TIDAL_SURGE;
+  for (const st of state.structures) {
+    if (st.owner !== 'A' || st.site !== 'endpoint') continue;
+    if (!overWaterPos(state, st.cell[0], st.cell[1])) continue;
+    if (dist2d(st.cell[0], st.cell[1], center[0], center[1]) <= P.RADIUS) {
+      applyDamage(state, { kind: 'structure', ref: st, side: 'A', pos: st.cell }, P.DAMAGE, null);
+    }
+  }
+  for (const s of [...state.segments.values()]) {
+    if (s.owner !== 'A' || !s.overWater) continue;
+    const m = segMid(s);
+    if (dist2d(m[0], m[1], center[0], center[1]) <= P.RADIUS) {
+      applyDamage(state, { kind: 'segment', ref: s, side: 'A', pos: m }, P.DAMAGE, null);
+    }
+  }
+  Events.emit('tidalSurge', { center });
+}
+
+function castFogBank(state) {
+  // dropped on the player's densest cluster of guns
+  let best = null, bs = 0;
+  for (const st of state.structures) {
+    if (st.owner !== 'A' || (st.type !== 'bolt' && st.type !== 'vane') || st.hp <= 0) continue;
+    let n = 0;
+    for (const o of state.structures) {
+      if (o.owner === 'A' && (o.type === 'bolt' || o.type === 'vane') && o.hp > 0 &&
+          dist2d(st.cell[0], st.cell[1], o.cell[0], o.cell[1]) <= CONFIG.Powers.FOG_BANK.RADIUS) n++;
+    }
+    if (n > bs) { bs = n; best = st.cell; }
+  }
+  if (!best) return;
+  state.powers.fog = { cell: best.slice(), until: state.time + CONFIG.Powers.FOG_BANK.DURATION };
+  Events.emit('fogBank', { center: best });
+}
+
+// ---- craft behaviour ----
+function craftPickTarget(state, c) {
+  const inR = (pos, r) => dist2d(pos[0], pos[1], c.pos[0], c.pos[1]) <= r;
+  if (c.script) {
+    const st = state.structures.find(s => s.id === c.script.structureId && s.hp > 0);
+    if (st) return { kind: 'structure', ref: st, side: 'A', pos: st.cell };
+    c.script = null;
+  }
+  const structs = enemyStructureTargets(state, 'P');   // player structures + GT
+  if (c.kind === 'transport' || c.kind === 'heavy') {
+    // island structures and temples first, else the Great Temple
+    const pref = structs.filter(t => t.kind === 'greatTemple' || t.ref.site === 'plot' || c.kind === 'heavy');
+    const pool = pref.length ? pref : structs;
+    let best = null, bd = Infinity;
+    for (const t of pool) {
+      const d = dist2d(t.pos[0], t.pos[1], c.pos[0], c.pos[1]);
+      if (d < bd) { bd = d; best = t; }
+    }
+    return best;
+  }
+  // siphon: air segments over open water, then over-water structures
+  let best = null, bd = Infinity;
+  for (const s of state.segments.values()) {
+    if (s.owner !== 'A' || !s.overWater) continue;
+    const m = segMid(s);
+    const d = dist2d(m[0], m[1], c.pos[0], c.pos[1]);
+    if (d < bd) { bd = d; best = { kind: 'segment', ref: s, side: 'A', pos: m }; }
+  }
+  if (!best) {
+    for (const t of structs) {
+      if (t.kind === 'structure' && t.ref.site === 'endpoint' && overWaterPos(state, t.pos[0], t.pos[1])) {
+        const d = dist2d(t.pos[0], t.pos[1], c.pos[0], c.pos[1]);
+        if (d < bd) { bd = d; best = t; }
+      }
+    }
+  }
+  return best;
+}
+
+function updateCraft(state, c, dt) {
+  if (c.dead) return;
+  if (!c.target || state.time >= c.retargetAt ||
+      (c.target.kind === 'structure' && c.target.ref.hp <= 0) ||
+      (c.target.kind === 'segment' && !state.segments.has('A:' + c.target.ref.key))) {
+    c.target = craftPickTarget(state, c);
+    c.retargetAt = state.time + 3;
+    c.path = null;
+  }
+  if (!c.target) return;
+  const d = dist2d(c.target.pos[0], c.target.pos[1], c.pos[0], c.pos[1]);
+  if (d <= c.range) {
+    // fire (vision is implicit: it is adjacent)
+    applyDamage(state, c.target, c.dps * dt, c.pos);
+    return;
+  }
+  if (!c.path) {
+    c.path = waterPath(state, c.pos, c.target.pos);
+    c.legIndex = 0; c.legT = 0;
+    if (!c.path || c.path.length < 2) { c.path = null; return; }
+  }
+  // advance along water path with slight sea wind effect
+  const a = c.path[c.legIndex], b = c.path[Math.min(c.legIndex + 1, c.path.length - 1)];
+  const dx = b[0] - a[0], dz = b[1] - a[1];
+  const len = Math.hypot(dx, dz) || 1;
+  const mult = state.wind.multiplier(c.pos[0], c.pos[1], dx / len, dz / len, false);
+  c.legT += c.speed * mult * dt;
+  while (c.legT >= 1 && c.legIndex < c.path.length - 2) { c.legT -= 1; c.legIndex++; }
+  const na = c.path[c.legIndex], nb = c.path[Math.min(c.legIndex + 1, c.path.length - 1)];
+  c.pos = [lerp(na[0], nb[0], Math.min(c.legT, 1)), lerp(na[1], nb[1], Math.min(c.legT, 1))];
+}
+
+// ---- the schedule ----
+function wavesTick(state, dt) {
+  const W = CONFIG.Waves;
+  const w = state.wave;
+  if (w.index < W.COUNT) {
+    if (!w.telegraphed && state.time >= w.nextAt - W.TELEGRAPH) {
+      w.telegraphed = true;
+      w.origin = waveOrigin(state);
+      Events.emit('waveTelegraph', { index: w.index, origin: w.origin });
+    }
+    if (state.time >= w.nextAt) {
+      launchWave(state);
+      w.index++;
+      w.telegraphed = false;
+      w.origin = null;
+      w.nextAt += waveInterval(w.index);
+    }
+  }
+  for (const c of state.craft) updateCraft(state, c, dt);
+  state.craft = state.craft.filter(c => !c.dead);
+}
+
+// ============================================================
+// AI
+// ============================================================
+
+// ================================================================
+// POSEIDON AI (§29) — not a general solver. He grows lanes toward
+// scored islands one visible piece at a time, founds temples with his
+// priest, raises masts along contested straits, and reroutes (with a
+// cooldown) when the player cuts him. Waves are authored separately.
+// ================================================================
+
+function initAI(state) {
+  state.ai = {
+    plan: null,                // list of cells toward the objective
+    objectiveIsland: null,
+    placeAt: 0,
+    decideAt: 0,
+    mastAt: CONFIG.AI.MAST_INTERVAL,
+    rerouteBlockedUntil: 0,
+    avoidCells: new Map()      // cellKey -> until (recently cut ground)
+  };
+  // his Great Temple is defended by two authored structures (§13A.4)
+  const isl = state.gtP;
+  for (let i = 0; i < Math.min(2, isl.plots.length); i++) {
+    const type = i === 0 ? 'bolt' : 'vane';
+    const stats = structureStats('P', type);
+    const plot = isl.plots[i];
+    const st = {
+      id: eid(), owner: 'P', type, cell: [plot.x, plot.z], site: 'plot',
+      islandId: isl.id, plotIdx: i,
+      hp: stats.hp, maxHp: stats.hp, buildProgress: 1, buildTime: 0,
+      ports: 0, dps: stats.dps, range: stats.range || stats.radius || 0,
+      radius: stats.radius || 0, arc: stats.arc || Math.PI * 2, turn: stats.turn || 2,
+      intercept: 0, facing: defaultFacing(state, 'P', [plot.x, plot.z]), lastHitAt: -99
+    };
+    state.structures.push(st);
+    plot.structure = st;
+  }
+  Events.on('segmentDestroyed', ({ seg, cause }) => {
+    if (seg.owner !== 'P' || cause === 'collapse') return;
+    // a successful player cut: pause rerouting, avoid the cut ground
+    state.ai.rerouteBlockedUntil = state.time + CONFIG.Waves.AI_REROUTE_COOLDOWN;
+    state.ai.plan = null;
+    state.ai.avoidCells.set(cellKey(seg.a[0], seg.a[1]), state.time + 40);
+    state.ai.avoidCells.set(cellKey(seg.b[0], seg.b[1]), state.time + 40);
+  });
+}
+
+// score islands worth taking (§29): influence gain, reserves, proximity
+function aiScoreIsland(state, isl) {
+  if (isl.role.startsWith('greatTemple')) return -1;
+  if (isl.temple && isl.temple.hp > 0) return -1;             // taken (his or claimed rival ground)
+  let score = 0;
+  // uncontested ground his temple would newly cover
+  let overlap = 0;
+  for (let dz = -CONFIG.Influence.TEMPLE_RADIUS; dz <= CONFIG.Influence.TEMPLE_RADIUS; dz++) {
+    for (let dx = -CONFIG.Influence.TEMPLE_RADIUS; dx <= CONFIG.Influence.TEMPLE_RADIUS; dx++) {
+      const x = Math.round(isl.center[0]) + dx, z = Math.round(isl.center[1]) + dz;
+      if (!inBounds(x, z)) continue;
+      if (dist2d(x, z, isl.center[0], isl.center[1]) > CONFIG.Influence.TEMPLE_RADIUS) continue;
+      if (state.influence.A.has(cellKey(x, z))) overlap++;
+    }
+  }
+  score += overlap * (CONFIG.AI.TEMPLE_PRIORITY_OVERLAP ? 0.8 : 0.2);
+  score += Math.min(isl.reserve / 20, 8);
+  const d = dist2d(isl.center[0], isl.center[1], state.greatTemple.P.cell[0], state.greatTemple.P.cell[1]);
+  score += Math.max(0, 14 - d) * 0.5;
+  // reachable ground only: he must be able to build there (influence)
+  if (!state.influence.P.has(cellKey(Math.round(isl.center[0]), Math.round(isl.center[1])))) score *= 0.15;
+  return score;
+}
+
+// plan a sheltered-preferring water path from his network to the island
+function aiPlanPath(state, isl) {
+  // start cells: sockets of his network
+  const sockets = getSockets(state, 'P');
+  if (!sockets.length) return null;
+  const dl = state.ai.distToLand || (state.ai.distToLand = distToLandGrid(state.map));
+  const avoid = state.ai.avoidCells;
+  const target = new Set(isl.cells.map(([x, z]) => cellKey(x, z)));
+  // Dijkstra-lite with weights: sheltered water 1.0, open water 1.5 (§33B.2a),
+  // island cells passable at 1.0 (a lane may land on a coast)
+  const startKeys = sockets.map(s => cellKey(s.cell[0], s.cell[1]));
+  const dist = new Map(startKeys.map(k => [k, 0]));
+  const prev = new Map(startKeys.map(k => [k, null]));
+  const queue = [...startKeys];
+  while (queue.length) {
+    queue.sort((a, b) => dist.get(a) - dist.get(b));
+    const k = queue.shift();
+    if (target.has(k)) {
+      const path = [];
+      let cur = k;
+      while (cur !== null) { path.push(keyCell(cur)); cur = prev.get(cur); }
+      return path.reverse();
+    }
+    const [x, z] = keyCell(k);
+    for (const [dx, dz] of DIRS4) {
+      const nx = x + dx, nz = z + dz, nk = cellKey(nx, nz);
+      if (!inBounds(nx, nz)) continue;
+      if (!state.influence.P.has(nk)) continue;                       // influence gates him too
+      if (avoid.has(nk) && state.time < avoid.get(nk)) continue;
+      const isl2 = islandAt(state, nx, nz);
+      if (isl2 && islandClosedTo(state, isl2, 'P')) continue;
+      // never plan an edge that retraces an existing lane (it could not be placed)
+      if (state.segments.has('P:' + segKey(x, z, nx, nz))) continue;
+      const water = !state.map.land.has(nk);
+      const w = water ? (dl[nz][nx] <= CONFIG.Segments.LEE_SHORE_CELLS ? 1.0 : 1.5) : 1.0;
+      const nd = dist.get(k) + w;
+      if (nd < (dist.get(nk) ?? Infinity)) {
+        dist.set(nk, nd);
+        prev.set(nk, k);
+        if (!queue.includes(nk)) queue.push(nk);
+      }
+    }
+  }
+  return null;
+}
+
+// place the next SHORT piece along the plan
+function aiPlaceNext(state) {
+  const ai = state.ai;
+  if (!ai.plan || ai.plan.length < 3) { ai.plan = null; return false; }
+  const [p0, p1, p2] = ai.plan;
+  const segs = [[p0, p1], [p1, p2]];
+  if (!placementLegal(state, 'P', segs)) { ai.plan = null; return false; }
+  // p0 must still be a socket of his network
+  const sockets = getSockets(state, 'P');
+  if (!sockets.some(s => s.cell[0] === p0[0] && s.cell[1] === p0[1])) { ai.plan = null; return false; }
+  if (!placePiece(state, 'P', 'SHORT', segs)) return false;   // cannot afford
+  ai.plan = ai.plan.slice(2);
+  if (ai.plan.length < 3) ai.plan = null;
+  return true;
+}
+
+function aiTick(state, dt) {
+  const ai = state.ai;
+  if (state.over) return;
+  if (state.time < ai.decideAt) return;
+  ai.decideAt = state.time + CONFIG.AI.DECISION_INTERVAL;
+
+  const res = state.res.P;
+
+  // 1. priest: found temples on reached neutral islands
+  const p = state.priests.P;
+  if (p && p.state === 'idle') {
+    const isl = p.islandId !== null ? state.map.islands[p.islandId] : null;
+    if (isl && !isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0) &&
+        res.supply >= CONFIG.Structures.TEMPLE.COST) {
+      const plotIdx = isl.plots.findIndex(pl => !pl.structure);
+      if (plotIdx >= 0) {
+        buildStructure(state, 'P', 'temple', { site: 'plot', islandId: isl.id, plotIdx, cell: [isl.plots[plotIdx].x, isl.plots[plotIdx].z] });
+      }
+    } else {
+      // sail to the best reachable neutral island
+      let best = null, bs = 0;
+      for (const cand of state.map.islands) {
+        if (cand.role.startsWith('greatTemple')) continue;
+        if (cand.temple && cand.temple.hp > 0) continue;
+        if (!findNetPath(state, 'P', [Math.round(p.pos[0]), Math.round(p.pos[1])], cand.cells)) continue;
+        const s = aiScoreIsland(state, cand) + 5;
+        if (s > bs) { bs = s; best = cand; }
+      }
+      if (best && (p.islandId === null || best.id !== p.islandId)) sendPriest(state, 'P', best);
+    }
+  }
+
+  // 2. lanes toward the best objective
+  if (state.time >= ai.placeAt && state.time >= ai.rerouteBlockedUntil) {
+    if (!ai.plan) {
+      let best = null, bs = 0.5;
+      for (const isl of state.map.islands) {
+        const s = aiScoreIsland(state, isl);
+        if (s > bs) {
+          // already connected? then no lane needed
+          const touched = [...state.segments.values()].some(seg => seg.owner === 'P' &&
+            (isl.cellSet.has(cellKey(seg.a[0], seg.a[1])) || isl.cellSet.has(cellKey(seg.b[0], seg.b[1]))));
+          if (touched) continue;
+          bs = s; best = isl;
+        }
+      }
+      if (best) {
+        ai.objectiveIsland = best.id;
+        ai.plan = aiPlanPath(state, best);
+      }
+    }
+    if (ai.plan && res.supply >= pieceCost('SHORT')) {
+      if (aiPlaceNext(state)) ai.placeAt = state.time + CONFIG.AI.PLACE_INTERVAL;
+    }
+  }
+
+  // 3. economy: yards and haulers
+  const cap = fleetCap(state, 'P');
+  const fleet = state.haulers.filter(h => h.owner === 'P' && h.state !== 'dead').length;
+  if (fleet < cap && res.supply >= CONFIG.Hauler.COST + 6) buyHauler(state, 'P');
+  if (fleet >= cap && res.supply >= CONFIG.Yard.COST + CONFIG.Hauler.COST + 8) {
+    // a yard on a safe owned island plot
+    for (const isl of state.map.islands) {
+      if (isl.owner !== 'P' || isl.role.startsWith('greatTemple')) continue;
+      const plotIdx = isl.plots.findIndex(pl => !pl.structure);
+      if (plotIdx >= 0 && islandSupported(state, isl, 'P')) {
+        buildStructure(state, 'P', 'yard', { site: 'plot', islandId: isl.id, plotIdx, cell: [isl.plots[plotIdx].x, isl.plots[plotIdx].z] });
+        break;
+      }
+    }
+  }
+
+  // 4. masts along contested straits (§33C.6), between waves
+  if (state.time >= ai.mastAt && res.supply >= structureStats('P', 'mast').cost) {
+    ai.mastAt = state.time + CONFIG.AI.MAST_INTERVAL;
+    // his supported endpoint nearest a player air segment over water
+    const airSegs = [...state.segments.values()].filter(s => s.owner === 'A' && s.overWater);
+    if (airSegs.length) {
+      const sockets = getSockets(state, 'P').filter(s => s.kind === 'end');
+      let best = null, bd = Infinity;
+      for (const sock of sockets) {
+        if (structureAt(state, sock.cell[0], sock.cell[1])) continue;
+        for (const seg of airSegs) {
+          const m = segMid(seg);
+          const d = dist2d(sock.cell[0], sock.cell[1], m[0], m[1]);
+          if (d < bd) { bd = d; best = sock; }
+        }
+      }
+      if (best && bd <= CONFIG.Craft.SIPHON_MAST.RANGE + 2) {
+        buildStructure(state, 'P', 'mast', { site: 'endpoint', cell: best.cell });
+      }
+    }
+  }
+}
+
+// ============================================================
+// FOG
+// ============================================================
+
+// ================================================================
+// FOG AND VISION (§14B) — terrain is never fogged; enemy craft need
+// live vision; enemy structures and segments, once seen, stay drawn
+// at their last known state. Both sides obey the same rules.
+// ================================================================
+
+let fogAccum = 0;
+
+function computeVision(state, side) {
+  const vis = new Set();
+  const add = (cx, cz, r) => {
+    for (let z = Math.max(0, Math.floor(cz - r)); z <= Math.min(CONFIG.Grid.HEIGHT - 1, Math.ceil(cz + r)); z++) {
+      for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(CONFIG.Grid.WIDTH - 1, Math.ceil(cx + r)); x++) {
+        if (dist2d(x, z, cx, cz) <= r) vis.add(cellKey(x, z));
+      }
+    }
+  };
+  const V = CONFIG.Vision;
+  const gt = state.greatTemple[side];
+  if (gt.hp > 0) add(gt.cell[0], gt.cell[1], V.TEMPLE);
+  for (const st of state.structures) {
+    if (st.owner !== side || st.hp <= 0) continue;
+    add(st.cell[0], st.cell[1], st.type === 'temple' ? V.TEMPLE : V.STRUCTURE);
+  }
+  for (const s of state.segments.values()) {
+    if (s.owner !== side) continue;
+    const m = segMid(s);
+    add(m[0], m[1], V.SEGMENT);
+  }
+  for (const h of state.haulers) {
+    if (h.owner === side && h.state !== 'dead') add(h.pos[0], h.pos[1], V.HAULER);
+  }
+  const p = state.priests[side];
+  if (p && p.state !== 'dead') add(p.pos[0], p.pos[1], V.HAULER);
+  return vis;
+}
+
+function fogTick(state, dt) {
+  fogAccum += dt;
+  if (fogAccum < 0.4 && state.vision.A.size) return;   // throttled
+  fogAccum = 0;
+  for (const side of ['A', 'P']) {
+    state.vision[side] = computeVision(state, side);
+    // exploration: ground once seen stays lifted (the shroud is one-way)
+    if (side === 'A') {
+      if (!state.explored) state.explored = new Set();
+      for (const k of state.vision.A) state.explored.add(k);
+    }
+    // memory: enemy structures and segments currently in sight are remembered
+    if (CONFIG.Vision.REMEMBER_STRUCTURES) {
+      const foe = side === 'A' ? 'P' : 'A';
+      const mem = state.memory[side];
+      for (const st of state.structures) {
+        if (st.owner === foe && st.hp > 0 && state.vision[side].has(cellKey(st.cell[0], st.cell[1]))) {
+          mem.set('st:' + st.id, state.time);
+        }
+      }
+      for (const s of state.segments.values()) {
+        if (s.owner !== foe) continue;
+        const m = segMid(s);
+        if (state.vision[side].has(cellKey(Math.round(m[0]), Math.round(m[1])))) mem.set('seg:' + s.key, state.time);
+      }
+    }
+  }
+}
+
+// ============================================================
+// POWERS
+// ============================================================
+
+// ================================================================
+// DIVINE POWERS — Aeolus' two petitions (§19.1, §33A.8).
+// Tailwind speeds the fleet for a spell; Wind Wall shelters one
+// exposed endpoint. Poseidon's powers live in the wave system.
+// ================================================================
+
+function castTailwind(state) {
+  const P = CONFIG.Powers.TAILWIND;
+  if (state.res.A.favor < P.FAVOR) return false;
+  if (state.time < state.powers.tailwindUntil) return false;
+  state.res.A.favor -= P.FAVOR;
+  state.powers.tailwindUntil = state.time + P.DURATION;
+  Events.emit('tailwind', {});
+  return true;
+}
+
+// armed by the button, then aimed with a tap on one of your endpoint
+// structures or route ends
+function castWindWall(state, cell) {
+  const P = CONFIG.Powers.WIND_WALL;
+  if (state.res.A.favor < P.FAVOR) return false;
+  state.res.A.favor -= P.FAVOR;
+  state.powers.windwallUntil = state.time + P.DURATION;
+  state.powers.windwallCell = cell.slice();
+  Events.emit('windwall', { cell });
+  return true;
+}
+
+// ============================================================
+// FLOW
+// ============================================================
+
+// ================================================================
+// FLOW — onboarding (§23), wave banners (§25), win/lose/reset (§28),
+// and the optional Codex (§27). Lore rides on instructions that
+// already exist; nothing here interrupts play.
+// ================================================================
+
+const TUTORIAL_SCRIPT = [
+  { at: 0.5, text: '“The bag lifts them. Only bound air moves them. Take a wind.”' },
+  { at: 5, text: '“Lay it toward the shrine. Nothing you build need touch the sea.”' },
+  { at: 12, text: '“My ships move where you have bound the air. Favor follows.”' },
+  { at: 20, text: '“An open end is exposed. Cap it, or continue it.”' }
+];
+
+const POSEIDON_BANNERS = [
+  ['THE FIRST TIDE', '“Something is above my water.”'],
+  ['THE SECOND TIDE', '“It has not come down.”'],
+  ['THE THIRD TIDE', '“They no longer sail. They no longer pay. They no longer ask.”'],
+  ['THE FOURTH TIDE', '“Then break the road, not the ships.”'],
+  ['THE FIFTH TIDE', '“Cut it where it reaches farthest.”'],
+  ['THE SIXTH TIDE', '“They made a sky out of rocks and sour wine. Drown it.”'],
+  ['THE SEVENTH TIDE', '“Everywhere at once.”'],
+  ['THE AGE OF WRATH', '“Three generations I have waited to be needed again.”'],
+  ['THE LAST TIDE', '“Come down.”']
+];
+
+const ORIGIN_NAMES = {
+  greatTempleP: 'HIS TEMPLE', supplyP: 'HIS HARBOURS', neutralP: 'THE WESTERN SHALLOWS',
+  sacredA: 'THE WESTERN SHRINE', sacredP: 'THE EASTERN SHRINE',
+  chokepoint: 'THE CHOKEPOINT', neutralA: 'THE EASTERN SHALLOWS',
+  supplyA: 'YOUR OWN WATERS', greatTempleA: 'YOUR DOORSTEP'
+};
+
+function initFlow(state) {
+  state.flow = { tutorialIdx: 0, skipped: false, waveOneAnnounced: false };
+  const skipBtn = document.getElementById('skipbtn');
+  skipBtn.classList.remove('hidden');
+  skipBtn.onclick = () => {
+    state.flow.skipped = true;
+    state.flow.tutorialIdx = TUTORIAL_SCRIPT.length;
+    hideTutorialLine();
+    skipBtn.classList.add('hidden');
+    try { localStorage.setItem('windward-skip', '1'); } catch (e) { }
+  };
+  if ((() => { try { return localStorage.getItem('windward-skip') === '1'; } catch (e) { return false; } })()) {
+    state.flow.skipped = true;
+    state.flow.tutorialIdx = TUTORIAL_SCRIPT.length;
+    skipBtn.classList.add('hidden');
+  }
+
+  Events.on('waveTelegraph', ({ index, origin }) => {
+    const [title, line] = POSEIDON_BANNERS[index];
+    showBanner(title, line, true);
+    const name = ORIGIN_NAMES[origin.island.role] || 'THE DEEP';
+    flashTicker('TIDE RISING — FROM ' + name);
+    audioPlay('telegraph');
+  });
+  Events.on('templeFallen', ({ island, side }) => {
+    if (side === 'P') flashTicker('HIS TIDE MUST COME FURTHER NOW');
+  });
+  Events.on('islandClaimed', ({ island, side }) => {
+    showBanner('ISLAND CLAIMED', side === 'A' ? 'The wind holds this ground now.' : 'The sea has taken ground.', side === 'P');
+  });
+  Events.on('ageOfWrath', () => showBanner('THE AGE OF WRATH', '“Three generations I have waited to be needed again.”', true));
+  Events.on('convoyLost', ({ ent }) => { if (ent.owner === 'A') flashTicker('CONVOY LOST'); });
+  Events.on('priestDead', ({ side }) => {
+    if (side === 'A') showBanner('THE PRIEST IS LOST', 'A successor is invested at the Temple.');
+  });
+  Events.on('islandDepleted', ({ island }) => {
+    if (island.owner === 'A') flashTicker('AN ISLAND RUNS DRY');
+  });
+}
+
+function flowTick(state) {
+  // tutorial lines on the clock, one at a time (§23)
+  const f = state.flow;
+  if (!f.skipped && f.tutorialIdx < TUTORIAL_SCRIPT.length) {
+    const item = TUTORIAL_SCRIPT[f.tutorialIdx];
+    if (state.time >= item.at) {
+      showTutorialLine(item.text, 5500);
+      f.tutorialIdx++;
+      if (f.tutorialIdx === TUTORIAL_SCRIPT.length) {
+        setTimeout(() => document.getElementById('skipbtn').classList.add('hidden'), 6000);
+      }
+    }
+  }
+  // Wave 1's telegraph line is delivered by the telegraph system itself;
+  // this is the only Aeolus line after control releases (§23)
+  if (!f.waveOneAnnounced && state.time >= CONFIG.Waves.FIRST_AT - CONFIG.Waves.TELEGRAPH) {
+    f.waveOneAnnounced = true;
+    if (!f.skipped) showTutorialLine('“They cross without asking him. He rises.”', 5000);
+  }
+
+  // win / lose (§28)
+  if (!state.over) {
+    if (state.greatTemple.P.hp <= 0) {
+      state.over = 'win';
+      endScreen('THE ARCHIPELAGO ACKNOWLEDGES YOUR GOD',
+        'Poseidon’s temple is fallen. The winds hold every road.', state);
+      audioPlay('victory');
+    } else if (state.greatTemple.A.hp <= 0) {
+      state.over = 'lose';
+      endScreen('YOUR TEMPLE HAS FALLEN',
+        'The sea remembers what the sky forgot.', state);
+      audioPlay('defeat');
+    }
+  }
+}
+
+function endScreen(title, text, state) {
+  document.getElementById('endtitle').textContent = title;
+  document.getElementById('endtext').textContent = text;
+  document.getElementById('endseed').textContent = state.seed;
+  document.getElementById('endscreen').classList.remove('hidden');
+}
+
+// ---- Codex (§27): long-press an island or structure ----
+const CODEX = {
+  askos: ['Askos', 'Linen over bronze ribs. A trireme turned over and lightened until it left the water.'],
+  lightair: ['The Light Air', 'Iron filings and sour wine in a sealed retort give off an air that will not stay down. No god was consulted, because none was needed.'],
+  corridor: ['Wind Corridor', 'Bound air, renewed from the Temple. Severed, it does not fall. It remembers, and unbinds itself backward from the cut.'],
+  temple: ['Temple', 'Where mortals thank the wind for not killing them. Favor accumulates only over ground no rival god also claims.'],
+  bolt: ['Bolt Battery', 'It fires nothing. It drops ballast jars — bronze, heavy, full of seawater — into the lanes below. Every gun in this war points at water.'],
+  siphon: ['Siphon Craft', 'Bronze pumps that throw the sea upward. Wet air will not hold a binding, and a drowned wind is no road at all.'],
+  poseidon: ['Poseidon’s Complaint', 'Every crossing once owed him honour. The sky asks him for nothing, so it thanks him for nothing. There is no rite for being forgotten.'],
+  bag: ['The Opened Bag', 'Odysseus slept within sight of Ithaca. His crew thought the bag held gold. Everything since is consequence.']
+};
+
+let codexTimer = null;
+function initCodex(state) {
+  const canvas = R.renderer.domElement;
+  const codexEl = document.getElementById('codex');
+  const open = (entry) => {
+    const [title, body] = CODEX[entry];
+    codexEl.innerHTML = '<h3>' + title + '</h3>' + body;
+    codexEl.classList.remove('hidden');
+    setTimeout(() => codexEl.classList.add('hidden'), 6000);
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    const cell = pickCell(e.clientX, e.clientY);
+    codexTimer = setTimeout(() => {
+      if (!cell) { open('bag'); return; }
+      const st = structureAt(state, cell[0], cell[1]);
+      if (st) { open(st.type === 'bolt' ? 'bolt' : st.type === 'temple' ? 'temple' : 'askos'); return; }
+      const isl = islandAt(state, cell[0], cell[1]);
+      if (isl) { open('temple'); return; }
+      const onSeg = [...state.segments.values()].some(s => s.owner === 'A' &&
+        Math.abs((s.a[0] + s.b[0]) / 2 - cell[0]) < 1 && Math.abs((s.a[1] + s.b[1]) / 2 - cell[1]) < 1);
+      open(onSeg ? 'corridor' : 'poseidon');
+    }, 650);
+  });
+  canvas.addEventListener('pointerup', () => clearTimeout(codexTimer));
+  canvas.addEventListener('pointermove', () => clearTimeout(codexTimer));
+}
+
+// ============================================================
+// AUDIO
+// ============================================================
+
+// ================================================================
+// AUDIO (§32) — everything synthesised at runtime with WebAudio.
+// Zero bytes of assets, zero requests, fully parameterised feedback.
+// ================================================================
+
+const Audio2 = { ctx: null, master: null, windGain: null, ready: false };
+
+function audioInit() {
+  if (Audio2.ready) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    Audio2.ctx = ctx;
+    Audio2.master = ctx.createGain();
+    Audio2.master.gain.value = 0.5;
+    Audio2.master.connect(ctx.destination);
+
+    // ambient wind: filtered noise, slowly breathing
+    const len = ctx.sampleRate * 2;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    let v = 0;
+    for (let i = 0; i < len; i++) {
+      v = v * 0.98 + (Math.random() * 2 - 1) * 0.02;   // brownish noise
+      data[i] = v * 8;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'bandpass';
+    filt.frequency.value = 420;
+    filt.Q.value = 0.6;
+    Audio2.windGain = ctx.createGain();
+    Audio2.windGain.gain.value = 0.12;
+    src.connect(filt).connect(Audio2.windGain).connect(Audio2.master);
+    src.start();
+
+    // wind LFO breathing
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.07;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.05;
+    lfo.connect(lfoGain).connect(Audio2.windGain.gain);
+    lfo.start();
+
+    Audio2.ready = true;
+  } catch (e) { /* audio stays silent if the context is refused */ }
+}
+
+function tone(freq, dur, type, gain, when, slideTo) {
+  if (!Audio2.ready) return;
+  const ctx = Audio2.ctx;
+  const t0 = ctx.currentTime + (when || 0);
+  const osc = ctx.createOscillator();
+  osc.type = type || 'sine';
+  osc.frequency.setValueAtTime(freq, t0);
+  if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(30, slideTo), t0 + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(gain || 0.2, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  osc.connect(g).connect(Audio2.master);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.05);
+}
+
+function noiseBurst(dur, gain, freq, when) {
+  if (!Audio2.ready) return;
+  const ctx = Audio2.ctx;
+  const t0 = ctx.currentTime + (when || 0);
+  const len = Math.floor(ctx.sampleRate * dur);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const filt = ctx.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.value = freq || 900;
+  const g = ctx.createGain();
+  g.gain.value = gain || 0.3;
+  src.connect(filt).connect(g).connect(Audio2.master);
+  src.start(t0);
+}
+
+function audioPlay(name) {
+  if (!Audio2.ready) return;
+  switch (name) {
+    case 'thunk':       // construction
+      noiseBurst(0.09, 0.25, 700);
+      tone(120, 0.12, 'sine', 0.25);
+      break;
+    case 'activate':    // route activation
+      tone(523, 0.1, 'sine', 0.14);
+      tone(659, 0.12, 'sine', 0.14, 0.07);
+      break;
+    case 'warn':
+      tone(660, 0.09, 'square', 0.08);
+      tone(660, 0.09, 'square', 0.08, 0.16);
+      break;
+    case 'sever':
+      tone(520, 0.5, 'sawtooth', 0.12, 0, 130);
+      break;
+    case 'boom':
+      noiseBurst(0.5, 0.5, 400);
+      tone(70, 0.5, 'sine', 0.4, 0, 40);
+      break;
+    case 'chord':       // reconnection
+      tone(392, 0.5, 'sine', 0.14);
+      tone(494, 0.5, 'sine', 0.12, 0.03);
+      tone(587, 0.7, 'sine', 0.12, 0.06);
+      break;
+    case 'capture':
+      tone(392, 0.16, 'triangle', 0.18);
+      tone(523, 0.16, 'triangle', 0.18, 0.12);
+      tone(659, 0.3, 'triangle', 0.18, 0.24);
+      break;
+    case 'telegraph':   // rising water horn
+      tone(98, 1.1, 'sawtooth', 0.14, 0, 147);
+      noiseBurst(0.9, 0.12, 300, 0.1);
+      break;
+    case 'chant':       // consecration
+      tone(196, 0.9, 'triangle', 0.1);
+      tone(294, 0.9, 'triangle', 0.08, 0.05);
+      break;
+    case 'victory':
+      [392, 494, 587, 784].forEach((f, i) => tone(f, 0.5, 'triangle', 0.2, i * 0.16));
+      break;
+    case 'defeat':
+      [330, 262, 196, 131].forEach((f, i) => tone(f, 0.6, 'sine', 0.2, i * 0.22));
+      break;
+  }
+}
+
+function wireAudio() {
+  Events.on('piecePlaced', ({ side }) => { if (side === 'A') { audioPlay('thunk'); audioPlay('activate'); } });
+  Events.on('structureBuilt', ({ st }) => { if (st.owner === 'A') audioPlay('thunk'); });
+  Events.on('networkSevered', ({ side }) => { if (side === 'A') { audioPlay('sever'); audioPlay('warn'); } });
+  Events.on('networkRestored', ({ side }) => { if (side === 'A') audioPlay('chord'); });
+  Events.on('structureDestroyed', () => audioPlay('boom'));
+  Events.on('structureExploded', () => audioPlay('boom'));
+  Events.on('islandClaimed', () => audioPlay('capture'));
+  Events.on('consecrationStarted', () => audioPlay('chant'));
+  Events.on('tidalSurge', () => { noiseBurst(1.2, 0.5, 250); });
+  Events.on('greatTempleHit', () => audioPlay('warn'));
+}
+
+// ============================================================
 // RENDER
 // ============================================================
 
@@ -1682,7 +3556,7 @@ function refreshInfluence(state) {
 // ================================================================
 
 const Palette = {
-  sea: 0x16606e, seaDeep: 0x0e4652,
+  sea: 0x104b58, seaDeep: 0x0e4652,
   limestone: 0xede2c8, limestoneShade: 0xd8c9a8,
   canopy: 0x5d8f56, canopyDark: 0x47714a,
   ivory: 0xf5ecd7, gold: 0xd9a441, bronze: 0x8c6a2f,
@@ -1714,23 +3588,22 @@ function initRenderer() {
   const canvas = document.getElementById('gl');
   R.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   R.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  R.renderer.outputEncoding = THREE.sRGBEncoding;
   R.scene = new THREE.Scene();
   R.scene.background = new THREE.Color(0x0d3540);
-  R.scene.fog = new THREE.Fog(0x0d3540, 26, 44);
+  R.scene.fog = new THREE.Fog(0x0d3540, 17, 32);
 
   R.camera = new THREE.PerspectiveCamera(CONFIG.Render.CAM_FOV, 1, 0.1, 100);
   R.raycaster = new THREE.Raycaster();
   R.groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-  const sun = new THREE.DirectionalLight(0xfff2dd, 1.05);
+  const sun = new THREE.DirectionalLight(0xfff2dd, 0.95);
   sun.position.set(6, 14, 4);
   R.scene.add(sun);
-  R.scene.add(new THREE.HemisphereLight(0xcfe8ef, 0x2a4a3a, 0.75));
+  R.scene.add(new THREE.HemisphereLight(0xbcdce4, 0x27453a, 0.5));
 
   // the Aegean
   const sea = new THREE.Mesh(
-    new THREE.PlaneGeometry(46, 64),
+    new THREE.PlaneGeometry(CONFIG.Grid.WIDTH * 4, CONFIG.Grid.HEIGHT * 3),
     new THREE.MeshLambertMaterial({ color: Palette.sea })
   );
   sea.rotation.x = -Math.PI / 2;
@@ -1748,15 +3621,32 @@ function initRenderer() {
   R.initialized = true;
 }
 
+// The map is larger than the screen on purpose: the camera keeps its
+// fixed oblique angle and the player pans by dragging. Fog of war and
+// room to build both come from the viewport being a window, not a wall.
 function onResize() {
   const w = window.innerWidth, h = window.innerHeight;
   R.renderer.setSize(w, h, false);
   R.camera.aspect = w / h;
-  // fixed oblique portrait framing: pull back until the whole map fits
-  const fit = Math.max(1, (9 / 16) / (w / h) * 0.92);
-  R.camera.position.set(0, CONFIG.Render.CAM_HEIGHT * fit, CONFIG.Render.CAM_BACK * fit);
-  R.camera.lookAt(0, 0, CONFIG.Render.CAM_LOOK_Z);
   R.camera.updateProjectionMatrix();
+  updateCamera();
+}
+
+function updateCamera() {
+  if (!R.camTarget) R.camTarget = { x: 0, z: 0 };
+  const fit = Math.max(1, (9 / 16) / (R.camera.aspect) * 0.92);
+  const t = R.camTarget;
+  const mx = (CONFIG.Grid.WIDTH - 1) / 2 + CONFIG.Render.PAN_MARGIN;
+  const mz = (CONFIG.Grid.HEIGHT - 1) / 2 + CONFIG.Render.PAN_MARGIN;
+  t.x = clamp(t.x, -mx, mx);
+  t.z = clamp(t.z, -mz, mz + 1);
+  R.camera.position.set(t.x, CONFIG.Render.CAM_HEIGHT * fit, t.z + CONFIG.Render.CAM_BACK * fit);
+  R.camera.lookAt(t.x, 0, t.z);
+}
+
+function panCameraTo(wx, wz) {
+  R.camTarget = { x: wx, z: wz };
+  updateCamera();
 }
 
 // ---------------- static map ----------------
@@ -1911,8 +3801,18 @@ function syncSegments(state) {
       R.segMeshes.set(k, mesh);
       R.scene.add(mesh);
     }
+    // fog: enemy segments need vision, or memory at reduced brightness (§14B.2)
+    const segVis = typeof segmentVisibility === 'function' ? segmentVisibility(state, s) : 'full';
+    mesh.visible = segVis !== 'hidden';
     const mat = mesh.userData.mat;
     const isAir = mesh.userData.isAir;
+    if (segVis === 'dim') {
+      mat.color.setHex(0x3a4d52);
+      mat.emissiveIntensity = 0.05;
+      mat.opacity = 0.3;
+      if (mesh.userData.stripe) mesh.userData.stripe.material.opacity = 0.1;
+      continue;
+    }
     const stripe = mesh.userData.stripe;
     if (s.supportState === 'SUPPORTED') {
       mat.color.setHex(isAir ? Palette.ivory : 0x062630);
@@ -2028,8 +3928,8 @@ function renderTick(state, dt) {
   R.renderer.render(R.scene, R.camera);
 }
 
-// tap -> grid cell (or null)
-function pickCell(clientX, clientY) {
+// pointer -> ground-plane point (world coords), or null
+function pickGround(clientX, clientY) {
   const rect = R.renderer.domElement.getBoundingClientRect();
   const ndc = new THREE.Vector2(
     ((clientX - rect.left) / rect.width) * 2 - 1,
@@ -2037,9 +3937,441 @@ function pickCell(clientX, clientY) {
   R.raycaster.setFromCamera(ndc, R.camera);
   const pt = new THREE.Vector3();
   if (!R.raycaster.ray.intersectPlane(R.groundPlane, pt)) return null;
+  return pt;
+}
+
+// tap -> grid cell (or null)
+function pickCell(clientX, clientY) {
+  const pt = pickGround(clientX, clientY);
+  if (!pt) return null;
   const [gx, gz] = gridFromWorld(pt.x, pt.z);
   if (!inBounds(gx, gz)) return null;
   return [gx, gz];
+}
+
+// ============================================================
+// RENDER2
+// ============================================================
+
+// ================================================================
+// RENDERER, PART 2 — structures, ships, craft, the priest, effects,
+// and fog-of-war presentation. One chassis per side (§14A.2):
+// every Aeolus structure is a tethered balloon, every Poseidon
+// structure a moored barge; four payloads each.
+// ================================================================
+
+R.fx = [];
+R.islandBars = new Map();
+
+function makeChassis(side, onLand) {
+  const grp = new THREE.Group();
+  if (side === 'A') {
+    // tethered balloon: envelope + slung gondola + tether
+    const env = new THREE.Mesh(
+      new THREE.SphereGeometry(0.26, 10, 8),
+      new THREE.MeshLambertMaterial({ color: Palette.ivory }));
+    env.scale.set(1.25, 1, 1);
+    env.position.y = 0.95;
+    const gond = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 0.09, 0.12),
+      new THREE.MeshLambertMaterial({ color: Palette.bronze }));
+    gond.position.y = 0.62;
+    const tether = new THREE.Mesh(
+      new THREE.BoxGeometry(0.015, onLand ? 0.5 : 0.6, 0.015),
+      new THREE.MeshBasicMaterial({ color: 0x9c8b6a }));
+    tether.position.y = 0.3;
+    grp.add(env, gond, tether);
+    grp.userData.envelope = env;
+  } else {
+    const hull = new THREE.Mesh(
+      new THREE.BoxGeometry(0.55, 0.1, 0.34),
+      new THREE.MeshLambertMaterial({ color: 0x274046 }));
+    hull.position.y = 0.07;
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.05, 0.26),
+      new THREE.MeshLambertMaterial({ color: 0x37585e }));
+    deck.position.y = 0.14;
+    grp.add(hull, deck);
+  }
+  return grp;
+}
+
+function makePayload(side, type, stats) {
+  const grp = new THREE.Group();
+  const trim = new THREE.MeshLambertMaterial({ color: side === 'A' ? Palette.gold : Palette.poseidonGlow });
+  const dark = new THREE.MeshLambertMaterial({ color: Palette.bronze });
+  const y = side === 'A' ? 0.62 : 0.2;
+  switch (type) {
+    case 'vane': {
+      for (let i = 0; i < 4; i++) {
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.05), i % 2 ? trim : dark);
+        arm.position.y = y + 0.1;
+        arm.rotation.y = (i / 4) * Math.PI;
+        grp.add(arm);
+      }
+      break;
+    }
+    case 'bolt': case 'mast': {
+      const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.06, 0.08), dark);
+      barrel.position.set(0.14, y + 0.06, 0);
+      grp.add(barrel);
+      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.1), trim);
+      tip.position.set(0.3, y + 0.06, 0);
+      grp.add(tip);
+      grp.userData.rotates = true;
+      break;
+    }
+    case 'shield': {
+      const arc = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.42, 0.42, 0.32, 12, 1, true, -Math.PI / 3, (2 * Math.PI) / 3),
+        new THREE.MeshLambertMaterial({
+          color: side === 'A' ? Palette.aeolusGlow : Palette.poseidonGlow,
+          transparent: true, opacity: 0.4, side: THREE.DoubleSide
+        }));
+      arc.position.y = y + 0.1;
+      arc.rotation.y = Math.PI / 2;
+      grp.add(arc);
+      grp.userData.rotates = true;
+      break;
+    }
+    case 'temple': {
+      const stone = new THREE.MeshLambertMaterial({ color: side === 'A' ? Palette.ivory : Palette.poseidonStone });
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.36, 0.1, 8), stone);
+      base.position.y = 0.1;
+      for (let i = 0; i < 5; i++) {
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.3, 5), stone);
+        const a = (i / 5) * Math.PI * 2;
+        col.position.set(Math.cos(a) * 0.22, 0.3, Math.sin(a) * 0.22);
+        grp.add(col);
+      }
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.2, 8), trim);
+      roof.position.y = 0.52;
+      grp.add(base, roof);
+      break;
+    }
+    case 'yard': {
+      for (const dx of [-0.2, 0.2]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 0.06), dark);
+        post.position.set(dx, 0.24, 0);
+        grp.add(post);
+      }
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.05, 0.08), trim);
+      beam.position.y = 0.44;
+      grp.add(beam);
+      break;
+    }
+  }
+  return grp;
+}
+
+function structVisibleToPlayer(state, st) {
+  if (st.owner === 'A') return 'full';
+  const k = cellKey(st.cell[0], st.cell[1]);
+  if (state.vision.A.has(k)) return 'full';
+  if (state.memory.A.has('st:' + st.id)) return 'dim';
+  return 'hidden';
+}
+
+function syncStructures(state) {
+  const seen = new Set();
+  for (const st of state.structures) {
+    if (st.hp <= 0) continue;
+    seen.add(st.id);
+    let rec = R.structMeshes.get(st.id);
+    if (!rec) {
+      const onLand = st.site === 'plot' || state.map.land.has(cellKey(st.cell[0], st.cell[1]));
+      const grp = new THREE.Group();
+      const chassis = st.type === 'temple' || st.type === 'yard' ? new THREE.Group() : makeChassis(st.owner, onLand);
+      const payload = makePayload(st.owner, st.type, st);
+      grp.add(chassis, payload);
+      const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (st.owner === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
+      grp.position.set(worldX(st.cell[0]), baseY, worldZ(st.cell[1]));
+      // progress ring while raising
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.4, 0.48, 20),
+        new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.9;
+      grp.add(ring);
+      R.scene.add(grp);
+      rec = { grp, payload, ring, chassis };
+      R.structMeshes.set(st.id, rec);
+    }
+    const vis = structVisibleToPlayer(state, st);
+    rec.grp.visible = vis !== 'hidden';
+    const dim = vis === 'dim';
+    rec.grp.traverse(o => {
+      if (o.material) {
+        o.material.transparent = true;
+        o.material.opacity = dim ? 0.3 : (o.userData && o.userData.baseOpacity) || (st.buildProgress < 1 ? 0.6 : 1);
+      }
+    });
+    if (rec.payload.userData.rotates) rec.payload.rotation.y = -st.facing;
+    // building: ring shows progress; bob balloons in the wind
+    rec.ring.visible = st.buildProgress < 1;
+    if (st.buildProgress < 1) rec.ring.scale.setScalar(0.4 + st.buildProgress * 0.8);
+    if (rec.chassis.userData && rec.chassis.userData.envelope) {
+      const w = state.wind.at(st.cell[0], st.cell[1]);
+      rec.chassis.rotation.z = -w.x * 0.12;
+      rec.chassis.rotation.x = w.z * 0.12;
+      rec.chassis.position.y = 0.03 * Math.sin(state.time * 1.7 + st.id);
+    }
+    // hit flash
+    if (state.time - st.lastHitAt < 0.15) rec.grp.position.y += 0.02;
+  }
+  for (const [id, rec] of R.structMeshes) {
+    if (!seen.has(id)) {
+      R.scene.remove(rec.grp);
+      R.structMeshes.delete(id);
+    }
+  }
+}
+
+// ---- movers: haulers, priests, wave craft ----
+function makeMoverMesh(m) {
+  const grp = new THREE.Group();
+  if (m.owner === 'A') {
+    const isPriest = m.kind === 'priest';
+    const env = new THREE.Mesh(
+      new THREE.SphereGeometry(isPriest ? 0.24 : 0.18, 10, 8),
+      new THREE.MeshLambertMaterial({ color: isPriest ? Palette.gold : Palette.ivory }));
+    env.scale.set(1.5, 0.9, 0.9);
+    env.position.y = 0.22;
+    const gond = new THREE.Mesh(
+      new THREE.BoxGeometry(isPriest ? 0.3 : 0.24, 0.07, 0.1),
+      new THREE.MeshLambertMaterial({ color: Palette.bronze }));
+    gond.position.y = 0.02;
+    grp.add(env, gond);
+    if (isPriest) {
+      const banner = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.3, 0.1),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+      banner.position.set(-0.3, 0.28, 0);
+      grp.add(banner);
+    }
+    grp.userData.env = env;
+  } else {
+    // sea craft: trireme silhouettes
+    const big = m.kind === 'heavy';
+    const hull = new THREE.Mesh(
+      new THREE.BoxGeometry(big ? 0.6 : 0.42, 0.09, big ? 0.26 : 0.18),
+      new THREE.MeshLambertMaterial({ color: m.kind === 'transport' ? 0x3a5b52 : 0x22454e }));
+    hull.position.y = 0.06;
+    const prow = new THREE.Mesh(
+      new THREE.ConeGeometry(0.07, 0.2, 5),
+      new THREE.MeshLambertMaterial({ color: Palette.bronze }));
+    prow.rotation.z = -Math.PI / 2;
+    prow.position.set(big ? 0.36 : 0.27, 0.08, 0);
+    grp.add(hull, prow);
+    if (m.kind === 'siphon' || m.kind === 'priest') {
+      const pipe = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.05, 0.34, 6),
+        new THREE.MeshLambertMaterial({ color: Palette.poseidonGlow }));
+      pipe.position.y = 0.26;
+      grp.add(pipe);
+    }
+  }
+  return grp;
+}
+
+function moverY(m) {
+  return m.owner === 'A' ? CONFIG.Render.AIR_ALTITUDE + 0.05 : 0.03;
+}
+
+function syncMovers(state) {
+  const seen = new Set();
+  const movers = [];
+  for (const h of state.haulers) if (h.state !== 'dead') movers.push(h);
+  for (const s of ['A', 'P']) {
+    const p = state.priests[s];
+    if (p && p.state !== 'dead') movers.push(p);
+  }
+  for (const c of state.craft) if (!c.dead) movers.push(c);
+
+  for (const m of movers) {
+    seen.add(m.id);
+    let rec = R.craftMeshes.get(m.id);
+    if (!rec) {
+      const grp = makeMoverMesh(m);
+      R.scene.add(grp);
+      rec = { grp, lastPos: m.pos.slice() };
+      R.craftMeshes.set(m.id, rec);
+    }
+    // fog: enemy movers need live vision (§14B.2)
+    const visible = m.owner === 'A' ||
+      state.vision.A.has(cellKey(Math.round(m.pos[0]), Math.round(m.pos[1])));
+    rec.grp.visible = visible;
+    const dx = m.pos[0] - rec.lastPos[0], dz = m.pos[1] - rec.lastPos[1];
+    if (Math.abs(dx) + Math.abs(dz) > 0.001) {
+      rec.grp.rotation.y = -Math.atan2(dz, dx);
+      rec.lastPos = m.pos.slice();
+    }
+    rec.grp.position.set(worldX(m.pos[0]), moverY(m), worldZ(m.pos[1]));
+    if (m.state === 'adrift') {
+      rec.grp.rotation.y += Math.sin(state.time * 3 + m.id) * 0.15;
+      rec.grp.rotation.z = Math.sin(state.time * 2.2 + m.id) * 0.3;
+      rec.grp.position.y += Math.sin(state.time * 4 + m.id) * 0.06;
+    } else {
+      rec.grp.rotation.z = 0;
+    }
+    // hydrogen fleets fly visibly larger envelopes (§33E)
+    if (m.kind === 'hauler' && m.owner === 'A') {
+      const scale = state.hydrogen.A ? 1.3 : 1.0;
+      rec.grp.scale.setScalar(scale);
+      // venting tell below threshold (§33C.5)
+      if (rec.grp.userData !== undefined && m.hull < CONFIG.Airship.VENT_THRESHOLD) {
+        rec.grp.children.forEach(ch => { if (ch.material && ch.material.color) ch.material.opacity = 0.6 + 0.3 * Math.sin(state.time * 10); });
+      }
+    }
+  }
+  for (const [id, rec] of R.craftMeshes) {
+    if (!seen.has(id)) {
+      R.scene.remove(rec.grp);
+      R.craftMeshes.delete(id);
+    }
+  }
+}
+
+// ---- island economy indicators: reserve bar + stockpile heap ----
+function syncIslandBars(state) {
+  for (const isl of state.map.islands) {
+    if (isl.role.startsWith('greatTemple')) continue;
+    let rec = R.islandBars.get(isl.id);
+    if (!rec) {
+      const heap = new THREE.Mesh(
+        new THREE.ConeGeometry(0.22, 0.3, 7),
+        new THREE.MeshLambertMaterial({ color: Palette.gold }));
+      const [hx, hz] = isl.cells[0];
+      heap.position.set(worldX(hx), CONFIG.Render.ISLAND_HEIGHT, worldZ(hz));
+      const bar = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.05, 0.08),
+        new THREE.MeshBasicMaterial({ color: 0x76d09a }));
+      bar.position.set(worldX(isl.center[0]), CONFIG.Render.ISLAND_HEIGHT + 0.7, worldZ(isl.center[1]));
+      R.scene.add(heap, bar);
+      rec = { heap, bar, baseReserve: isl.reserve };
+      R.islandBars.set(isl.id, rec);
+    }
+    const stockScale = clamp(isl.stockpile / 40, 0.001, 1.4);
+    rec.heap.scale.setScalar(stockScale);
+    rec.heap.visible = isl.stockpile > 0.5;
+    const frac = rec.baseReserve > 0 ? isl.reserve / rec.baseReserve : 0;
+    rec.bar.scale.x = Math.max(0.02, frac);
+    rec.bar.visible = !!isl.owner && !isl.minedOut;
+    rec.bar.material.color.setHex(isl.owner === 'A' ? 0x76d09a : 0x4fb6c4);
+  }
+}
+
+// ---- transient effects ----
+function fxSpawn(state, kind, pos, data) {
+  R.fx.push({ kind, pos: pos.slice(), t0: state.time, data: data || {} });
+}
+
+function initFxEvents(state) {
+  Events.on('structureDestroyed', ({ st }) => fxSpawn(state, 'boom', st.cell));
+  Events.on('segmentDestroyed', ({ seg, cause }) => {
+    fxSpawn(state, cause === 'collapse' ? 'unravel' : 'boom', segMid(seg), { air: seg.owner === 'A' });
+  });
+  Events.on('convoyLost', ({ ent }) => fxSpawn(state, 'wreck', ent.pos));
+  Events.on('tidalSurge', ({ center }) => fxSpawn(state, 'surge', center));
+  Events.on('fogBank', ({ center }) => fxSpawn(state, 'fogbank', center));
+  Events.on('windwall', ({ cell }) => fxSpawn(state, 'windwall', cell));
+  Events.on('greatTempleHit', ({ side }) => {
+    const gt = state.greatTemple[side];
+    if (Math.random() < 0.05) fxSpawn(state, 'boom', gt.cell);
+  });
+}
+
+function fxTick(state, dt) {
+  for (const f of R.fx) {
+    const age = state.time - f.t0;
+    if (!f.mesh) {
+      let mesh = null;
+      if (f.kind === 'boom') {
+        mesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6),
+          new THREE.MeshBasicMaterial({ color: 0xffc16e, transparent: true, opacity: 0.9 }));
+      } else if (f.kind === 'unravel') {
+        mesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 5),
+          new THREE.MeshBasicMaterial({ color: f.data.air ? 0xf2e8cf : 0x7fd4dd, transparent: true, opacity: 0.7 }));
+      } else if (f.kind === 'wreck') {
+        mesh = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.05, 0.15),
+          new THREE.MeshLambertMaterial({ color: 0x6b5b45 }));
+      } else if (f.kind === 'surge') {
+        mesh = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.9, 24),
+          new THREE.MeshBasicMaterial({ color: 0x7fd4dd, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
+        mesh.rotation.x = -Math.PI / 2;
+      } else if (f.kind === 'fogbank') {
+        mesh = new THREE.Mesh(new THREE.CylinderGeometry(CONFIG.Powers.FOG_BANK.RADIUS, CONFIG.Powers.FOG_BANK.RADIUS, 0.3, 20),
+          new THREE.MeshBasicMaterial({ color: 0xb8c4c6, transparent: true, opacity: 0.25 }));
+      } else if (f.kind === 'windwall') {
+        mesh = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8),
+          new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.25 }));
+      }
+      const y = f.kind === 'wreck' || f.kind === 'surge' ? 0.04 : (f.data.air ? CONFIG.Render.AIR_ALTITUDE : 0.3);
+      mesh.position.set(worldX(f.pos[0]), y, worldZ(f.pos[1]));
+      R.scene.add(mesh);
+      f.mesh = mesh;
+    }
+    const life = f.kind === 'wreck' ? 20 : f.kind === 'fogbank' ? CONFIG.Powers.FOG_BANK.DURATION
+      : f.kind === 'windwall' ? CONFIG.Powers.WIND_WALL.DURATION : f.kind === 'surge' ? 1.4 : 0.8;
+    if (age > life) {
+      R.scene.remove(f.mesh);
+      f.dead = true;
+      continue;
+    }
+    if (f.kind === 'boom' || f.kind === 'unravel') {
+      f.mesh.scale.setScalar(1 + age * 3);
+      f.mesh.material.opacity = Math.max(0, 0.9 * (1 - age / life));
+    } else if (f.kind === 'surge') {
+      f.mesh.scale.setScalar(1 + age * 4);
+      f.mesh.material.opacity = Math.max(0, 0.7 * (1 - age / life));
+    } else if (f.kind === 'wreck') {
+      f.mesh.rotation.y += dt * 0.3;
+      f.mesh.material.opacity = 1;
+    }
+  }
+  R.fx = R.fx.filter(f => !f.dead);
+}
+
+// ---- exploration shroud: unexplored terrain is dark until the player's
+// reach (structures, corridors, ships) lifts it. One-way. ----
+R.shroud = new Map();
+
+function buildShroud(state) {
+  for (const m of R.shroud.values()) R.scene.remove(m);
+  R.shroud.clear();
+  const geo = new THREE.PlaneGeometry(1.04, 1.04);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x060f14, transparent: true, opacity: CONFIG.Render.SHROUD_OPACITY
+  });
+  for (let z = 0; z < CONFIG.Grid.HEIGHT; z++) {
+    for (let x = 0; x < CONFIG.Grid.WIDTH; x++) {
+      const m = new THREE.Mesh(geo, mat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(worldX(x), 1.55, worldZ(z));
+      R.scene.add(m);
+      R.shroud.set(cellKey(x, z), m);
+    }
+  }
+}
+
+function syncShroud(state) {
+  if (!state.explored) return;
+  for (const k of state.explored) {
+    const m = R.shroud.get(k);
+    if (m) {
+      R.scene.remove(m);
+      R.shroud.delete(k);
+    }
+  }
+}
+
+// enemy segment fog handling is layered onto syncSegments via this hook
+function segmentVisibility(state, s) {
+  if (s.owner === 'A') return 'full';
+  const m = segMid(s);
+  if (state.vision.A.has(cellKey(Math.round(m[0]), Math.round(m[1])))) return 'full';
+  if (state.memory.A.has('seg:' + s.key)) return 'dim';
+  return 'hidden';
 }
 
 // ============================================================
@@ -2078,8 +4410,57 @@ function initUI(state) {
   UI.els.confirm.addEventListener('click', () => confirmPlacement(state));
   UI.els.cancel.addEventListener('click', () => cancelPlacement());
   UI.els.discard.addEventListener('click', () => discardPiece(state));
+  UI.els.tech.addEventListener('click', () => {
+    if (buyHydrogen(state, 'A')) {
+      showBanner('THE LIGHT AIR', 'Iron filings and sour wine. The fleet is reborn.');
+      UI.els.tech.disabled = true;
+    } else flashTicker('NEEDS 25 SUPPLY AND 6 FAVOR');
+  });
+  UI.els.powTailwind.addEventListener('click', () => {
+    if (!castTailwind(state)) flashTicker('NOT ENOUGH FAVOR');
+  });
+  UI.els.powWindwall.addEventListener('click', () => {
+    if (state.res.A.favor < CONFIG.Powers.WIND_WALL.FAVOR) { flashTicker('NOT ENOUGH FAVOR'); return; }
+    UI.windwallArmed = !UI.windwallArmed;
+    UI.els.powWindwall.classList.toggle('armed', UI.windwallArmed);
+    if (UI.windwallArmed) flashTicker('TAP AN ENDPOINT TO SHELTER');
+  });
+  UI.els.priestchip.classList.remove('hidden');
+  UI.els.priestchip.addEventListener('click', () => {
+    const p = state.priests.A;
+    if (p) panCameraTo(worldX(p.pos[0]), worldZ(p.pos[1]));
+  });
 
-  R.renderer.domElement.addEventListener('pointerdown', (e) => onTap(state, e));
+  // pan vs tap: a drag beyond the threshold pans the camera; a clean
+  // press-and-release is a tap
+  const canvas = R.renderer.domElement;
+  const pan = { active: false, panned: false, sx: 0, sy: 0, ground: null, target: null };
+  canvas.addEventListener('pointerdown', (e) => {
+    pan.active = true;
+    pan.panned = false;
+    pan.sx = e.clientX; pan.sy = e.clientY;
+    pan.ground = pickGround(e.clientX, e.clientY);
+    pan.target = { ...R.camTarget };
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!pan.active) return;
+    const moved = Math.hypot(e.clientX - pan.sx, e.clientY - pan.sy);
+    if (!pan.panned && moved < CONFIG.Render.TAP_DRAG_THRESHOLD_PX) return;
+    pan.panned = true;
+    if (!pan.ground) return;
+    const now = pickGround(e.clientX, e.clientY);
+    if (!now) return;
+    R.camTarget.x = R.camTarget.x + (pan.ground.x - now.x);
+    R.camTarget.z = R.camTarget.z + (pan.ground.z - now.z);
+    updateCamera();
+    pan.ground = pickGround(e.clientX, e.clientY);
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    const wasTap = pan.active && !pan.panned;
+    pan.active = false;
+    if (wasTap) onTap(state, e);
+  });
+  canvas.addEventListener('pointercancel', () => { pan.active = false; });
 }
 
 // ---- hand ----
@@ -2233,7 +4614,88 @@ function onTap(state, e) {
     refreshHand(state);
     return;
   }
-  Events.emit('uiTapWorld', { cell });
+  hideBuildMenu();
+  if (!cell) return;
+
+  // armed Wind Wall aims at the tapped endpoint (§19.1)
+  if (UI.windwallArmed) {
+    UI.windwallArmed = false;
+    UI.els.powWindwall.classList.remove('armed');
+    castWindWall(state, cell);
+    return;
+  }
+  openContextMenu(state, cell);
+}
+
+// ---- build menu / island actions ----
+function hideBuildMenu() { UI.els.buildmenu.classList.add('hidden'); }
+
+function menuButton(label, cost, fn, disabledReason) {
+  const btn = document.createElement('button');
+  btn.innerHTML = label + (cost ? '<b>' + cost + ' ⚇</b>' : '');
+  if (disabledReason) {
+    btn.disabled = true;
+    btn.title = disabledReason;
+  } else {
+    btn.addEventListener('click', () => { fn(); hideBuildMenu(); });
+  }
+  return btn;
+}
+
+function openContextMenu(state, cell) {
+  const [x, z] = cell;
+  const menu = UI.els.buildmenu;
+  menu.innerHTML = '';
+  const options = [];
+  const isl = islandAt(state, x, z);
+  const plotIdx = isl ? isl.plots.findIndex(p => p.x === x && p.z === z) : -1;
+  const deg = nodeDegrees(state, 'A').get(cellKey(x, z)) || 0;
+
+  const tryBuild = (type, at) => () => {
+    const why = whyNotBuild(state, 'A', type, at);
+    if (why) { flashTicker(why); return; }
+    buildStructure(state, 'A', type, at);
+  };
+
+  if (!isl && deg === 1 && !structureAt(state, x, z)) {
+    const at = { site: 'endpoint', cell };
+    for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN']]) {
+      const why = whyNotBuild(state, 'A', type, at);
+      options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why));
+    }
+  } else if (isl && plotIdx >= 0) {
+    const at = { site: 'plot', islandId: isl.id, plotIdx, cell };
+    if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
+      options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at),
+        whyNotBuild(state, 'A', 'temple', at)));
+    }
+    if (isl.owner === 'A') {
+      for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
+        const why = whyNotBuild(state, 'A', type, at);
+        options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why));
+      }
+    }
+  } else if (isl) {
+    // island body: priest travel, hauler purchase at home/yarded islands
+    const p = state.priests.A;
+    const reachable = p && findNetPath(state, 'A', [Math.round(p.pos[0]), Math.round(p.pos[1])], isl.cells);
+    options.push(menuButton('SEND<br>PRIEST', 0, () => {
+      if (!sendPriest(state, 'A', isl)) flashTicker('NO SUPPORTED ROUTE REACHES IT');
+    }, reachable ? null : 'NO SUPPORTED ROUTE REACHES IT'));
+    const hasYard = isl.role === 'greatTempleA' ||
+      state.structures.some(st => st.owner === 'A' && st.type === 'yard' && st.islandId === isl.id && st.hp > 0 && st.buildProgress >= 1);
+    if (hasYard) {
+      const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
+      const capped = fleet >= fleetCap(state, 'A');
+      options.push(menuButton('BUILD<br>HAULER', CONFIG.Hauler.COST, () => {
+        if (!buyHauler(state, 'A')) flashTicker('FLEET AT CAPACITY');
+      }, capped ? 'FLEET AT CAPACITY' : (state.res.A.supply < CONFIG.Hauler.COST ? 'NOT ENOUGH SUPPLY' : null)));
+    }
+  }
+
+  if (!options.length) return;
+  for (const o of options) menu.appendChild(o);
+  menu.classList.remove('hidden');
 }
 
 // ---- HUD refresh ----
@@ -2247,6 +4709,24 @@ function refreshHUD(state) {
     const remain = Math.max(0, w.nextAt - state.time);
     UI.els.waveinfo.textContent = 'WAVE ' + (w.index + 1) + ' IN ' + Math.ceil(remain) + 's';
   }
+  // priest chip (§14.8.6)
+  const p = state.priests.A;
+  if (p) {
+    const label = p.state === 'dead' ? 'SUCCESSION ' + Math.max(0, Math.ceil(p.respawnAt - state.time)) + 's'
+      : p.state === 'adrift' ? 'ADRIFT'
+      : p.state === 'consecrating' ? 'CONSECRATING'
+      : p.state === 'transit' ? 'UNDER WAY'
+      : 'READY';
+    UI.els.priestchip.innerHTML = '&#9865; PRIEST<br>' + label;
+    UI.els.priestchip.classList.toggle('adrift', p.state === 'adrift' || p.state === 'dead');
+  }
+  // adrift fleet counter (§33G.5)
+  const adrift = state.haulers.filter(h => h.owner === 'A' && h.state === 'adrift').length;
+  if (adrift > 0 && !UI.lastAdrift) flashTicker('ADRIFT ×' + adrift);
+  UI.lastAdrift = adrift;
+  UI.els.tech.disabled = state.hydrogen.A;
+  UI.els.powTailwind.disabled = state.res.A.favor < CONFIG.Powers.TAILWIND.FAVOR || state.time < state.powers.tailwindUntil;
+  UI.els.powWindwall.disabled = state.res.A.favor < CONFIG.Powers.WIND_WALL.FAVOR && !UI.windwallArmed;
   refreshHand(state);
 }
 
@@ -2297,23 +4777,54 @@ function startMatch(seedStr) {
   recalcSupport(STATE, 'A');
   recalcSupport(STATE, 'P');
   refreshInfluence(STATE);
+
   if (!R.initialized) initRenderer();
   else {
-    // clear dynamic meshes from the previous match
     for (const m of R.segMeshes.values()) R.scene.remove(m);
     R.segMeshes.clear();
+    for (const rec of R.structMeshes.values()) R.scene.remove(rec.grp);
+    R.structMeshes.clear();
+    for (const rec of R.craftMeshes.values()) R.scene.remove(rec.grp);
+    R.craftMeshes.clear();
+    for (const rec of R.islandBars.values()) { R.scene.remove(rec.heap); R.scene.remove(rec.bar); }
+    R.islandBars.clear();
+    for (const f of R.fx) if (f.mesh) R.scene.remove(f.mesh);
+    R.fx = [];
+    for (const c of R.whitecaps) R.scene.remove(c.mesh);
+    for (const s of R.smoke) R.scene.remove(s.mesh);
   }
   buildMapMeshes(STATE);
+  buildShroud(STATE);
   refreshInfluenceView(STATE);
+
+  // opening state: a priest and one hauler on each side (§14.7.6, §14.8)
+  spawnPriest(STATE, 'A');
+  spawnPriest(STATE, 'P');
+  for (let i = 0; i < CONFIG.Hauler.START_COUNT; i++) {
+    spawnHauler(STATE, 'A');
+    spawnHauler(STATE, 'P');
+  }
+
+  initAI(STATE);
+  initFlow(STATE);
+  initFxEvents(STATE);
+  wireAudio();
   initUI(STATE);
+  initCodex(STATE);
   wireGameEvents(STATE);
+  fogTick(STATE, 1);
+
+  // open on the home temple; the map scrolls (drag to pan)
+  const gt = STATE.greatTemple.A.cell;
+  panCameraTo(worldX(gt[0]), worldZ(gt[1]) - 1.5);
+
   document.getElementById('startscreen').classList.add('hidden');
   document.getElementById('endscreen').classList.add('hidden');
 }
 
 function wireGameEvents(state) {
-  Events.on('networkSevered', () => {
-    if (!state.tutorial.seenSever) {
+  Events.on('networkSevered', ({ side }) => {
+    if (side === 'A' && !state.tutorial.seenSever) {
       state.tutorial.seenSever = true;
       showTutorialLine('“The binding is cut. Take another path before the wind remembers.”', 6000);
     }
@@ -2324,6 +4835,10 @@ function wireGameEvents(state) {
   });
   Events.on('segmentDestroyed', () => refreshInfluenceView(state));
   Events.on('piecePlaced', ({ side }) => { if (side === 'P') refreshInfluenceView(state); });
+  Events.on('islandClaimed', () => refreshInfluenceView(state));
+  Events.on('templeFallen', () => refreshInfluenceView(state));
+  Events.on('structureComplete', () => refreshInfluenceView(state));
+  Events.on('hydrogenUnlocked', ({ side }) => { if (side === 'A') buildHand(state); });
 }
 
 function frame(t) {
@@ -2335,9 +4850,22 @@ function frame(t) {
   if (!state.over) {
     state.time += dt;
     state.wind.tick(dt);
+    economyTick(state, dt);
+    structuresTick(state, dt);
+    updateTransit(state, dt);
+    combatTick(state, dt);
+    wavesTick(state, dt);
+    aiTick(state, dt);
+    fogTick(state, dt);
     collapseTick(state);
+    flowTick(state);
   }
   refreshHUD(state);
+  syncStructures(state);
+  syncMovers(state);
+  syncIslandBars(state);
+  syncShroud(state);
+  fxTick(state, dt);
   renderTick(state, dt);
 }
 
@@ -2351,6 +4879,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const seedInput = document.getElementById('seedinput');
   seedInput.value = makeSeedString();
   document.getElementById('startbtn').addEventListener('click', () => {
+    audioInit();
     const seed = (seedInput.value || makeSeedString()).trim().toLowerCase();
     startMatch(seed);
   });
