@@ -256,8 +256,25 @@ function syncMovers(state) {
       rec.grp.rotation.y += Math.sin(state.time * 3 + m.id) * 0.15;
       rec.grp.rotation.z = Math.sin(state.time * 2.2 + m.id) * 0.3;
       rec.grp.position.y += Math.sin(state.time * 4 + m.id) * 0.06;
+      // predicted drift line (§33G.5): where the wind will carry it
+      if (!rec.driftLine) {
+        const mat = new THREE.LineDashedMaterial({ color: 0xd9534f, dashSize: 0.18, gapSize: 0.14, transparent: true, opacity: 0.85 });
+        rec.driftLine = new THREE.Line(new THREE.BufferGeometry(), mat);
+        R.scene.add(rec.driftLine);
+      }
+      const pts = [];
+      let px = m.pos[0], pz = m.pos[1];
+      for (let i = 0; i <= 8; i++) {
+        pts.push(new THREE.Vector3(worldX(px), moverY(m), worldZ(pz)));
+        const w = state.wind.at(px, pz);
+        px += w.x * 0.5; pz += w.z * 0.5;
+      }
+      rec.driftLine.geometry.setFromPoints(pts);
+      rec.driftLine.computeLineDistances();
+      rec.driftLine.visible = true;
     } else {
       rec.grp.rotation.z = 0;
+      if (rec.driftLine) rec.driftLine.visible = false;
     }
     // hydrogen fleets fly visibly larger envelopes (§33E)
     if (m.kind === 'hauler' && m.owner === 'A') {
@@ -272,6 +289,7 @@ function syncMovers(state) {
   for (const [id, rec] of R.craftMeshes) {
     if (!seen.has(id)) {
       R.scene.remove(rec.grp);
+      if (rec.driftLine) R.scene.remove(rec.driftLine);
       R.craftMeshes.delete(id);
     }
   }
