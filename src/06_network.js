@@ -163,13 +163,14 @@ function legalPlacements(state, side, type, socket) {
 }
 
 function placementLegal(state, side, segs) {
-  const infl = state.influence[side];
   for (const [a, b] of segs) {
     for (const c of [a, b]) {
       if (!inBounds(c[0], c[1])) return false;
-      // influence gates all construction (§14.5.2)
-      if (CONFIG.Influence.GATES_CONSTRUCTION && !infl.has(cellKey(c[0], c[1]))) return false;
-      // a rival's claimed island refuses connection (§14.6.4)
+      // Roads are reach: route pieces are NOT influence-gated. The network
+      // itself carries the right to build at its tip — pushing corridors
+      // into contested and enemy waters is how ground is scouted and
+      // attacked. (Supersedes §14.5.2 for route pieces, by direction.)
+      // a rival's claimed island still refuses connection (§14.6.4)
       const isl = islandAt(state, c[0], c[1]);
       if (isl && islandClosedTo(state, isl, side)) return false;
     }

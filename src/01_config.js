@@ -121,6 +121,7 @@ const CONFIG = Object.freeze({
   },
 
   Craft: {
+    REACH_FROM_LANES: 3.0,   // his craft operate only in waters his network reaches
     TRANSPORT:  { HP: 30, DPS: 4,  RANGE: 0, SPEED: 0.9 },
     SIPHON:     { HP: 45, DPS: 6,  RANGE: 3, SPEED: 0.8 },
     HEAVY:      { HP: 80, DPS: 14, RANGE: 3, SPEED: 0.65 },

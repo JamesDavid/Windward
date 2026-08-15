@@ -79,10 +79,40 @@ function nearestWater(state, cell, avoid) {
   return cell;
 }
 
-function waterPath(state, from, to) {
+// Poseidon's craft operate only in waters his lane network reaches: within
+// REACH_FROM_LANES of a supported lane, a conducting island of his, or his
+// Great Temple island. He must build toward the player to strike them.
+function poseidonReach(state) {
+  if (state.pReach && state.time - state.pReach.at < 1.0) return state.pReach.set;
+  const seeds = [];
+  for (const s of state.segments.values()) {
+    if (s.owner === 'P' && s.supportState === 'SUPPORTED') seeds.push(s.a, s.b);
+  }
+  for (const isl of state.map.islands) {
+    if (islandConducts(state, isl, 'P')) seeds.push(...isl.cells);
+  }
+  seeds.push(...state.gtP.cells);
+  const R = CONFIG.Craft.REACH_FROM_LANES;
+  const set = new Set();
+  for (const [sx, sz] of seeds) {
+    for (let dz = -Math.ceil(R); dz <= Math.ceil(R); dz++) {
+      for (let dx = -Math.ceil(R); dx <= Math.ceil(R); dx++) {
+        if (Math.hypot(dx, dz) > R) continue;
+        const x = sx + dx, z = sz + dz;
+        if (inBounds(x, z)) set.add(cellKey(x, z));
+      }
+    }
+  }
+  state.pReach = { set, at: state.time };
+  return set;
+}
+
+function waterPath(state, from, to, side) {
   const start = nearestWater(state, [Math.round(from[0]), Math.round(from[1])]);
   const goal = nearestWater(state, [Math.round(to[0]), Math.round(to[1])]);
-  return bfsPath([start], new Set([cellKey(goal[0], goal[1])]), (x, z) => !state.map.land.has(cellKey(x, z)));
+  const reach = side === 'P' ? poseidonReach(state) : null;
+  return bfsPath([start], new Set([cellKey(goal[0], goal[1])]),
+    (x, z) => !state.map.land.has(cellKey(x, z)) && (!reach || reach.has(cellKey(x, z))));
 }
 
 function spawnCraft(state, kind, origin, script) {
@@ -183,6 +213,14 @@ function castFogBank(state) {
 }
 
 // ---- craft behaviour ----
+function targetKey(t) {
+  return t.kind + ':' + (t.ref && t.ref.id !== undefined ? t.ref.id : (t.ref && t.ref.key) || t.side);
+}
+
+function targetAllowed(c, t, state) {
+  return !(c.avoidTargets && c.avoidTargets.has(targetKey(t)) && state.time < c.avoidTargets.get(targetKey(t)));
+}
+
 function craftPickTarget(state, c) {
   const inR = (pos, r) => dist2d(pos[0], pos[1], c.pos[0], c.pos[1]) <= r;
   if (c.script) {
@@ -190,7 +228,7 @@ function craftPickTarget(state, c) {
     if (st) return { kind: 'structure', ref: st, side: 'A', pos: st.cell };
     c.script = null;
   }
-  const structs = enemyStructureTargets(state, 'P');   // player structures + GT
+  const structs = enemyStructureTargets(state, 'P').filter(t => targetAllowed(c, t, state));
   if (c.kind === 'transport' || c.kind === 'heavy') {
     // island structures and temples first, else the Great Temple
     const pref = structs.filter(t => t.kind === 'greatTemple' || t.ref.site === 'plot' || c.kind === 'heavy');
@@ -207,8 +245,10 @@ function craftPickTarget(state, c) {
   for (const s of state.segments.values()) {
     if (s.owner !== 'A' || !s.overWater || !s.rawEnd) continue;
     const m = segMid(s);
+    const t = { kind: 'segment', ref: s, side: 'A', pos: m };
+    if (!targetAllowed(c, t, state)) continue;
     const d = dist2d(m[0], m[1], c.pos[0], c.pos[1]);
-    if (d < bd) { bd = d; best = { kind: 'segment', ref: s, side: 'A', pos: m }; }
+    if (d < bd) { bd = d; best = t; }
   }
   if (!best) {
     for (const t of structs) {
@@ -242,9 +282,18 @@ function updateCraft(state, c, dt) {
     return;
   }
   if (!c.path) {
-    c.path = waterPath(state, c.pos, c.target.pos);
+    c.path = waterPath(state, c.pos, c.target.pos, 'P');
     c.legIndex = 0; c.legT = 0;
-    if (!c.path || c.path.length < 2) { c.path = null; return; }
+    if (!c.path || c.path.length < 2) {
+      // target beyond his network's reach: he masses at the edge of his
+      // waters until his lanes are built further
+      if (!c.avoidTargets) c.avoidTargets = new Map();
+      c.avoidTargets.set(targetKey(c.target), state.time + 12);
+      c.path = null;
+      c.target = null;
+      c.retargetAt = state.time + 1.5;
+      return;
+    }
   }
   // advance along water path with slight sea wind effect
   const a = c.path[c.legIndex], b = c.path[Math.min(c.legIndex + 1, c.path.length - 1)];

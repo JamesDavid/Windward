@@ -47,12 +47,13 @@ function initAI(state) {
 function aiScoreIsland(state, isl) {
   if (isl.role.startsWith('greatTemple')) return -1;
   if (isl.temple && isl.temple.hp > 0) return -1;             // taken (his or claimed rival ground)
-  // he cannot build toward ground he holds no influence over — hard gate,
-  // or distant player-side islands hypnotise him into replanning forever
-  if (!state.influence.P.has(cellKey(Math.round(isl.center[0]), Math.round(isl.center[1])))) return 0.2;
   const bad = state.ai && state.ai.badObjectives;
   if (bad && bad.has(isl.id) && state.time < bad.get(isl.id)) return 0.1;
   let score = 0;
+  // his waves need his lanes near the player: he values ground that
+  // carries his reach toward the enemy temple
+  const dPlayer = dist2d(isl.center[0], isl.center[1], state.greatTemple.A.cell[0], state.greatTemple.A.cell[1]);
+  score += Math.max(0, 22 - dPlayer) * 0.25;
   // uncontested ground his temple would newly cover
   let overlap = 0;
   for (let dz = -CONFIG.Influence.TEMPLE_RADIUS; dz <= CONFIG.Influence.TEMPLE_RADIUS; dz++) {
@@ -97,7 +98,6 @@ function aiPlanPath(state, isl) {
     for (const [dx, dz] of DIRS4) {
       const nx = x + dx, nz = z + dz, nk = cellKey(nx, nz);
       if (!inBounds(nx, nz)) continue;
-      if (!state.influence.P.has(nk)) continue;                       // influence gates him too
       if (avoid.has(nk) && state.time < avoid.get(nk)) continue;
       const isl2 = islandAt(state, nx, nz);
       if (isl2 && islandClosedTo(state, isl2, 'P')) continue;

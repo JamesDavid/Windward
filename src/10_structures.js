@@ -51,7 +51,9 @@ function structureSupported(state, st) {
 function whyNotBuild(state, side, type, at) {
   const stats = structureStats(side, type);
   if (state.res[side].supply < stats.cost) return 'NOT ENOUGH SUPPLY';
-  if (CONFIG.Influence.GATES_CONSTRUCTION && !state.influence[side].has(cellKey(at.cell[0], at.cell[1]))) return 'BEYOND YOUR INFLUENCE';
+  // Roads are reach: an endpoint the network has arrived at is buildable
+  // regardless of influence — the tower exists because the road got there
+  // (§14A.2). Temples are gated by the priest's journey instead.
   if (at.site === 'endpoint') {
     if (type === 'temple' || type === 'yard') return 'ISLAND PLOTS ONLY';
     if (structureAt(state, at.cell[0], at.cell[1])) return 'OCCUPIED';

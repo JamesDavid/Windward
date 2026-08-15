@@ -284,10 +284,24 @@ function makeSegMesh(seg) {
     post.position.y = -y / 2;
     grp.add(post);
   }
+  if (isAir) {
+    // wind motes drifting along the ribbon — faster where aligned (§21A.5)
+    grp.userData.motes = [];
+    for (let i = 0; i < CONFIG.Render.RIBBON_PARTICLES; i++) {
+      const mote = new THREE.Mesh(
+        new THREE.SphereGeometry(0.035, 5, 4),
+        new THREE.MeshBasicMaterial({ color: 0xfff6dd, transparent: true, opacity: 0.9 }));
+      mote.position.y = 0.06;
+      grp.add(mote);
+      grp.userData.motes.push({ mesh: mote, phase: i / CONFIG.Render.RIBBON_PARTICLES });
+    }
+  }
   grp.position.set((ax + bx) / 2, y, (az + bz) / 2);
   grp.rotation.y = -Math.atan2(bz - az, bx - ax);
   grp.userData.mat = mat;
   grp.userData.isAir = isAir;
+  grp.userData.seg = seg;
+  grp.userData.len = len;
   return grp;
 }
 
@@ -469,6 +483,23 @@ function renderTick(state, dt) {
     s.mesh.position.set(s.base.x + w.x * d, s.base.y + 0.85 + s.phase * 0.5, s.base.z + w.z * d);
     s.mesh.material.opacity = 0.32 * (1 - s.phase);
     s.mesh.scale.setScalar(0.7 + s.phase * 1.6);
+  }
+  // wind motes ride the corridors, faster where the wind agrees
+  for (const mesh of R.segMeshes.values()) {
+    const md = mesh.userData;
+    if (!md.motes || !mesh.visible) continue;
+    const s = md.seg;
+    const dx = s.b[0] - s.a[0], dz = s.b[1] - s.a[1];
+    const w = state.wind.at((s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2);
+    const align = (dx * w.x + dz * w.z) / (Math.hypot(dx, dz) || 1);
+    const speed = 0.25 + Math.abs(align) * 0.6;
+    const dir = align >= 0 ? 1 : -1;
+    const active = s.supportState === 'SUPPORTED';
+    for (const m of md.motes) {
+      m.phase = (m.phase + dir * speed * dt + 1) % 1;
+      m.mesh.position.x = (m.phase - 0.5) * md.len;
+      m.mesh.material.opacity = active ? 0.5 + 0.4 * Math.sin((m.phase + state.time * 0.3) * Math.PI * 2) : 0.08;
+    }
   }
   // pulse the placement affordances so they are unmissable
   const pulse = 1 + 0.13 * Math.sin(state.time * 5);

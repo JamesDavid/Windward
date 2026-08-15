@@ -131,6 +131,7 @@ function syncStructures(state) {
       grp.add(chassis, payload);
       const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (st.owner === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
       grp.position.set(worldX(st.cell[0]), baseY, worldZ(st.cell[1]));
+      grp.userData.baseY = baseY;
       // scaffold ring at ground level while raising
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(0.42, 0.52, 20),
@@ -161,8 +162,9 @@ function syncStructures(state) {
       rec.chassis.rotation.x = w.z * 0.12;
       rec.chassis.position.y = 0.03 * Math.sin(state.time * 1.7 + st.id);
     }
-    // hit flash
-    if (state.time - st.lastHitAt < 0.15) rec.grp.position.y += 0.02;
+    // hit shudder — absolute, never accumulates
+    const flash = state.time - st.lastHitAt < 0.18 ? Math.sin(state.time * 60) * 0.03 : 0;
+    rec.grp.position.y = rec.grp.userData.baseY + flash;
   }
   for (const [id, rec] of R.structMeshes) {
     if (!seen.has(id)) {
@@ -347,19 +349,45 @@ function syncIslandBars(state) {
     if (isl.role.startsWith('greatTemple')) continue;
     let rec = R.islandBars.get(isl.id);
     if (!rec) {
+      const [hx, hz] = isl.cells[0];
+      // the MINE: an unmistakable quarry pit with a bronze headframe on
+      // every ore-bearing island — this is what the haulers come for
+      const mine = new THREE.Group();
+      const pit = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3, 0.36, 0.1, 8),
+        new THREE.MeshLambertMaterial({ color: 0x2a2118 }));
+      pit.position.y = 0.03;
+      mine.add(pit);
+      const frameMat = new THREE.MeshLambertMaterial({ color: Palette.bronze });
+      for (const sx of [-0.22, 0.22]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.06), frameMat);
+        leg.position.set(sx, 0.28, 0);
+        leg.rotation.z = sx > 0 ? -0.35 : 0.35;
+        mine.add(leg);
+      }
+      const cross = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.08), frameMat);
+      cross.position.y = 0.5;
+      mine.add(cross);
+      const wheel = new THREE.Mesh(
+        new THREE.TorusGeometry(0.09, 0.025, 6, 10),
+        new THREE.MeshLambertMaterial({ color: Palette.gold }));
+      wheel.position.y = 0.5;
+      mine.add(wheel);
+      mine.position.set(worldX(hx), CONFIG.Render.ISLAND_HEIGHT, worldZ(hz));
       const heap = new THREE.Mesh(
         new THREE.ConeGeometry(0.22, 0.3, 7),
         new THREE.MeshLambertMaterial({ color: Palette.gold }));
-      const [hx, hz] = isl.cells[0];
-      heap.position.set(worldX(hx), CONFIG.Render.ISLAND_HEIGHT, worldZ(hz));
+      heap.position.set(worldX(hx) + 0.45, CONFIG.Render.ISLAND_HEIGHT, worldZ(hz) + 0.2);
       const bar = new THREE.Mesh(
         new THREE.BoxGeometry(0.6, 0.05, 0.08),
         new THREE.MeshBasicMaterial({ color: 0x76d09a }));
       bar.position.set(worldX(isl.center[0]), CONFIG.Render.ISLAND_HEIGHT + 0.7, worldZ(isl.center[1]));
-      R.scene.add(heap, bar);
-      rec = { heap, bar, baseReserve: isl.reserve };
+      R.scene.add(mine, heap, bar);
+      rec = { mine, pit, heap, bar, baseReserve: isl.reserve };
       R.islandBars.set(isl.id, rec);
     }
+    rec.mine.visible = isl.reserve > 0 || isl.stockpile > 0.5;
+    if (isl.minedOut && rec.pit) rec.pit.material.color.setHex(0x4a4237);
     const stockScale = clamp(isl.stockpile / 40, 0.001, 1.4);
     rec.heap.scale.setScalar(stockScale);
     rec.heap.visible = isl.stockpile > 0.5;
@@ -406,7 +434,7 @@ function fxTick(state, dt) {
     if (!f.mesh) {
       let mesh = null;
       if (f.kind === 'boom') {
-        mesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6),
+        mesh = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 6),
           new THREE.MeshBasicMaterial({ color: 0xffc16e, transparent: true, opacity: 0.9 }));
       } else if (f.kind === 'unravel') {
         mesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 5),
