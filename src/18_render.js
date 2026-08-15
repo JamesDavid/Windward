@@ -134,6 +134,13 @@ function updateCamera() {
     h,
     t.z + Math.cos(R.camAz || 0) * back);
   R.camera.lookAt(t.x, 0, t.z);
+  // atmospheric depth cue scales with zoom so zooming out never fogs
+  // ground the player could see up close
+  if (R.scene && R.scene.fog) {
+    const d = Math.hypot(back, h);
+    R.scene.fog.near = d * 1.12;
+    R.scene.fog.far = d * 2.1;
+  }
 }
 
 function panCameraTo(wx, wz) {
