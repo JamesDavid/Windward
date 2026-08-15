@@ -317,6 +317,39 @@ function menuButton(label, cost, fn, disabledReason) {
   return btn;
 }
 
+const STRUCT_NAMES = {
+  vane: 'CHAIN VANE (radial gun)', bolt: 'BOLT BATTERY (long gun)', shield: 'AEGIS SCREEN (shield)',
+  temple: 'TEMPLE', yard: 'MOORING YARD (builds haulers)', mast: 'SIPHON MAST (his anti-air)'
+};
+const ISLAND_NAMES = {
+  greatTempleA: 'YOUR GREAT TEMPLE', greatTempleP: 'HIS GREAT TEMPLE',
+  supplyA: 'SUPPLY ISLAND', supplyP: 'HIS SUPPLY ISLAND', chokepoint: 'THE CHOKEPOINT',
+  sacredA: 'A SACRED ISLE', sacredP: 'A SACRED ISLE', neutralA: 'A NEUTRAL ISLE',
+  neutralP: 'A NEUTRAL ISLE', filler: 'A SKERRY'
+};
+
+// name whatever was tapped, so nothing on the board stays a mystery
+function identifyCell(state, cell) {
+  const st = structureAt(state, cell[0], cell[1]);
+  if (st) {
+    const who = st.owner === 'A' ? '' : 'HIS ';
+    return who + (STRUCT_NAMES[st.type] || st.type.toUpperCase()) +
+      (st.buildProgress < 1 ? ' — RAISING' : '') + ' · ' + Math.ceil(st.hp) + ' HP';
+  }
+  const isl = islandAt(state, cell[0], cell[1]);
+  if (isl) {
+    let s = ISLAND_NAMES[isl.role] || 'AN ISLAND';
+    if (!isl.role.startsWith('greatTemple')) {
+      s += isl.owner ? (isl.owner === 'A' ? ' — YOURS' : ' — HIS') : ' — UNCLAIMED';
+      if (isl.reserve > 0) s += ' · ORE ' + Math.floor(isl.reserve);
+      else if (isl.minedOut) s += ' · MINED OUT';
+      if (isl.stockpile > 1) s += ' · PILE ' + Math.floor(isl.stockpile);
+    }
+    return s;
+  }
+  return null;
+}
+
 function openContextMenu(state, cell) {
   const [x, z] = cell;
   const menu = UI.els.buildmenu;
@@ -325,6 +358,8 @@ function openContextMenu(state, cell) {
   const isl = islandAt(state, x, z);
   const plotIdx = isl ? isl.plots.findIndex(p => p.x === x && p.z === z) : -1;
   const deg = nodeDegrees(state, 'A').get(cellKey(x, z)) || 0;
+  const ident = identifyCell(state, cell);
+  if (ident) flashTicker(ident);
 
   // arming a build shows a ghost at the site; CONFIRM raises it (§8.1 rhythm)
   const tryBuild = (type, at) => () => {

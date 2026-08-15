@@ -33,7 +33,10 @@
     font-size: 15px; text-shadow: 0 1px 3px #000;
   }
   .res { display: flex; gap: 12px; align-items: center; }
-  .res b { color: var(--gold); font-size: 17px; }
+  .res b { font-size: 17px; }
+  #supply { color: var(--gold); }          /* Supply: the ore you mine and build with */
+  #favor { color: #d5ecff; }               /* Favor: the god's regard, spends on powers */
+  .res .favorlabel { color: #d5ecff; }
   #wavechip { font-size: 13px; letter-spacing: 1px; opacity: 0.9; text-align: right; }
   #priestchip {
     pointer-events: auto; position: absolute; top: 64px; right: 8px;
@@ -164,8 +167,8 @@
   <div id="hud">
     <div id="topbar">
       <div class="res">
-        <span>&#9099; <b id="supply">0</b></span>
-        <span>&#10022; <b id="favor">0</b></span>
+        <span style="color: var(--gold)">&#9099; <b id="supply">0</b></span>
+        <span class="favorlabel">&#10022; <b id="favor">0</b></span>
       </div>
       <div id="wavechip">SEED <span id="seedchip">------</span><br><span id="waveinfo"></span></div>
     </div>
@@ -273,8 +276,8 @@ const CONFIG = Object.freeze({
   },
 
   Economy: {
-    START_SUPPLY: 12, START_FAVOR: 0,
-    TEMPLE_SUPPLY_PER_10S: 2, TEMPLE_FAVOR_PER_10S: 1,
+    START_SUPPLY: 32, START_FAVOR: 2,
+    TEMPLE_SUPPLY_PER_10S: 3, TEMPLE_FAVOR_PER_10S: 1,
     INCOME_TICK_SECONDS: 10.0,
     REROLL_FAVOR: 1
   },
@@ -4270,10 +4273,11 @@ R.islandBars = new Map();
 function makeChassis(side, onLand) {
   const grp = new THREE.Group();
   if (side === 'A') {
-    // tethered balloon: envelope + slung gondola + tether
+    // tethered balloon: khaki envelope (haulers fly bright ivory — the
+    // static tethered chassis reads differently at a glance)
     const env = new THREE.Mesh(
       new THREE.SphereGeometry(0.26, 10, 8),
-      new THREE.MeshLambertMaterial({ color: Palette.ivory }));
+      new THREE.MeshLambertMaterial({ color: 0xd2bd91 }));
     env.scale.set(1.25, 1, 1);
     env.position.y = 0.95;
     const gond = new THREE.Mesh(
@@ -4448,6 +4452,22 @@ function makeMoverMesh(m) {
       new THREE.MeshLambertMaterial({ color: Palette.bronze }));
     gond.position.y = 0.02;
     grp.add(env, gond);
+    if (!isPriest) {
+      // equator band + a slung ore crate, shown while carrying cargo
+      const band = new THREE.Mesh(
+        new THREE.TorusGeometry(0.185, 0.02, 6, 14),
+        new THREE.MeshLambertMaterial({ color: Palette.bronze }));
+      band.rotation.x = Math.PI / 2;
+      band.position.y = 0.22;
+      band.scale.set(1.5, 0.9, 1);
+      const crate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.13, 0.1, 0.13),
+        new THREE.MeshLambertMaterial({ color: Palette.gold }));
+      crate.position.y = -0.09;
+      crate.visible = false;
+      grp.add(band, crate);
+      grp.userData.crate = crate;
+    }
     if (isPriest) {
       const banner = new THREE.Mesh(
         new THREE.PlaneGeometry(0.3, 0.1),
@@ -4537,6 +4557,8 @@ function syncMovers(state) {
       rec.grp.rotation.z = 0;
       if (rec.driftLine) rec.driftLine.visible = false;
     }
+    // ore crate visible while carrying cargo (mining made legible)
+    if (rec.grp.userData.crate) rec.grp.userData.crate.visible = (m.cargo || 0) > 0;
     // hydrogen fleets fly visibly larger envelopes (§33E)
     if (m.kind === 'hauler' && m.owner === 'A') {
       const scale = state.hydrogen.A ? 1.3 : 1.0;
@@ -5159,6 +5181,39 @@ function menuButton(label, cost, fn, disabledReason) {
   return btn;
 }
 
+const STRUCT_NAMES = {
+  vane: 'CHAIN VANE (radial gun)', bolt: 'BOLT BATTERY (long gun)', shield: 'AEGIS SCREEN (shield)',
+  temple: 'TEMPLE', yard: 'MOORING YARD (builds haulers)', mast: 'SIPHON MAST (his anti-air)'
+};
+const ISLAND_NAMES = {
+  greatTempleA: 'YOUR GREAT TEMPLE', greatTempleP: 'HIS GREAT TEMPLE',
+  supplyA: 'SUPPLY ISLAND', supplyP: 'HIS SUPPLY ISLAND', chokepoint: 'THE CHOKEPOINT',
+  sacredA: 'A SACRED ISLE', sacredP: 'A SACRED ISLE', neutralA: 'A NEUTRAL ISLE',
+  neutralP: 'A NEUTRAL ISLE', filler: 'A SKERRY'
+};
+
+// name whatever was tapped, so nothing on the board stays a mystery
+function identifyCell(state, cell) {
+  const st = structureAt(state, cell[0], cell[1]);
+  if (st) {
+    const who = st.owner === 'A' ? '' : 'HIS ';
+    return who + (STRUCT_NAMES[st.type] || st.type.toUpperCase()) +
+      (st.buildProgress < 1 ? ' — RAISING' : '') + ' · ' + Math.ceil(st.hp) + ' HP';
+  }
+  const isl = islandAt(state, cell[0], cell[1]);
+  if (isl) {
+    let s = ISLAND_NAMES[isl.role] || 'AN ISLAND';
+    if (!isl.role.startsWith('greatTemple')) {
+      s += isl.owner ? (isl.owner === 'A' ? ' — YOURS' : ' — HIS') : ' — UNCLAIMED';
+      if (isl.reserve > 0) s += ' · ORE ' + Math.floor(isl.reserve);
+      else if (isl.minedOut) s += ' · MINED OUT';
+      if (isl.stockpile > 1) s += ' · PILE ' + Math.floor(isl.stockpile);
+    }
+    return s;
+  }
+  return null;
+}
+
 function openContextMenu(state, cell) {
   const [x, z] = cell;
   const menu = UI.els.buildmenu;
@@ -5167,6 +5222,8 @@ function openContextMenu(state, cell) {
   const isl = islandAt(state, x, z);
   const plotIdx = isl ? isl.plots.findIndex(p => p.x === x && p.z === z) : -1;
   const deg = nodeDegrees(state, 'A').get(cellKey(x, z)) || 0;
+  const ident = identifyCell(state, cell);
+  if (ident) flashTicker(ident);
 
   // arming a build shows a ghost at the site; CONFIRM raises it (§8.1 rhythm)
   const tryBuild = (type, at) => () => {

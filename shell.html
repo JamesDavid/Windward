@@ -33,7 +33,10 @@
     font-size: 15px; text-shadow: 0 1px 3px #000;
   }
   .res { display: flex; gap: 12px; align-items: center; }
-  .res b { color: var(--gold); font-size: 17px; }
+  .res b { font-size: 17px; }
+  #supply { color: var(--gold); }          /* Supply: the ore you mine and build with */
+  #favor { color: #d5ecff; }               /* Favor: the god's regard, spends on powers */
+  .res .favorlabel { color: #d5ecff; }
   #wavechip { font-size: 13px; letter-spacing: 1px; opacity: 0.9; text-align: right; }
   #priestchip {
     pointer-events: auto; position: absolute; top: 64px; right: 8px;
@@ -164,8 +167,8 @@
   <div id="hud">
     <div id="topbar">
       <div class="res">
-        <span>&#9099; <b id="supply">0</b></span>
-        <span>&#10022; <b id="favor">0</b></span>
+        <span style="color: var(--gold)">&#9099; <b id="supply">0</b></span>
+        <span class="favorlabel">&#10022; <b id="favor">0</b></span>
       </div>
       <div id="wavechip">SEED <span id="seedchip">------</span><br><span id="waveinfo"></span></div>
     </div>

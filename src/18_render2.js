@@ -11,10 +11,11 @@ R.islandBars = new Map();
 function makeChassis(side, onLand) {
   const grp = new THREE.Group();
   if (side === 'A') {
-    // tethered balloon: envelope + slung gondola + tether
+    // tethered balloon: khaki envelope (haulers fly bright ivory — the
+    // static tethered chassis reads differently at a glance)
     const env = new THREE.Mesh(
       new THREE.SphereGeometry(0.26, 10, 8),
-      new THREE.MeshLambertMaterial({ color: Palette.ivory }));
+      new THREE.MeshLambertMaterial({ color: 0xd2bd91 }));
     env.scale.set(1.25, 1, 1);
     env.position.y = 0.95;
     const gond = new THREE.Mesh(
@@ -189,6 +190,22 @@ function makeMoverMesh(m) {
       new THREE.MeshLambertMaterial({ color: Palette.bronze }));
     gond.position.y = 0.02;
     grp.add(env, gond);
+    if (!isPriest) {
+      // equator band + a slung ore crate, shown while carrying cargo
+      const band = new THREE.Mesh(
+        new THREE.TorusGeometry(0.185, 0.02, 6, 14),
+        new THREE.MeshLambertMaterial({ color: Palette.bronze }));
+      band.rotation.x = Math.PI / 2;
+      band.position.y = 0.22;
+      band.scale.set(1.5, 0.9, 1);
+      const crate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.13, 0.1, 0.13),
+        new THREE.MeshLambertMaterial({ color: Palette.gold }));
+      crate.position.y = -0.09;
+      crate.visible = false;
+      grp.add(band, crate);
+      grp.userData.crate = crate;
+    }
     if (isPriest) {
       const banner = new THREE.Mesh(
         new THREE.PlaneGeometry(0.3, 0.1),
@@ -278,6 +295,8 @@ function syncMovers(state) {
       rec.grp.rotation.z = 0;
       if (rec.driftLine) rec.driftLine.visible = false;
     }
+    // ore crate visible while carrying cargo (mining made legible)
+    if (rec.grp.userData.crate) rec.grp.userData.crate.visible = (m.cargo || 0) > 0;
     // hydrogen fleets fly visibly larger envelopes (§33E)
     if (m.kind === 'hauler' && m.owner === 'A') {
       const scale = state.hydrogen.A ? 1.3 : 1.0;
