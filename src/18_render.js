@@ -81,18 +81,25 @@ function initRenderer() {
   R.scene.add(sun);
   R.scene.add(new THREE.HemisphereLight(0xbcdce4, 0x27453a, 0.5));
 
-  // the Aegean — rippled by a generated texture that streams with the wind
+  // the Aegean — ripple texture doubling as a bump map for sun glints,
+  // and a gently swelling surface, all streaming with the wind
   const seaTex = makeSeaTexture();
   seaTex.wrapS = seaTex.wrapT = THREE.RepeatWrapping;
   seaTex.repeat.set(CONFIG.Grid.WIDTH * 0.7, CONFIG.Grid.HEIGHT * 0.55);
+  const seaGeo = new THREE.PlaneGeometry(CONFIG.Grid.WIDTH * 4, CONFIG.Grid.HEIGHT * 3, 40, 60);
   const sea = new THREE.Mesh(
-    new THREE.PlaneGeometry(CONFIG.Grid.WIDTH * 4, CONFIG.Grid.HEIGHT * 3),
-    new THREE.MeshLambertMaterial({ color: 0xd8f0f2, map: seaTex })
+    seaGeo,
+    new THREE.MeshPhongMaterial({
+      color: 0xaad4d8, map: seaTex,
+      bumpMap: seaTex, bumpScale: 0.2,
+      specular: 0x2e5560, shininess: 22
+    })
   );
   sea.rotation.x = -Math.PI / 2;
   sea.position.y = 0;
   R.scene.add(sea);
   R.seaTex = seaTex;
+  R.seaMesh = sea;
 
   R.socketGroup = new THREE.Group();
   R.previewGroup = new THREE.Group();
@@ -441,6 +448,14 @@ function renderTick(state, dt) {
     const w = state.wind.at(clamp(cgx, 0, CONFIG.Grid.WIDTH - 1), clamp(cgz, 0, CONFIG.Grid.HEIGHT - 1));
     R.seaTex.offset.x -= w.x * dt * 0.028;
     R.seaTex.offset.y += w.z * dt * 0.028;
+    // low-frequency swell so coastlines visibly breathe
+    const pos = R.seaMesh.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i);   // plane local: y maps to world -z
+      pos.setZ(i, 0.05 * Math.sin(x * 0.8 + state.time * 1.3) +
+                  0.04 * Math.sin(y * 1.1 - state.time * 0.9));
+    }
+    pos.needsUpdate = true;
   }
   // whitecaps ride the wind for a few seconds, fade, and respawn at a
   // fresh spot — so the field stays evenly alive instead of pooling at

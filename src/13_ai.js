@@ -50,10 +50,11 @@ function aiScoreIsland(state, isl) {
   const bad = state.ai && state.ai.badObjectives;
   if (bad && bad.has(isl.id) && state.time < bad.get(isl.id)) return 0.1;
   let score = 0;
-  // his waves need his lanes near the player: he values ground that
-  // carries his reach toward the enemy temple
+  // his waves need his lanes near the player: ground toward the enemy is
+  // worth a nudge — but only a nudge, or he rushes the player's own corner
+  // instead of consolidating the middle
   const dPlayer = dist2d(isl.center[0], isl.center[1], state.greatTemple.A.cell[0], state.greatTemple.A.cell[1]);
-  score += Math.max(0, 22 - dPlayer) * 0.25;
+  score += Math.max(0, 22 - dPlayer) * 0.1;
   // uncontested ground his temple would newly cover
   let overlap = 0;
   for (let dz = -CONFIG.Influence.TEMPLE_RADIUS; dz <= CONFIG.Influence.TEMPLE_RADIUS; dz++) {
@@ -188,7 +189,10 @@ function aiTick(state, dt) {
         }
       }
     }
-    if (ai.plan && res.supply >= pieceCost('SHORT')) {
+    // budget discipline: while he holds few temples, keep the temple fund
+    // intact — lanes are worthless if he can never consecrate their ends
+    const templeFund = poseidonTempleCount(state) < 2 ? CONFIG.Structures.TEMPLE.COST : 0;
+    if (ai.plan && res.supply >= pieceCost('SHORT') + templeFund) {
       if (aiPlaceNext(state)) ai.placeAt = state.time + CONFIG.AI.PLACE_INTERVAL;
     }
   }

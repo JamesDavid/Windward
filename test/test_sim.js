@@ -48,7 +48,8 @@ function playerAct(t) {
   const type = state.hand[0];
   const gunUp = state.structures.some(s => s.owner === 'A' && (s.type === 'bolt' || s.type === 'vane'));
   const saveForGun = !gunUp && t > 20;   // keep 10 supply back for the first battery
-  if (state.res.A.supply >= G.pieceCost(type) + (saveForGun ? 10 : 0)) {
+  const saveForTemple = !supply.temple ? G.CONFIG.Structures.TEMPLE.COST : 0;
+  if (state.res.A.supply >= G.pieceCost(type) + (saveForGun ? 10 : 0) + saveForTemple) {
     let bestP = null, bestD = Infinity;
     for (const sock of G.getSockets(state, 'A')) {
       for (const pl of G.legalPlacements(state, 'A', type, sock)) {

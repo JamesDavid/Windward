@@ -60,6 +60,24 @@ bolt.buildProgress = 1; bolt.hp = bolt.maxHp;
   G.recalcSupport(state, 'A');
 }
 
+// by wave 5 Poseidon's lanes have long since pushed toward the middle;
+// his craft only operate in waters his network reaches, so give him the
+// lane he would realistically have
+{
+  const gtPcell = state.greatTemple.P.cell;
+  let cur = gtPcell.slice();
+  const to = [Math.round(choke.center[0]), Math.round(choke.center[1] + 5)];
+  let g = 60;
+  while ((cur[0] !== to[0] || cur[1] !== to[1]) && g-- > 0) {
+    const dx = Math.sign(to[0] - cur[0]), dz = Math.sign(to[1] - cur[1]);
+    const next = dz !== 0 ? [cur[0], cur[1] + dz] : [cur[0] + dx, cur[1]];
+    const seg = G.makeSegment(state, 'P', cur, next);
+    state.segments.set('P:' + seg.key, seg);
+    cur = next;
+  }
+  G.recalcSupport(state, 'P');
+}
+
 // jump the clock to wave 5
 state.wave.index = 4;
 state.wave.nextAt = 10;
