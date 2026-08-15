@@ -43,6 +43,11 @@ Gaia, Zeus, earth and storm layers, throughput and congestion, route and termina
 
 ---
 
+### Submission artefacts status
+- **Design Intent** (`docs/design-intent.docx`): refreshed 2026-08-15 to match the built game (scrolling seeded archipelago, roads-are-reach, raw-end exposure, lane-reach waves, exploration fog). 491 words, template's seven sections, regenerated with no author metadata anywhere in the file.
+- **Build Log**: this file, updated with every commit.
+- **Playable build**: `index.html` + `/vendor/three.min.js`, fully offline, all art procedural, all audio WebAudio-synthesised. Contest zip will be produced only when instructed.
+
 ## Session log
 
 <!--
