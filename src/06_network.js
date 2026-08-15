@@ -1,0 +1,208 @@
+// ================================================================
+// NETWORK — segments, piece templates, sockets, placement legality.
+// The route graph is discrete and data-driven; rendering hides the grid.
+// ================================================================
+
+// ---- piece templates ----
+// Local space: the socket (attachment node) is (0,0); "forward" is (0,-1).
+// A template is a list of segments [[ax,az],[bx,bz]]; T is a tree.
+const PIECE_TEMPLATES = {
+  SHORT: [[[0, 0], [0, -1]], [[0, -1], [0, -2]]],
+  LONG:  [[[0, 0], [0, -1]], [[0, -1], [0, -2]], [[0, -2], [0, -3]]],
+  L:     [[[0, 0], [0, -1]], [[0, -1], [0, -2]], [[0, -2], [-1, -2]]],
+  S:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[-1, -1], [-1, -2]]],
+  T:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[0, -1], [1, -1]]]
+};
+
+// All distinct orientations (4 rotations x mirror) of a template.
+function pieceOrientations(type) {
+  const rot = ([x, z]) => [-z, x];
+  const mir = ([x, z]) => [-x, z];
+  const variants = [];
+  const seen = new Set();
+  for (const mirror of [false, true]) {
+    let segs = PIECE_TEMPLATES[type].map(([a, b]) => [a.slice(), b.slice()]);
+    if (mirror) segs = segs.map(([a, b]) => [mir(a), mir(b)]);
+    for (let r = 0; r < 4; r++) {
+      const sig = segs.map(([a, b]) => segKey(a[0], a[1], b[0], b[1])).sort().join(';');
+      if (!seen.has(sig)) {
+        seen.add(sig);
+        variants.push(segs.map(([a, b]) => [a.slice(), b.slice()]));
+      }
+      segs = segs.map(([a, b]) => [rot(a), rot(b)]);
+    }
+  }
+  return variants;
+}
+const PIECE_ORIENTATIONS = {};
+for (const t of ['SHORT', 'LONG', 'L', 'S', 'T']) PIECE_ORIENTATIONS[t] = pieceOrientations(t);
+
+// ---- segment factory ----
+function makeSegment(state, side, a, b) {
+  const isAir = side === 'A';
+  const key = segKey(a[0], a[1], b[0], b[1]);
+  const overWater = !state.map.land.has(cellKey(a[0], a[1])) && !state.map.land.has(cellKey(b[0], b[1]));
+  // lee-shore shelter for sea lanes: within LEE_SHORE_CELLS of any coast (§33B.2a)
+  let sheltered = false;
+  if (!isAir) {
+    const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+    outer:
+    for (let dz = -CONFIG.Segments.LEE_SHORE_CELLS - 1; dz <= CONFIG.Segments.LEE_SHORE_CELLS + 1; dz++) {
+      for (let dx = -CONFIG.Segments.LEE_SHORE_CELLS - 1; dx <= CONFIG.Segments.LEE_SHORE_CELLS + 1; dx++) {
+        const cx = Math.round(mx + dx), cz = Math.round(mz + dz);
+        if (!inBounds(cx, cz) || !state.map.land.has(cellKey(cx, cz))) continue;
+        if (Math.max(Math.abs(cx - mx), Math.abs(cz - mz)) <= CONFIG.Segments.LEE_SHORE_CELLS + 0.5) {
+          sheltered = true; break outer;
+        }
+      }
+    }
+  }
+  return {
+    id: eid(), key, owner: side,
+    a: a.slice(), b: b.slice(),
+    hp: isAir ? CONFIG.Segments.AIR_HP : CONFIG.Segments.SEA_HP,
+    maxHp: isAir ? CONFIG.Segments.AIR_HP : CONFIG.Segments.SEA_HP,
+    supportState: 'SUPPORTED',
+    unsupportedSince: null,
+    collapseAt: null,
+    overWater, sheltered
+  };
+}
+
+function segsOfSide(state, side) {
+  const out = [];
+  for (const s of state.segments.values()) if (s.owner === side) out.push(s);
+  return out;
+}
+
+// Cells covered by a side's network (segment endpoints).
+function networkCells(state, side) {
+  const cells = new Set();
+  for (const s of state.segments.values()) {
+    if (s.owner !== side) continue;
+    cells.add(cellKey(s.a[0], s.a[1]));
+    cells.add(cellKey(s.b[0], s.b[1]));
+  }
+  return cells;
+}
+
+// Node degree map for a side: cellKey -> number of touching segments.
+function nodeDegrees(state, side) {
+  const deg = new Map();
+  for (const s of state.segments.values()) {
+    if (s.owner !== side) continue;
+    for (const c of [s.a, s.b]) {
+      const k = cellKey(c[0], c[1]);
+      deg.set(k, (deg.get(k) || 0) + 1);
+    }
+  }
+  return deg;
+}
+
+function structureAt(state, x, z) {
+  return state.structures.find(st => st.cell[0] === x && st.cell[1] === z && st.hp > 0) || null;
+}
+
+// ---- sockets: where may `side` attach a new piece? ----
+// - the Great Temple (limited ports)
+// - any degree-1 route node that is supported
+// - a structure node with free outgoing ports (§14.0)
+// - a claimed island's temple (limited ports)
+function getSockets(state, side) {
+  const sockets = [];
+  const deg = nodeDegrees(state, side);
+  const gt = state.greatTemple[side];
+  if (gt.hp > 0) {
+    const used = deg.get(cellKey(gt.cell[0], gt.cell[1])) || 0;
+    if (used < CONFIG.Structures.PORTS_GREAT_TEMPLE) sockets.push({ cell: gt.cell.slice(), kind: 'greatTemple' });
+  }
+  for (const isl of state.map.islands) {
+    if (!islandConducts(state, isl, side) || isl.role.startsWith('greatTemple')) continue;
+    const c = isl.temple.cell;
+    const used = deg.get(cellKey(c[0], c[1])) || 0;
+    if (used < CONFIG.Structures.PORTS_ISLAND_TEMPLE && islandSupported(state, isl, side)) {
+      sockets.push({ cell: c.slice(), kind: 'temple' });
+    }
+  }
+  for (const [k, d] of deg) {
+    const [x, z] = keyCell(k);
+    const st = structureAt(state, x, z);
+    if (st && st.owner === side) {
+      // structure node: 1 incoming + PORTS outgoing
+      if (st.buildProgress >= 1 && st.ports > 0 && d < st.ports + 1 && segmentSupportedAtCell(state, side, x, z)) {
+        sockets.push({ cell: [x, z], kind: 'structure' });
+      }
+      continue;
+    }
+    if (d === 1 && segmentSupportedAtCell(state, side, x, z)) sockets.push({ cell: [x, z], kind: 'end' });
+  }
+  return sockets;
+}
+
+function segmentSupportedAtCell(state, side, x, z) {
+  for (const s of state.segments.values()) {
+    if (s.owner !== side || s.supportState !== 'SUPPORTED') continue;
+    if ((s.a[0] === x && s.a[1] === z) || (s.b[0] === x && s.b[1] === z)) return true;
+  }
+  return false;
+}
+
+// ---- placement legality ----
+// Returns the list of legal placements for a piece at a socket:
+// each { segs: [[a,b],...], cells: [...] } in world grid coords.
+function legalPlacements(state, side, type, socket) {
+  const out = [];
+  const [sx, sz] = socket.cell;
+  for (const variant of PIECE_ORIENTATIONS[type]) {
+    const segs = variant.map(([a, b]) => [[a[0] + sx, a[1] + sz], [b[0] + sx, b[1] + sz]]);
+    if (placementLegal(state, side, segs)) out.push({ segs });
+  }
+  return out;
+}
+
+function placementLegal(state, side, segs) {
+  const infl = state.influence[side];
+  for (const [a, b] of segs) {
+    for (const c of [a, b]) {
+      if (!inBounds(c[0], c[1])) return false;
+      // influence gates all construction (§14.5.2)
+      if (CONFIG.Influence.GATES_CONSTRUCTION && !infl.has(cellKey(c[0], c[1]))) return false;
+      // a rival's claimed island refuses connection (§14.6.4)
+      const isl = islandAt(state, c[0], c[1]);
+      if (isl && islandClosedTo(state, isl, side)) return false;
+    }
+    // no duplicate segment on the same layer
+    const key = segKey(a[0], a[1], b[0], b[1]);
+    const existing = state.segments.get(side + ':' + key);
+    if (existing) return false;
+    // a structure node accepts no pass-through except via its ports (handled
+    // by socket selection); reject segments that would land mid-structure
+    for (const c of [a, b]) {
+      const st = structureAt(state, c[0], c[1]);
+      if (st && st.owner !== side) return false;   // enemy structure cell blocked
+    }
+  }
+  return true;
+}
+
+// Commit a placement: pay, create segments, recalc support.
+function placePiece(state, side, type, segs) {
+  const cost = pieceCost(type);
+  if (state.res[side].supply < cost) return false;
+  state.res[side].supply -= cost;
+  for (const [a, b] of segs) {
+    const seg = makeSegment(state, side, a, b);
+    state.segments.set(side + ':' + seg.key, seg);
+  }
+  state.stats.placed++;
+  recalcSupport(state, side);
+  Events.emit('piecePlaced', { side, type, segs });
+  return true;
+}
+
+// Destroy a segment outright (combat, collapse, crumble).
+function destroySegment(state, seg, cause) {
+  state.segments.delete(seg.owner + ':' + seg.key);
+  Events.emit('segmentDestroyed', { seg, cause });
+  recalcSupport(state, seg.owner);
+}

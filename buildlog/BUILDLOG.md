@@ -10,7 +10,7 @@ Genre: Tower Defense & Strategy
 
 ### Scope
 - Two factions only: Aeolus (player, air) and Poseidon (AI, sea). Gaia and Zeus are future state.
-- One handcrafted 12 × 20 portrait map, nine islands, corner opposition. No procedural generation.
+- One map **template** on a 12 × 20 portrait grid, nine islands, corner opposition — **deterministically generated per match from a seed** (spec §20A supersedes the earlier "one handcrafted map" decision; changed in Session 1). Free-form procedural maps remain cut; generation is zone-constrained and validated.
 - Target session: ~7 minutes, nine waves.
 - Single-player, portrait, Three.js, fully offline.
 
@@ -67,7 +67,7 @@ ENTRY TEMPLATE — copy for each session.
 **Where things stand / next:**
 -->
 
-## Session 0 (YYYY-MM-DD): setup
+## Session 0 (2026-08-15): setup
 
 **Tool(s):** —
 **Commits:** —
@@ -77,3 +77,30 @@ ENTRY TEMPLATE — copy for each session.
 **Key decisions and why:** Locked the decisions above before writing code, so the agent has a stable reference and stops re-litigating settled choices between sessions.
 
 **Where things stand / next:** Day 1–2 spikes — touch placement on a real phone, priest-tap feel, portrait air-vs-sea legibility, AI route feasibility. Any red flag means simplifying before adding systems.
+
+## Session 1 (2026-08-15): scaffold, build pipeline, deterministic map generator
+
+**Tool(s):** Claude Code (agent wrote all code from the spec; no hand-coding)
+**Commits:** `ddd8dea`..`949c777`
+
+### Prompts and commits
+| # | Prompt (summary) | Commit | Result |
+|---|---|---|---|
+| 1 | Set up repo, commit spec + rules + build log scaffold | `ddd8dea` | chore: initial spec and build log scaffold |
+| 2 | Build pipeline (src -> single index.html), CONFIG block, seeded PRNG, wind field, map generator with the 11 validation invariants + headless node tests | `949c777` | feat: build pipeline, CONFIG, wind field, deterministic map generator |
+
+**What I built:** Development skeleton the spec asks for (§33F.1): game logic in `src/*.js`, `build.js` concatenates into one readable unminified `index.html` with the frozen `CONFIG` block first. Three.js r147 (UMD build, works from `file://`) vendored under `/vendor`. Wind field (6×10 vector field, bilinear, ±30° drift). Deterministic map generator: zone-constrained island growth, mirror-then-perturb for the economic corners, all 11 validator invariants from §20A.5, re-roll with verified golden-seed fallback. Headless node test harness runs the pure game logic without a browser: determinism, convergence (200/200 random seeds resolve without fallback), golden seed verified.
+
+**Key decisions and why:**
+- Three.js r147 UMD instead of newer ES-module builds: judges may open `index.html` from `file://`, where module imports fail CORS. A script tag always works.
+- Wind is a cross-map **shear front** (bearing rotates with perpendicular offset from the player's outbound axis), not uniform wind or a gyre. A gyre made winds perpendicular to radial corridors (useless); a shear front guarantees the §21A.6 requirement that outbound and return corridors ride different bearings.
+- Invariant 3 ("every efficient route crosses ≥5 over-water cells") is checked on the straight monotone route (always a shortest path, since nothing obstructs air routes), with invariant 4's 1.4× ratio pricing safety. A literal "every shortest path" reading was uncheckable cheaply and over-strict on a 12×20 grid.
+- The "exposed" interior island is usually the **chokepoint**, not a Sacred island: on a Manhattan grid, an island reachable by a monotone island-hop chain can never make the safe route 1.4× longer, so the exposed role migrates to the centre island where the hop chain must detour. Deviation from §20.2 noted deliberately.
+
+**Pivots, and what changed my thinking:** Superseded the "one handcrafted map" locked decision — the spec itself (§20A) supersedes it. First generator attempt (free zone packing) converged 0% — island separation (min distance 3), hop gaps (exactly 2 water cells), influence radius (supply fully inside 8) and home-to-interior distance (8–12) interact so tightly on 12×20 that random placement almost never satisfies all of them.
+
+**Biggest problems, and how I solved them:** Generator convergence. Three fixes: (1) grow islands under a "forbidden" halo so separation holds by construction, only mirror the two corner pairs; (2) pull chain islands toward their neighbours — the separation halo stops growth at exactly a two-cell water gap, which is one island hop; (3) a deterministic bridging pass that extends a chain island by one lobe cell when the hop is misaligned (a 2-water hop needs straight alignment; Chebyshev-close but diagonal pairs have no hop). Went from 0% to ~18% per attempt = effectively 100% of seeds within the 50-nonce re-roll budget.
+
+**What I learned:** Constraint-packing on a small grid needs constructive guarantees, not rejection sampling. Also: measure per-invariant failure counts before tuning anything — the first three "fixes" I guessed at were aimed at invariants that weren't the bottleneck.
+
+**Where things stand / next:** Renderer + portrait scene (islands, sea, wind tells) so the Day-3 legibility gate can be tested; then route pieces + support/collapse.
