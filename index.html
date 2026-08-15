@@ -1673,6 +1673,28 @@ function recalcSupport(state, side) {
   if (!state.supportedCells) state.supportedCells = {};
   state.supportedCells[side] = supportedCells;
 
+  // Exposure: a path is not attackable along its length — only at a RAW
+  // open end (an uncapped tip). A tower on the tip caps it; destroying
+  // the tower blows the adjacent segment and re-opens the end.
+  {
+    const deg = new Map();
+    for (const s of segs) {
+      for (const c of [s.a, s.b]) {
+        const k = cellKey(c[0], c[1]);
+        deg.set(k, (deg.get(k) || 0) + 1);
+      }
+    }
+    for (const s of segs) {
+      s.rawEnd = false;
+      for (const c of [s.a, s.b]) {
+        if (deg.get(cellKey(c[0], c[1])) !== 1) continue;
+        if (islandAt(state, c[0], c[1])) continue;               // moored to an island
+        if (structureAt(state, c[0], c[1])) continue;            // capped by a tower
+        s.rawEnd = true;
+      }
+    }
+  }
+
   let restored = false, severed = false;
   for (const s of segs) {
     if (reachedSegs.has(s.id)) {
@@ -2359,6 +2381,7 @@ function buildStructure(state, side, type, at, facing) {
     lastHitAt: -99
   };
   state.structures.push(st);
+  recalcSupport(state, side);   // a tower on a tip caps it (exposure changes)
   if (at.site === 'plot') {
     const isl = state.map.islands[at.islandId];
     isl.plots[at.plotIdx].structure = st;
@@ -2580,6 +2603,7 @@ function enemySegments(state, side) {
   const out = [];
   for (const s of state.segments.values()) {
     if (s.owner !== foe) continue;
+    if (!s.rawEnd) continue;                          // paths are attackable only at raw open ends
     if (foe === 'A' && !s.overWater) continue;       // island crossings untouchable (§33B.1)
     if (foe === 'P' && s.sheltered) continue;         // lee shore (§33B.2a)
     out.push(s);
@@ -2891,10 +2915,10 @@ function craftPickTarget(state, c) {
     }
     return best;
   }
-  // siphon: air segments over open water, then over-water structures
+  // siphon: raw air-route ends over open water, then over-water structures
   let best = null, bd = Infinity;
   for (const s of state.segments.values()) {
-    if (s.owner !== 'A' || !s.overWater) continue;
+    if (s.owner !== 'A' || !s.overWater || !s.rawEnd) continue;
     const m = segMid(s);
     const d = dist2d(m[0], m[1], c.pos[0], c.pos[1]);
     if (d < bd) { bd = d; best = { kind: 'segment', ref: s, side: 'A', pos: m }; }

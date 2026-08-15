@@ -52,6 +52,28 @@ function recalcSupport(state, side) {
   if (!state.supportedCells) state.supportedCells = {};
   state.supportedCells[side] = supportedCells;
 
+  // Exposure: a path is not attackable along its length — only at a RAW
+  // open end (an uncapped tip). A tower on the tip caps it; destroying
+  // the tower blows the adjacent segment and re-opens the end.
+  {
+    const deg = new Map();
+    for (const s of segs) {
+      for (const c of [s.a, s.b]) {
+        const k = cellKey(c[0], c[1]);
+        deg.set(k, (deg.get(k) || 0) + 1);
+      }
+    }
+    for (const s of segs) {
+      s.rawEnd = false;
+      for (const c of [s.a, s.b]) {
+        if (deg.get(cellKey(c[0], c[1])) !== 1) continue;
+        if (islandAt(state, c[0], c[1])) continue;               // moored to an island
+        if (structureAt(state, c[0], c[1])) continue;            // capped by a tower
+        s.rawEnd = true;
+      }
+    }
+  }
+
   let restored = false, severed = false;
   for (const s of segs) {
     if (reachedSegs.has(s.id)) {

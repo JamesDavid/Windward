@@ -98,6 +98,7 @@ function buildStructure(state, side, type, at, facing) {
     lastHitAt: -99
   };
   state.structures.push(st);
+  recalcSupport(state, side);   // a tower on a tip caps it (exposure changes)
   if (at.site === 'plot') {
     const isl = state.map.islands[at.islandId];
     isl.plots[at.plotIdx].structure = st;

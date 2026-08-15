@@ -202,10 +202,10 @@ function craftPickTarget(state, c) {
     }
     return best;
   }
-  // siphon: air segments over open water, then over-water structures
+  // siphon: raw air-route ends over open water, then over-water structures
   let best = null, bd = Infinity;
   for (const s of state.segments.values()) {
-    if (s.owner !== 'A' || !s.overWater) continue;
+    if (s.owner !== 'A' || !s.overWater || !s.rawEnd) continue;
     const m = segMid(s);
     const d = dist2d(m[0], m[1], c.pos[0], c.pos[1]);
     if (d < bd) { bd = d; best = { kind: 'segment', ref: s, side: 'A', pos: m }; }

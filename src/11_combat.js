@@ -96,6 +96,7 @@ function enemySegments(state, side) {
   const out = [];
   for (const s of state.segments.values()) {
     if (s.owner !== foe) continue;
+    if (!s.rawEnd) continue;                          // paths are attackable only at raw open ends
     if (foe === 'A' && !s.overWater) continue;       // island crossings untouchable (§33B.1)
     if (foe === 'P' && s.sheltered) continue;         // lee shore (§33B.2a)
     out.push(s);

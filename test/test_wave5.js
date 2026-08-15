@@ -45,6 +45,20 @@ while ((cur[0] !== to[0] || cur[1] !== to[1]) && guard-- > 0) {
 G.recalcSupport(state, 'A');
 const bolt = G.buildStructure(state, 'A', 'bolt', { site: 'endpoint', cell: cur });
 if (!bolt) die('forward bolt refused: ' + G.whyNotBuild(state, 'A', 'bolt', { site: 'endpoint', cell: cur }));
+bolt.buildProgress = 1; bolt.hp = bolt.maxHp;
+
+// the corridor continues through the battery's port to a forward tail —
+// the inline shape whose explosion severs everything beyond it (§14.0)
+{
+  let tail = cur.slice();
+  for (let i = 0; i < 3; i++) {
+    const next = [tail[0], tail[1] - 1];
+    const seg = G.makeSegment(state, 'A', tail, next);
+    state.segments.set('A:' + seg.key, seg);
+    tail = next;
+  }
+  G.recalcSupport(state, 'A');
+}
 
 // jump the clock to wave 5
 state.wave.index = 4;
