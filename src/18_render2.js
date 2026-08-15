@@ -384,15 +384,14 @@ R.shroud = new Map();
 function buildShroud(state) {
   for (const m of R.shroud.values()) R.scene.remove(m);
   R.shroud.clear();
-  const geo = new THREE.PlaneGeometry(1.04, 1.04);
+  const geo = new THREE.BoxGeometry(1.02, 1.7, 1.02);
   const mat = new THREE.MeshBasicMaterial({
     color: 0x060f14, transparent: true, opacity: CONFIG.Render.SHROUD_OPACITY
   });
   for (let z = 0; z < CONFIG.Grid.HEIGHT; z++) {
     for (let x = 0; x < CONFIG.Grid.WIDTH; x++) {
       const m = new THREE.Mesh(geo, mat);
-      m.rotation.x = -Math.PI / 2;
-      m.position.set(worldX(x), 1.55, worldZ(z));
+      m.position.set(worldX(x), 0.85, worldZ(z));
       R.scene.add(m);
       R.shroud.set(cellKey(x, z), m);
     }

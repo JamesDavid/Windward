@@ -90,6 +90,13 @@ ENTRY TEMPLATE — copy for each session.
 | 2 | Build pipeline (src -> single index.html), CONFIG block, seeded PRNG, wind field, map generator with the 11 validation invariants + headless node tests | `949c777` | feat: build pipeline, CONFIG, wind field, deterministic map generator |
 | 3 | Game state, route pieces + sockets + placement legality, support BFS with island conduction, progressive collapse + reconnection, headless tests | `c670ec3` | feat: game state, route network, support graph, progressive collapse |
 | 4 | Renderer (islands, temples, sea, wind tells), tap placement UI with wind-multiplier ghost, portrait camera framing, first screenshots | `2760056` | feat: renderer, portrait scene, tap placement UI, main loop |
+| 5 | All remaining systems: economy/hauling/adrift/priest, structures/claim, combat, 9 waves + AI powers, Poseidon AI, fog, player powers, WebAudio, tutorial/banners/win-lose. Player-directed: scrollable multi-screen map (CONFIG-sized), exploration shroud, "TAKE THE WIND" CTA, GitHub Pages hosting | `5880a6e` | feat: full game systems |
+
+**Session 1 addendum — design changes directed mid-build:**
+- Map no longer fits one screen. World is sized in portrait-screen tiles (`MAP_SIZE`, default 2×3 → 12×30 cells) and the camera pans by dragging. Island count scales with area: stepping-stone "filler" islands grow automatically wherever the island-hop chain stretches beyond hop range, plus scattered neutrals per extra area. Spec distance invariants scale from the 12×20 reference.
+- Exploration shroud added (deviation from spec §14B "terrain is never fogged", by explicit direction): unexplored terrain is dark until the player's reach lifts it, one-way. Enemy-entity fog stays as specced on top of it.
+- Favor income tightened: only island Temples mint Favor from influence; the Great Temple's own radius doesn't (raw §14.5.4 made Favor meaningless at ~50/10 s).
+- Repo made public with an all-rights-reserved license; live build hosted on GitHub Pages per direction. Contest zip releases only on instruction.
 
 **What I built:** Development skeleton the spec asks for (§33F.1): game logic in `src/*.js`, `build.js` concatenates into one readable unminified `index.html` with the frozen `CONFIG` block first. Three.js r147 (UMD build, works from `file://`) vendored under `/vendor`. Wind field (6×10 vector field, bilinear, ±30° drift). Deterministic map generator: zone-constrained island growth, mirror-then-perturb for the economic corners, all 11 validator invariants from §20A.5, re-roll with verified golden-seed fallback. Headless node test harness runs the pure game logic without a browser: determinism, convergence (200/200 random seeds resolve without fallback), golden seed verified.
 
