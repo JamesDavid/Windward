@@ -108,10 +108,32 @@ if (typeof window !== 'undefined') {
   Object.defineProperty(window, 'WD', { get: () => ({ state: STATE, startMatch }) });
 }
 
+// The backstory plays on the title screen, above the call to action (§4).
+const INTRO_LORE = [
+  'Aeolus once gave Odysseus the winds, tied inside a leather bag. Within sight of home, his crew opened it — they thought it held gold. The winds escaped, and never fully returned.',
+  'For generations the escaped winds have tangled around these islands, snagging on headlands, rushing the straits. The sea stayed the only road — and every crossing paid Poseidon its honour.',
+  'Then the shipwrights found the light air: iron filings and sour wine, sealed in a bronze retort, give off an air that will not stay down. Lift was worked out in a foundry. No god was consulted.',
+  'But lift is not travel. A full envelope rises, then goes wherever the sky is going. To steer, a crew must bind a wind — and the only winds loose here are Aeolus’ own.',
+  'So the guild took a patron. They keep his rites; he grants the currents. And Poseidon watches cargo cross without asking him for calm water. He is not insulted. He is being forgotten.'
+];
+let loreIdx = 0, loreTimer = null;
+function cycleLore() {
+  const el = document.getElementById('lorecycle');
+  if (!el || document.getElementById('startscreen').classList.contains('hidden')) return;
+  el.style.opacity = 0;
+  setTimeout(() => {
+    el.textContent = INTRO_LORE[loreIdx % INTRO_LORE.length];
+    el.style.opacity = 1;
+    loreIdx++;
+  }, 700);
+  loreTimer = setTimeout(cycleLore, 8000);
+}
+
 // ---- boot ----
 window.addEventListener('DOMContentLoaded', () => {
   const seedInput = document.getElementById('seedinput');
   seedInput.value = makeSeedString();
+  cycleLore();
   document.getElementById('startbtn').addEventListener('click', () => {
     audioInit();
     const seed = (seedInput.value || makeSeedString()).trim().toLowerCase();

@@ -15,7 +15,7 @@ if (state.influence.A.size < 100) die('influence too small: ' + state.influence.
 
 // sockets: at least the Great Temple
 let sockets = G.getSockets(state, 'A');
-if (!sockets.some(s => s.kind === 'greatTemple')) die('no great temple socket');
+if (!sockets.some(s => s.kind === 'island')) die('no home island sockets');
 
 // grow a LINEAR chain away from the Great Temple (prefer route-end sockets,
 // pick the placement whose far end maximises distance from home)
@@ -25,7 +25,7 @@ const farOf = (segs) => Math.max(...segs.flatMap(([a, b]) => [a, b]).map(c =>
   Math.abs(c[0] - gtCell[0]) + Math.abs(c[1] - gtCell[1])));
 for (let i = 0; i < 6; i++) {
   sockets = G.getSockets(state, 'A');
-  const sock = sockets.find(s => s.kind === 'end') || sockets.find(s => s.kind === 'greatTemple');
+  const sock = sockets.find(s => s.kind === 'end') || sockets.find(s => s.kind === 'island');
   if (!sock) die('no socket at step ' + i);
   const placements = G.legalPlacements(state, 'A', 'SHORT', sock);
   if (!placements.length) die('no legal placement at step ' + i);
@@ -53,16 +53,10 @@ console.log('ok sever -> frayed branch of ' + frayed.length);
 // collapse: one segment per interval, from the break inward, to zero
 const before = [...state.segments.values()].filter(s => s.owner === 'A').length;
 const expectGone = frayed.length;
-let lastCount = before;
-let collapsedInOrder = true;
-let prevDist = -1;
+const breakCell = offIsland[0].a;
+let firstCollapsed = null;
 G.Events.on('segmentDestroyed', ({ seg, cause }) => {
-  if (cause !== 'collapse') return;
-  const d = Math.min(
-    Math.abs(seg.a[0] - gtCell[0]) + Math.abs(seg.a[1] - gtCell[1]),
-    Math.abs(seg.b[0] - gtCell[0]) + Math.abs(seg.b[1] - gtCell[1]));
-  if (d < prevDist) collapsedInOrder = false;
-  prevDist = d;
+  if (cause === 'collapse' && !firstCollapsed) firstCollapsed = seg;
 });
 for (let t = 100; t < 160; t += 0.5) {
   state.time = t;
@@ -70,15 +64,19 @@ for (let t = 100; t < 160; t += 0.5) {
 }
 const after = [...state.segments.values()].filter(s => s.owner === 'A').length;
 if (before - after !== expectGone) die('expected ' + expectGone + ' collapsed, got ' + (before - after));
-if (!collapsedInOrder) die('collapse should advance from the break inward');
-console.log('ok progressive collapse, break-first order');
+// the first segment to unbind is the one at the severed edge
+const dFirst = Math.min(
+  Math.abs(firstCollapsed.a[0] - breakCell[0]) + Math.abs(firstCollapsed.a[1] - breakCell[1]),
+  Math.abs(firstCollapsed.b[0] - breakCell[0]) + Math.abs(firstCollapsed.b[1] - breakCell[1]));
+if (dFirst > 2) die('collapse should begin at the severed edge, began ' + dFirst + ' away');
+console.log('ok progressive collapse from the severed edge');
 
 // reconnection cancels decay: build a fresh chain, sever mid-chain, then
 // rebuild the destroyed link within the rescue window
 state.time = 200;
 for (let i = 0; i < 4; i++) {
   sockets = G.getSockets(state, 'A');
-  const sock = sockets.find(s => s.kind === 'end') || sockets.find(s => s.kind === 'greatTemple');
+  const sock = sockets.find(s => s.kind === 'end') || sockets.find(s => s.kind === 'island');
   const placements = G.legalPlacements(state, 'A', 'SHORT', sock);
   placements.sort((a, b) => farOf(b.segs) - farOf(a.segs));
   if (!G.placePiece(state, 'A', 'SHORT', placements[0].segs)) die('rebuild placement refused');

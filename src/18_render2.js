@@ -131,12 +131,12 @@ function syncStructures(state) {
       grp.add(chassis, payload);
       const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (st.owner === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
       grp.position.set(worldX(st.cell[0]), baseY, worldZ(st.cell[1]));
-      // progress ring while raising
+      // scaffold ring at ground level while raising
       const ring = new THREE.Mesh(
-        new THREE.RingGeometry(0.4, 0.48, 20),
-        new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+        new THREE.RingGeometry(0.42, 0.52, 20),
+        new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.95, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.9;
+      ring.position.y = 0.12;
       grp.add(ring);
       R.scene.add(grp);
       rec = { grp, payload, ring, chassis };
@@ -278,7 +278,13 @@ function syncMovers(state) {
 }
 
 // ---- island economy indicators: reserve bar + stockpile heap ----
+const ALLEGIANCE_BASE = { A: 0xc9a05e, P: 0x2e6b74, N: 0xd8c9a8 };
 function syncIslandBars(state) {
+  for (const isl of state.map.islands) {
+    if (isl.beachMat) {
+      isl.beachMat.color.setHex(ALLEGIANCE_BASE[isl.owner || 'N']);
+    }
+  }
   for (const isl of state.map.islands) {
     if (isl.role.startsWith('greatTemple')) continue;
     let rec = R.islandBars.get(isl.id);
@@ -312,6 +318,16 @@ function fxSpawn(state, kind, pos, data) {
 }
 
 function initFxEvents(state) {
+  // combat tracers: Aeolus drops ballast jars (gold, falling), Poseidon
+  // throws the sea upward (teal, rising); impacts flash at the target
+  const tracer = (payload, poseidon) => {
+    const { from, to, targetSide, kind } = payload;
+    const ya = poseidon ? 0.25 : 1.05;
+    const yb = targetSide === 'A' ? (kind === 'segment' ? CONFIG.Render.AIR_ALTITUDE : 0.9) : 0.25;
+    fxSpawn(state, 'tracer', from, { to: to.slice(), ya, yb, color: poseidon ? Palette.poseidonGlow : 0xffd977 });
+  };
+  Events.on('gunFired', (p) => tracer(p, p.side === 'P'));
+  Events.on('craftFired', (p) => tracer(p, true));
   Events.on('structureDestroyed', ({ st }) => fxSpawn(state, 'boom', st.cell));
   Events.on('segmentDestroyed', ({ seg, cause }) => {
     fxSpawn(state, cause === 'collapse' ? 'unravel' : 'boom', segMid(seg), { air: seg.owner === 'A' });
@@ -350,6 +366,26 @@ function fxTick(state, dt) {
       } else if (f.kind === 'windwall') {
         mesh = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8),
           new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.25 }));
+      } else if (f.kind === 'tracer') {
+        const d = f.data;
+        const ax = worldX(f.pos[0]), az = worldZ(f.pos[1]);
+        const bx = worldX(d.to[0]), bz = worldZ(d.to[1]);
+        const dx = bx - ax, dy = d.yb - d.ya, dz = bz - az;
+        const len = Math.max(0.01, Math.hypot(dx, dy, dz));
+        mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.022, 0.022, len, 5),
+          new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.85 }));
+        mesh.position.set((ax + bx) / 2, (d.ya + d.yb) / 2, (az + bz) / 2);
+        mesh.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          new THREE.Vector3(dx / len, dy / len, dz / len));
+        // impact spark
+        const spark = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }));
+        spark.position.set(bx, d.yb, bz);
+        mesh.add(new THREE.Group());   // keep child indices stable
+        R.scene.add(spark);
+        f.spark = spark;
       }
       const y = f.kind === 'wreck' || f.kind === 'surge' ? 0.04 : (f.data.air ? CONFIG.Render.AIR_ALTITUDE : 0.3);
       mesh.position.set(worldX(f.pos[0]), y, worldZ(f.pos[1]));
@@ -357,10 +393,17 @@ function fxTick(state, dt) {
       f.mesh = mesh;
     }
     const life = f.kind === 'wreck' ? 20 : f.kind === 'fogbank' ? CONFIG.Powers.FOG_BANK.DURATION
-      : f.kind === 'windwall' ? CONFIG.Powers.WIND_WALL.DURATION : f.kind === 'surge' ? 1.4 : 0.8;
+      : f.kind === 'windwall' ? CONFIG.Powers.WIND_WALL.DURATION : f.kind === 'surge' ? 1.4
+      : f.kind === 'tracer' ? 0.2 : 0.8;
     if (age > life) {
       R.scene.remove(f.mesh);
+      if (f.spark) R.scene.remove(f.spark);
       f.dead = true;
+      continue;
+    }
+    if (f.kind === 'tracer') {
+      f.mesh.material.opacity = 0.85 * (1 - age / life);
+      if (f.spark) f.spark.material.opacity = 0.9 * (1 - age / life);
       continue;
     }
     if (f.kind === 'boom' || f.kind === 'unravel') {
@@ -377,6 +420,32 @@ function fxTick(state, dt) {
   R.fx = R.fx.filter(f => !f.dead);
 }
 
+// ghost of a structure while the player decides (RAISE / cancel)
+function showStructPreview(state, side, type, cell) {
+  R.previewGroup.clear();
+  const onLand = !!islandAt(state, cell[0], cell[1]);
+  const grp = new THREE.Group();
+  const chassis = type === 'temple' || type === 'yard' ? new THREE.Group() : makeChassis(side, onLand);
+  const payload = makePayload(side, type, null);
+  grp.add(chassis, payload);
+  grp.traverse(o => {
+    if (o.material) {
+      o.material = o.material.clone();
+      o.material.transparent = true;
+      o.material.opacity = 0.45;
+    }
+  });
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.34, 0.46, 24),
+    new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.06;
+  grp.add(ring);
+  const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (side === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
+  grp.position.set(worldX(cell[0]), baseY, worldZ(cell[1]));
+  R.previewGroup.add(grp);
+}
+
 // ---- exploration shroud: unexplored terrain is dark until the player's
 // reach (structures, corridors, ships) lifts it. One-way. ----
 R.shroud = new Map();
@@ -385,8 +454,9 @@ function buildShroud(state) {
   for (const m of R.shroud.values()) R.scene.remove(m);
   R.shroud.clear();
   const geo = new THREE.BoxGeometry(1.02, 1.7, 1.02);
+  const opaque = CONFIG.Render.SHROUD_OPACITY >= 1;
   const mat = new THREE.MeshBasicMaterial({
-    color: 0x060f14, transparent: true, opacity: CONFIG.Render.SHROUD_OPACITY
+    color: 0x060f14, transparent: !opaque, opacity: CONFIG.Render.SHROUD_OPACITY
   });
   for (let z = 0; z < CONFIG.Grid.HEIGHT; z++) {
     for (let x = 0; x < CONFIG.Grid.WIDTH; x++) {

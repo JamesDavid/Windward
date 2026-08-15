@@ -42,6 +42,13 @@ function mapScale() {
   return (CONFIG.Grid.WIDTH + CONFIG.Grid.HEIGHT) / (CONFIG.Grid.REF_WIDTH + CONFIG.Grid.REF_HEIGHT);
 }
 
+// influence radii scale with the map so the temple leapfrog survives
+// larger archipelagos (used by generation, economy, and gameplay alike)
+function influenceRadius(kind) {
+  const base = kind === 'great' ? CONFIG.Influence.GREAT_TEMPLE_RADIUS : CONFIG.Influence.TEMPLE_RADIUS;
+  return Math.round(base * mapScale());
+}
+
 // Diagnostic counters (dev only; harmless at runtime).
 const MAPGEN_STATS = { growFail: {}, mirrorFail: {} };
 
@@ -325,8 +332,7 @@ function generateOnce(rng) {
     }
     isl.templeCell = best;
     const isTempleIsle = isl.role.startsWith('greatTemple');
-    let plotCount = isTempleIsle ? CONFIG.Structures.PLOTS_PER_TEMPLE
-      : isl.role === 'filler' ? 1 : CONFIG.Structures.PLOTS_PER_ISLAND;
+    let plotCount = isTempleIsle ? CONFIG.Structures.PLOTS_PER_TEMPLE : CONFIG.Structures.PLOTS_PER_ISLAND;
     if (!isTempleIsle && i === extraPlotIdx) plotCount++;
     isl.plots = pickPlots(rng, isl.cells, Math.min(plotCount, isl.cells.length), land);
   });
@@ -454,7 +460,7 @@ function validateMap(map) {
   // 1. a supply island fully inside each Great Temple's influence radius
   for (const [gt, supplyRole] of [[gtA, 'supplyA'], [gtP, 'supplyP']]) {
     const sup = islandByRole(map, supplyRole);
-    const ok = sup.cells.every(([x, z]) => dist2d(x, z, gt.center[0], gt.center[1]) <= CONFIG.Influence.GREAT_TEMPLE_RADIUS);
+    const ok = sup.cells.every(([x, z]) => dist2d(x, z, gt.center[0], gt.center[1]) <= influenceRadius('great'));
     if (!ok) fails.push('supply-in-influence:' + supplyRole);
   }
 
@@ -618,6 +624,42 @@ function validateMap(map) {
       if (comp.length >= MG.OPEN_CHANNEL_MIN_CELLS && spansA && spansP) { ok = true; break; }
     }
     if (!ok) fails.push('open-channel');
+  }
+
+  // 12. the temple leapfrog must be able to reach Poseidon's corner: the
+  // claim graph (islands claimable within influence of already-claimed
+  // ground, starting from the player's Great Temple) must include an
+  // island whose temple influence lets a Bolt Battery reach his temple.
+  // Without this, the game's win condition is geometrically impossible.
+  {
+    const rTemple = influenceRadius('temple');
+    const rGreat = influenceRadius('great');
+    const nodes = map.islands.filter(i => !i.role.startsWith('greatTemple'));
+    const plotsOf = isl => (isl.plots && isl.plots.length) ? isl.plots.map(p => [p.x, p.z]) : [isl.templeCell];
+    const reach = new Set();
+    let frontier = [];
+    for (const isl of nodes) {
+      if (plotsOf(isl).some(p => dist2d(p[0], p[1], gtA.templeCell[0], gtA.templeCell[1]) <= rGreat)) {
+        reach.add(isl.id);
+        frontier.push(isl);
+      }
+    }
+    while (frontier.length) {
+      const next = [];
+      for (const cur of frontier) {
+        for (const other of nodes) {
+          if (reach.has(other.id)) continue;
+          const hop = plotsOf(cur).some(cp => plotsOf(other).some(op =>
+            dist2d(op[0], op[1], cp[0], cp[1]) <= rTemple));
+          if (hop) { reach.add(other.id); next.push(other); }
+        }
+      }
+      frontier = next;
+    }
+    const boltRange = CONFIG.Structures.BOLT_DIR.RANGE;
+    const winnable = nodes.some(isl => reach.has(isl.id) &&
+      plotsOf(isl).some(p => dist2d(p[0], p[1], gtP.templeCell[0], gtP.templeCell[1]) <= rTemple + boltRange - 0.5));
+    if (!winnable) fails.push('win-reachability');
   }
 
   return { ok: fails.length === 0, fails };

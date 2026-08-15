@@ -235,6 +235,10 @@ function updateCraft(state, c, dt) {
   if (d <= c.range) {
     // fire (vision is implicit: it is adjacent)
     applyDamage(state, c.target, c.dps * dt, c.pos);
+    if (!c.nextFxAt || state.time >= c.nextFxAt) {
+      c.nextFxAt = state.time + 0.35;
+      Events.emit('craftFired', { from: c.pos, to: c.target.pos, targetSide: c.target.side, kind: c.target.kind });
+    }
     return;
   }
   if (!c.path) {

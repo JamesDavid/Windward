@@ -13,7 +13,8 @@ function initAI(state) {
     decideAt: 0,
     mastAt: CONFIG.AI.MAST_INTERVAL,
     rerouteBlockedUntil: 0,
-    avoidCells: new Map()      // cellKey -> until (recently cut ground)
+    avoidCells: new Map(),     // cellKey -> until (recently cut ground)
+    badObjectives: new Map()   // islandId -> until (planning there failed)
   };
   // his Great Temple is defended by two authored structures (§13A.4)
   const isl = state.gtP;
@@ -46,6 +47,11 @@ function initAI(state) {
 function aiScoreIsland(state, isl) {
   if (isl.role.startsWith('greatTemple')) return -1;
   if (isl.temple && isl.temple.hp > 0) return -1;             // taken (his or claimed rival ground)
+  // he cannot build toward ground he holds no influence over — hard gate,
+  // or distant player-side islands hypnotise him into replanning forever
+  if (!state.influence.P.has(cellKey(Math.round(isl.center[0]), Math.round(isl.center[1])))) return 0.2;
+  const bad = state.ai && state.ai.badObjectives;
+  if (bad && bad.has(isl.id) && state.time < bad.get(isl.id)) return 0.1;
   let score = 0;
   // uncontested ground his temple would newly cover
   let overlap = 0;
@@ -61,8 +67,6 @@ function aiScoreIsland(state, isl) {
   score += Math.min(isl.reserve / 20, 8);
   const d = dist2d(isl.center[0], isl.center[1], state.greatTemple.P.cell[0], state.greatTemple.P.cell[1]);
   score += Math.max(0, 14 - d) * 0.5;
-  // reachable ground only: he must be able to build there (influence)
-  if (!state.influence.P.has(cellKey(Math.round(isl.center[0]), Math.round(isl.center[1])))) score *= 0.15;
   return score;
 }
 
@@ -177,6 +181,11 @@ function aiTick(state, dt) {
       if (best) {
         ai.objectiveIsland = best.id;
         ai.plan = aiPlanPath(state, best);
+        if (!ai.plan || ai.plan.length < 3) {
+          // unreachable for now: blacklist it so he tries something else
+          ai.badObjectives.set(best.id, state.time + 30);
+          ai.plan = null;
+        }
       }
     }
     if (ai.plan && res.supply >= pieceCost('SHORT')) {

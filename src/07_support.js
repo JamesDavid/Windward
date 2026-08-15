@@ -167,6 +167,7 @@ function islandSupported(state, isl, side) {
 
 // ================================================================
 // INFLUENCE (§14.5) — projected by supported temples; gates construction.
+// Radii scale with map size (influenceRadius lives beside the map code).
 // ================================================================
 function refreshInfluence(state) {
   const inf = { A: new Set(), P: new Set() };
@@ -179,13 +180,13 @@ function refreshInfluence(state) {
   };
   for (const side of ['A', 'P']) {
     const gt = state.greatTemple[side];
-    if (gt.hp > 0) addRadius(inf[side], gt.cell[0], gt.cell[1], CONFIG.Influence.GREAT_TEMPLE_RADIUS);
+    if (gt.hp > 0) addRadius(inf[side], gt.cell[0], gt.cell[1], influenceRadius('great'));
     for (const isl of state.map.islands) {
       if (isl.role.startsWith('greatTemple')) continue;
       if (!islandConducts(state, isl, side)) continue;
       // anchor invariant: a disconnected temple projects nothing (§14.5.5)
       if (!islandSupported(state, isl, side)) continue;
-      addRadius(inf[side], isl.temple.cell[0], isl.temple.cell[1], CONFIG.Influence.TEMPLE_RADIUS);
+      addRadius(inf[side], isl.temple.cell[0], isl.temple.cell[1], influenceRadius('temple'));
     }
   }
   const contested = new Set();

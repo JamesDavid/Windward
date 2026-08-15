@@ -153,8 +153,13 @@ function gunTick(state, st, dt) {
 
   if (st.type === 'vane') {
     // radial: hits every valid target in radius
-    for (const t of [...moverTargets, ...structTargets, ...segTargets]) {
+    const all = [...moverTargets, ...structTargets, ...segTargets];
+    for (const t of all) {
       applyDamage(state, t, dps * dt, st.cell);
+    }
+    if (all.length && (!st.nextFxAt || state.time >= st.nextFxAt)) {
+      st.nextFxAt = state.time + 0.3;
+      Events.emit('gunFired', { side, from: st.cell, to: all[0].pos, targetSide: all[0].side, kind: all[0].kind });
     }
     return;
   }
@@ -180,6 +185,10 @@ function gunTick(state, st, dt) {
     applyDamage(state, target, dps * dt, st.cell);
     st.firingAt = target.pos.slice();
     st.lastFired = state.time;
+    if (!st.nextFxAt || state.time >= st.nextFxAt) {
+      st.nextFxAt = state.time + 0.25;
+      Events.emit('gunFired', { side, from: st.cell, to: target.pos, targetSide: target.side, kind: target.kind });
+    }
   }
 }
 

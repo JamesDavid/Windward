@@ -54,13 +54,15 @@
   #banner .sub { font-size: 15px; font-style: italic; margin-top: 6px; color: #cfe3e6; }
   #banner.poseidon .title { color: #7fd4dd; }
   #tutorial {
-    position: absolute; bottom: 258px; left: 12px; right: 12px; text-align: center;
-    pointer-events: none; font-size: 16px; font-style: italic; color: var(--ivory);
+    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 46px);
+    left: 12px; right: 12px; text-align: center;
+    pointer-events: none; font-size: 15px; font-style: italic; color: var(--ivory);
     text-shadow: 0 1px 4px #000; opacity: 0; transition: opacity 0.35s;
   }
   #tutorial.show { opacity: 1; }
   #ticker {
-    position: absolute; bottom: 148px; left: 0; right: 0; text-align: center;
+    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 88px);
+    left: 0; right: 0; text-align: center;
     font-size: 12px; letter-spacing: 1px; color: #ffd9a0; pointer-events: none;
     text-shadow: 0 1px 3px #000; opacity: 0; transition: opacity 0.3s;
   }
@@ -104,6 +106,7 @@
     border-radius: 12px; padding: 8px 22px; border: none;
   }
   #btn-confirm { background: var(--gold); color: var(--ink); font-weight: bold; }
+  #btn-rotate { background: rgba(16,21,26,0.85); color: var(--gold); border: 1px solid rgba(217,164,65,0.6); }
   #btn-cancel { background: rgba(16,21,26,0.85); color: var(--ivory); border: 1px solid rgba(242,232,207,0.4); }
   .hidden { display: none !important; }
 
@@ -142,7 +145,7 @@
     border: 1px solid rgba(242,232,207,0.4); border-radius: 8px; padding: 6px;
   }
   #skipbtn {
-    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 40px); left: 10px;
+    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 118px); left: 10px;
     pointer-events: auto; background: rgba(16,21,26,0.6); color: rgba(242,232,207,0.8);
     border: 1px solid rgba(242,232,207,0.3); border-radius: 8px;
     font-family: inherit; font-size: 11px; letter-spacing: 1px; padding: 5px 10px;
@@ -179,6 +182,7 @@
       </div>
       <div id="confirmrow">
         <button id="btn-confirm" class="hidden">CONFIRM</button>
+        <button id="btn-rotate" class="hidden">&#8635; TURN</button>
         <button id="btn-cancel" class="hidden">CANCEL</button>
       </div>
       <div style="display:flex; gap:8px; justify-content:center;">
@@ -194,7 +198,7 @@
   <div id="startscreen" class="screen">
     <h1>WINDWARD</h1>
     <h2>ARCHIPELAGO OF THE GODS</h2>
-    <p>Bind the wind into roads of the sky. Hold them together while the sea god tears them open.</p>
+    <p id="lorecycle" style="min-height:110px; transition: opacity 0.7s; font-style: italic;"></p>
     <div class="seedrow">SEED <input id="seedinput" maxlength="8" autocomplete="off"></div>
     <button id="startbtn">TAKE THE WIND</button>
   </div>
@@ -335,8 +339,8 @@ const CONFIG = Object.freeze({
   },
 
   Craft: {
-    TRANSPORT:  { HP: 30, DPS: 5,  RANGE: 0, SPEED: 0.9 },
-    SIPHON:     { HP: 45, DPS: 8,  RANGE: 3, SPEED: 0.8 },
+    TRANSPORT:  { HP: 30, DPS: 4,  RANGE: 0, SPEED: 0.9 },
+    SIPHON:     { HP: 45, DPS: 6,  RANGE: 3, SPEED: 0.8 },
     HEAVY:      { HP: 80, DPS: 14, RANGE: 3, SPEED: 0.65 },
     SIPHON_MAST:{ HP: 50, DPS: 8,  RANGE: 3 }
   },
@@ -382,7 +386,7 @@ const CONFIG = Object.freeze({
 
   Waves: {
     ORIGIN_FROM_NEAREST_TEMPLE: true,
-    STRENGTH_BASE: 0.6, STRENGTH_PER_TEMPLE: 0.2,
+    STRENGTH_BASE: 0.6, STRENGTH_PER_TEMPLE: 0.15,
     STRENGTH_MIN: 0.6, STRENGTH_MAX: 1.4,
     FIRST_AT: 45.0, TELEGRAPH: 8.0,
     INTERVAL_EARLY: 55.0, INTERVAL_MID: 45.0, INTERVAL_LATE: 35.0,
@@ -422,7 +426,7 @@ const CONFIG = Object.freeze({
     CAM_HEIGHT: 13.8, CAM_BACK: 6.1, CAM_FOV: 46,
     PAN_MARGIN: 1.0,
     TAP_DRAG_THRESHOLD_PX: 10,
-    SHROUD_OPACITY: 0.93,
+    SHROUD_OPACITY: 1.0,
     WHITECAP_COUNT: 90, RIBBON_PARTICLES: 4,
     FRAYED_DESAT: 0.45
   }
@@ -648,6 +652,13 @@ let MAP_ZONES = buildZones();
 // distances the spec authored for its 12x20 reference map scale with size
 function mapScale() {
   return (CONFIG.Grid.WIDTH + CONFIG.Grid.HEIGHT) / (CONFIG.Grid.REF_WIDTH + CONFIG.Grid.REF_HEIGHT);
+}
+
+// influence radii scale with the map so the temple leapfrog survives
+// larger archipelagos (used by generation, economy, and gameplay alike)
+function influenceRadius(kind) {
+  const base = kind === 'great' ? CONFIG.Influence.GREAT_TEMPLE_RADIUS : CONFIG.Influence.TEMPLE_RADIUS;
+  return Math.round(base * mapScale());
 }
 
 // Diagnostic counters (dev only; harmless at runtime).
@@ -933,8 +944,7 @@ function generateOnce(rng) {
     }
     isl.templeCell = best;
     const isTempleIsle = isl.role.startsWith('greatTemple');
-    let plotCount = isTempleIsle ? CONFIG.Structures.PLOTS_PER_TEMPLE
-      : isl.role === 'filler' ? 1 : CONFIG.Structures.PLOTS_PER_ISLAND;
+    let plotCount = isTempleIsle ? CONFIG.Structures.PLOTS_PER_TEMPLE : CONFIG.Structures.PLOTS_PER_ISLAND;
     if (!isTempleIsle && i === extraPlotIdx) plotCount++;
     isl.plots = pickPlots(rng, isl.cells, Math.min(plotCount, isl.cells.length), land);
   });
@@ -1062,7 +1072,7 @@ function validateMap(map) {
   // 1. a supply island fully inside each Great Temple's influence radius
   for (const [gt, supplyRole] of [[gtA, 'supplyA'], [gtP, 'supplyP']]) {
     const sup = islandByRole(map, supplyRole);
-    const ok = sup.cells.every(([x, z]) => dist2d(x, z, gt.center[0], gt.center[1]) <= CONFIG.Influence.GREAT_TEMPLE_RADIUS);
+    const ok = sup.cells.every(([x, z]) => dist2d(x, z, gt.center[0], gt.center[1]) <= influenceRadius('great'));
     if (!ok) fails.push('supply-in-influence:' + supplyRole);
   }
 
@@ -1226,6 +1236,42 @@ function validateMap(map) {
       if (comp.length >= MG.OPEN_CHANNEL_MIN_CELLS && spansA && spansP) { ok = true; break; }
     }
     if (!ok) fails.push('open-channel');
+  }
+
+  // 12. the temple leapfrog must be able to reach Poseidon's corner: the
+  // claim graph (islands claimable within influence of already-claimed
+  // ground, starting from the player's Great Temple) must include an
+  // island whose temple influence lets a Bolt Battery reach his temple.
+  // Without this, the game's win condition is geometrically impossible.
+  {
+    const rTemple = influenceRadius('temple');
+    const rGreat = influenceRadius('great');
+    const nodes = map.islands.filter(i => !i.role.startsWith('greatTemple'));
+    const plotsOf = isl => (isl.plots && isl.plots.length) ? isl.plots.map(p => [p.x, p.z]) : [isl.templeCell];
+    const reach = new Set();
+    let frontier = [];
+    for (const isl of nodes) {
+      if (plotsOf(isl).some(p => dist2d(p[0], p[1], gtA.templeCell[0], gtA.templeCell[1]) <= rGreat)) {
+        reach.add(isl.id);
+        frontier.push(isl);
+      }
+    }
+    while (frontier.length) {
+      const next = [];
+      for (const cur of frontier) {
+        for (const other of nodes) {
+          if (reach.has(other.id)) continue;
+          const hop = plotsOf(cur).some(cp => plotsOf(other).some(op =>
+            dist2d(op[0], op[1], cp[0], cp[1]) <= rTemple));
+          if (hop) { reach.add(other.id); next.push(other); }
+        }
+      }
+      frontier = next;
+    }
+    const boltRange = CONFIG.Structures.BOLT_DIR.RANGE;
+    const winnable = nodes.some(isl => reach.has(isl.id) &&
+      plotsOf(isl).some(p => dist2d(p[0], p[1], gtP.templeCell[0], gtP.templeCell[1]) <= rTemple + boltRange - 0.5));
+    if (!winnable) fails.push('win-reachability');
   }
 
   return { ok: fails.length === 0, fails };
@@ -1470,31 +1516,33 @@ function structureAt(state, x, z) {
 // - a claimed island's temple (limited ports)
 function getSockets(state, side) {
   const sockets = [];
+  const seen = new Set();
+  const push = (cell, kind) => {
+    const k = cellKey(cell[0], cell[1]);
+    if (seen.has(k)) return;
+    seen.add(k);
+    sockets.push({ cell: [cell[0], cell[1]], kind });
+  };
   const deg = nodeDegrees(state, side);
-  const gt = state.greatTemple[side];
-  if (gt.hp > 0) {
-    const used = deg.get(cellKey(gt.cell[0], gt.cell[1])) || 0;
-    if (used < CONFIG.Structures.PORTS_GREAT_TEMPLE) sockets.push({ cell: gt.cell.slice(), kind: 'greatTemple' });
-  }
+  // any cell of an island that conducts for this side (its whole coast is
+  // a harbour — a channel terminal may begin anywhere the island touches)
   for (const isl of state.map.islands) {
-    if (!islandConducts(state, isl, side) || isl.role.startsWith('greatTemple')) continue;
-    const c = isl.temple.cell;
-    const used = deg.get(cellKey(c[0], c[1])) || 0;
-    if (used < CONFIG.Structures.PORTS_ISLAND_TEMPLE && islandSupported(state, isl, side)) {
-      sockets.push({ cell: c.slice(), kind: 'temple' });
-    }
+    if (!islandConducts(state, isl, side)) continue;
+    if (!isl.role.startsWith('greatTemple') && !islandSupported(state, isl, side)) continue;
+    for (const [x, z] of isl.cells) push([x, z], 'island');
   }
   for (const [k, d] of deg) {
     const [x, z] = keyCell(k);
+    if (seen.has(k)) continue;
     const st = structureAt(state, x, z);
     if (st && st.owner === side) {
-      // structure node: 1 incoming + PORTS outgoing
+      // structure node: 1 incoming + PORTS outgoing (§14.0)
       if (st.buildProgress >= 1 && st.ports > 0 && d < st.ports + 1 && segmentSupportedAtCell(state, side, x, z)) {
-        sockets.push({ cell: [x, z], kind: 'structure' });
+        push([x, z], 'structure');
       }
       continue;
     }
-    if (d === 1 && segmentSupportedAtCell(state, side, x, z)) sockets.push({ cell: [x, z], kind: 'end' });
+    if (d === 1 && segmentSupportedAtCell(state, side, x, z)) push([x, z], 'end');
   }
   return sockets;
 }
@@ -1740,6 +1788,7 @@ function islandSupported(state, isl, side) {
 
 // ================================================================
 // INFLUENCE (§14.5) — projected by supported temples; gates construction.
+// Radii scale with map size (influenceRadius lives beside the map code).
 // ================================================================
 function refreshInfluence(state) {
   const inf = { A: new Set(), P: new Set() };
@@ -1752,13 +1801,13 @@ function refreshInfluence(state) {
   };
   for (const side of ['A', 'P']) {
     const gt = state.greatTemple[side];
-    if (gt.hp > 0) addRadius(inf[side], gt.cell[0], gt.cell[1], CONFIG.Influence.GREAT_TEMPLE_RADIUS);
+    if (gt.hp > 0) addRadius(inf[side], gt.cell[0], gt.cell[1], influenceRadius('great'));
     for (const isl of state.map.islands) {
       if (isl.role.startsWith('greatTemple')) continue;
       if (!islandConducts(state, isl, side)) continue;
       // anchor invariant: a disconnected temple projects nothing (§14.5.5)
       if (!islandSupported(state, isl, side)) continue;
-      addRadius(inf[side], isl.temple.cell[0], isl.temple.cell[1], CONFIG.Influence.TEMPLE_RADIUS);
+      addRadius(inf[side], isl.temple.cell[0], isl.temple.cell[1], influenceRadius('temple'));
     }
   }
   const contested = new Set();
@@ -1792,7 +1841,7 @@ function economyTick(state, dt) {
       for (const isl of state.map.islands) {
         if (isl.role.startsWith('greatTemple')) continue;
         if (!islandConducts(state, isl, side) || !islandSupported(state, isl, side)) continue;
-        const r = CONFIG.Influence.TEMPLE_RADIUS;
+        const r = influenceRadius('temple');
         const [tx, tz] = isl.temple.cell;
         for (let z = Math.max(0, Math.floor(tz - r)); z <= Math.min(CONFIG.Grid.HEIGHT - 1, Math.ceil(tz + r)); z++) {
           for (let x = Math.max(0, Math.floor(tx - r)); x <= Math.min(CONFIG.Grid.WIDTH - 1, Math.ceil(tx + r)); x++) {
@@ -2588,8 +2637,13 @@ function gunTick(state, st, dt) {
 
   if (st.type === 'vane') {
     // radial: hits every valid target in radius
-    for (const t of [...moverTargets, ...structTargets, ...segTargets]) {
+    const all = [...moverTargets, ...structTargets, ...segTargets];
+    for (const t of all) {
       applyDamage(state, t, dps * dt, st.cell);
+    }
+    if (all.length && (!st.nextFxAt || state.time >= st.nextFxAt)) {
+      st.nextFxAt = state.time + 0.3;
+      Events.emit('gunFired', { side, from: st.cell, to: all[0].pos, targetSide: all[0].side, kind: all[0].kind });
     }
     return;
   }
@@ -2615,6 +2669,10 @@ function gunTick(state, st, dt) {
     applyDamage(state, target, dps * dt, st.cell);
     st.firingAt = target.pos.slice();
     st.lastFired = state.time;
+    if (!st.nextFxAt || state.time >= st.nextFxAt) {
+      st.nextFxAt = state.time + 0.25;
+      Events.emit('gunFired', { side, from: st.cell, to: target.pos, targetSide: target.side, kind: target.kind });
+    }
   }
 }
 
@@ -2865,6 +2923,10 @@ function updateCraft(state, c, dt) {
   if (d <= c.range) {
     // fire (vision is implicit: it is adjacent)
     applyDamage(state, c.target, c.dps * dt, c.pos);
+    if (!c.nextFxAt || state.time >= c.nextFxAt) {
+      c.nextFxAt = state.time + 0.35;
+      Events.emit('craftFired', { from: c.pos, to: c.target.pos, targetSide: c.target.side, kind: c.target.kind });
+    }
     return;
   }
   if (!c.path) {
@@ -2924,7 +2986,8 @@ function initAI(state) {
     decideAt: 0,
     mastAt: CONFIG.AI.MAST_INTERVAL,
     rerouteBlockedUntil: 0,
-    avoidCells: new Map()      // cellKey -> until (recently cut ground)
+    avoidCells: new Map(),     // cellKey -> until (recently cut ground)
+    badObjectives: new Map()   // islandId -> until (planning there failed)
   };
   // his Great Temple is defended by two authored structures (§13A.4)
   const isl = state.gtP;
@@ -2957,6 +3020,11 @@ function initAI(state) {
 function aiScoreIsland(state, isl) {
   if (isl.role.startsWith('greatTemple')) return -1;
   if (isl.temple && isl.temple.hp > 0) return -1;             // taken (his or claimed rival ground)
+  // he cannot build toward ground he holds no influence over — hard gate,
+  // or distant player-side islands hypnotise him into replanning forever
+  if (!state.influence.P.has(cellKey(Math.round(isl.center[0]), Math.round(isl.center[1])))) return 0.2;
+  const bad = state.ai && state.ai.badObjectives;
+  if (bad && bad.has(isl.id) && state.time < bad.get(isl.id)) return 0.1;
   let score = 0;
   // uncontested ground his temple would newly cover
   let overlap = 0;
@@ -2972,8 +3040,6 @@ function aiScoreIsland(state, isl) {
   score += Math.min(isl.reserve / 20, 8);
   const d = dist2d(isl.center[0], isl.center[1], state.greatTemple.P.cell[0], state.greatTemple.P.cell[1]);
   score += Math.max(0, 14 - d) * 0.5;
-  // reachable ground only: he must be able to build there (influence)
-  if (!state.influence.P.has(cellKey(Math.round(isl.center[0]), Math.round(isl.center[1])))) score *= 0.15;
   return score;
 }
 
@@ -3088,6 +3154,11 @@ function aiTick(state, dt) {
       if (best) {
         ai.objectiveIsland = best.id;
         ai.plan = aiPlanPath(state, best);
+        if (!ai.plan || ai.plan.length < 3) {
+          // unreachable for now: blacklist it so he tries something else
+          ai.badObjectives.set(best.id, state.time + 30);
+          ai.plan = null;
+        }
       }
     }
     if (ai.plan && res.supply >= pieceCost('SHORT')) {
@@ -3584,6 +3655,37 @@ function gridFromWorld(wx, wz) {
   return [Math.round(wx + (CONFIG.Grid.WIDTH - 1) / 2), Math.round(wz + (CONFIG.Grid.HEIGHT - 1) / 2)];
 }
 
+// A tileable ripple texture painted at boot: layered sine swells with a
+// little seeded chop, in the sea palette. Zero assets, pure canvas.
+function makeSeaTexture() {
+  const S = 128;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d');
+  const rng = mulberry32(0x5EA);
+  const img = ctx.createImageData(S, S);
+  const base = { r: 0x10, g: 0x4b, b: 0x58 };
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const u = (x / S) * Math.PI * 2, v = (y / S) * Math.PI * 2;
+      let h = Math.sin(u * 3 + Math.sin(v * 2) * 1.3) * 0.5
+        + Math.sin(v * 5 + Math.sin(u * 4) * 0.8) * 0.3
+        + Math.sin((u + v) * 7) * 0.2;
+      h += (rng() - 0.5) * 0.25;
+      const crest = clamp(h * 0.5 + 0.5, 0, 1);
+      const lift = 0.82 + crest * 0.45;   // crests lighten, troughs deepen
+      const i = (y * S + x) * 4;
+      img.data[i] = Math.min(255, base.r * lift + crest * 14);
+      img.data[i + 1] = Math.min(255, base.g * lift + crest * 20);
+      img.data[i + 2] = Math.min(255, base.b * lift + crest * 22);
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  return tex;
+}
+
 function initRenderer() {
   const canvas = document.getElementById('gl');
   R.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -3601,14 +3703,18 @@ function initRenderer() {
   R.scene.add(sun);
   R.scene.add(new THREE.HemisphereLight(0xbcdce4, 0x27453a, 0.5));
 
-  // the Aegean
+  // the Aegean — rippled by a generated texture that streams with the wind
+  const seaTex = makeSeaTexture();
+  seaTex.wrapS = seaTex.wrapT = THREE.RepeatWrapping;
+  seaTex.repeat.set(CONFIG.Grid.WIDTH * 0.7, CONFIG.Grid.HEIGHT * 0.55);
   const sea = new THREE.Mesh(
     new THREE.PlaneGeometry(CONFIG.Grid.WIDTH * 4, CONFIG.Grid.HEIGHT * 3),
-    new THREE.MeshLambertMaterial({ color: Palette.sea })
+    new THREE.MeshLambertMaterial({ color: 0xd8f0f2, map: seaTex })
   );
   sea.rotation.x = -Math.PI / 2;
   sea.position.y = 0;
   R.scene.add(sea);
+  R.seaTex = seaTex;
 
   R.socketGroup = new THREE.Group();
   R.previewGroup = new THREE.Group();
@@ -3640,7 +3746,15 @@ function updateCamera() {
   const mz = (CONFIG.Grid.HEIGHT - 1) / 2 + CONFIG.Render.PAN_MARGIN;
   t.x = clamp(t.x, -mx, mx);
   t.z = clamp(t.z, -mz, mz + 1);
-  R.camera.position.set(t.x, CONFIG.Render.CAM_HEIGHT * fit, t.z + CONFIG.Render.CAM_BACK * fit);
+  // pinch zoom and two-finger rotation orbit the same fixed tilt
+  if (R.camZoom === undefined) { R.camZoom = 1; R.camAz = 0; }
+  R.camZoom = clamp(R.camZoom, 0.75, 2.6);
+  const back = CONFIG.Render.CAM_BACK * fit * R.camZoom;
+  const h = CONFIG.Render.CAM_HEIGHT * fit * R.camZoom;
+  R.camera.position.set(
+    t.x + Math.sin(R.camAz || 0) * back,
+    h,
+    t.z + Math.cos(R.camAz || 0) * back);
   R.camera.lookAt(t.x, 0, t.z);
 }
 
@@ -3661,7 +3775,9 @@ function buildMapMeshes(state) {
   for (const isl of state.map.islands) {
     const grp = new THREE.Group();
     const stoneMat = new THREE.MeshLambertMaterial({ color: Palette.limestone });
+    // the island's base tints with its allegiance (updated per frame)
     const beachMat = new THREE.MeshLambertMaterial({ color: Palette.limestoneShade });
+    isl.beachMat = beachMat;
     const rngIsl = mulberry32(hashString(state.seed + ':isl' + isl.id));
     for (const [cx, cz] of isl.cells) {
       const beach = new THREE.Mesh(beachGeo, beachMat);
@@ -3713,8 +3829,8 @@ function buildMapMeshes(state) {
       col.position.set(Math.cos(a) * 0.36, 0.4, Math.sin(a) * 0.36);
       grp.add(col);
     }
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.52, 0.3, 10), trim);
-    roof.position.y = 0.78;
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.26, 10), trim);
+    roof.position.y = 0.76;
     grp.add(roof);
     grp.position.set(worldX(gt.cell[0]), CONFIG.Render.ISLAND_HEIGHT + 0.04, worldZ(gt.cell[1]));
     R.islandGroup.add(grp);
@@ -3843,14 +3959,22 @@ function syncSegments(state) {
 function showSockets(state, sockets) {
   R.socketGroup.clear();
   for (const s of sockets) {
+    const grp = new THREE.Group();
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.22, 0.34, 20),
-      new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+      new THREE.RingGeometry(0.3, 0.46, 24),
+      new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.95, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2;
+    // a beacon of light so sockets read from anywhere on the map
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.09, 2.6, 8, 1, true),
+      new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+    beam.position.y = 1.3;
+    grp.add(ring, beam);
     const y = islandAtCells(state, s.cell) ? CONFIG.Render.ISLAND_HEIGHT + 0.06 : CONFIG.Render.AIR_ALTITUDE;
-    ring.position.set(worldX(s.cell[0]), y, worldZ(s.cell[1]));
-    ring.userData.socket = s;
-    R.socketGroup.add(ring);
+    grp.position.set(worldX(s.cell[0]), y, worldZ(s.cell[1]));
+    grp.userData.socket = s;
+    grp.userData.ring = ring;
+    R.socketGroup.add(grp);
   }
 }
 function islandAtCells(state, cell) { return islandAt(state, cell[0], cell[1]); }
@@ -3858,19 +3982,38 @@ function clearSockets() { R.socketGroup.clear(); }
 
 function showPreview(state, segs, ok) {
   R.previewGroup.clear();
+  const y = CONFIG.Render.AIR_ALTITUDE;
   for (const [a, b] of segs) {
-    const y = CONFIG.Render.AIR_ALTITUDE;
     const ax = worldX(a[0]), az = worldZ(a[1]), bx = worldX(b[0]), bz = worldZ(b[1]);
     const len = Math.hypot(bx - ax, bz - az);
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(len + 0.14, 0.06, 0.16),
+      new THREE.BoxGeometry(len + 0.14, 0.09, 0.24),
       new THREE.MeshBasicMaterial({
         color: ok ? Palette.socket : Palette.danger,
-        transparent: true, opacity: 0.55 + 0.2 * Math.sin(state.time * 6)
+        transparent: true, opacity: 0.7
       }));
     mesh.position.set((ax + bx) / 2, y, (az + bz) / 2);
     mesh.rotation.y = -Math.atan2(bz - az, bx - ax);
     R.previewGroup.add(mesh);
+  }
+  // arrowheads on every open end of the ghost, so its direction reads
+  const cellCount = new Map();
+  for (const [a, b] of segs) {
+    for (const c of [a, b]) {
+      const k = cellKey(c[0], c[1]);
+      cellCount.set(k, (cellCount.get(k) || 0) + 1);
+    }
+  }
+  for (const [a, b] of segs) {
+    for (const [tip, from] of [[b, a], [a, b]]) {
+      if (cellCount.get(cellKey(tip[0], tip[1])) !== 1) continue;
+      const gem = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.15),
+        new THREE.MeshBasicMaterial({ color: ok ? Palette.socket : Palette.danger, transparent: true, opacity: 0.95 }));
+      gem.position.set(worldX(tip[0]), y, worldZ(tip[1]));
+      gem.userData.spin = true;
+      R.previewGroup.add(gem);
+    }
   }
 }
 function clearPreview() { R.previewGroup.clear(); }
@@ -3893,21 +4036,39 @@ function refreshInfluenceView(state) {
 
 // ---------------- per-frame ----------------
 function renderTick(state, dt) {
-  // whitecaps drift with the wind and shimmer
+  // the sea itself streams with the wind under the camera
+  if (R.seaTex) {
+    const [cgx, cgz] = gridFromWorld(R.camTarget ? R.camTarget.x : 0, R.camTarget ? R.camTarget.z : 0);
+    const w = state.wind.at(clamp(cgx, 0, CONFIG.Grid.WIDTH - 1), clamp(cgz, 0, CONFIG.Grid.HEIGHT - 1));
+    R.seaTex.offset.x -= w.x * dt * 0.028;
+    R.seaTex.offset.y += w.z * dt * 0.028;
+  }
+  // whitecaps ride the wind for a few seconds, fade, and respawn at a
+  // fresh spot — so the field stays evenly alive instead of pooling at
+  // the rim where the sheared wind runs parallel to the edge
+  if (!R.capRng) R.capRng = mulberry32(0xCAB5);
   for (const c of R.whitecaps) {
     const w = state.wind.at(c.gx, c.gz);
     c.gx += w.x * dt * 0.55;
     c.gz += w.z * dt * 0.55;
-    if (c.gx < 0 || c.gx > CONFIG.Grid.WIDTH - 1 || c.gz < 0 || c.gz > CONFIG.Grid.HEIGHT - 1) {
-      c.gx = (c.gx + CONFIG.Grid.WIDTH) % (CONFIG.Grid.WIDTH - 0.01);
-      c.gz = (c.gz + CONFIG.Grid.HEIGHT) % (CONFIG.Grid.HEIGHT - 0.01);
+    c.life = (c.life === undefined ? 3 + c.phase * 5 : c.life) - dt;
+    if (c.life <= 0 ||
+        c.gx < 0 || c.gx > CONFIG.Grid.WIDTH - 1 || c.gz < 0 || c.gz > CONFIG.Grid.HEIGHT - 1) {
+      let tries = 12;
+      do {
+        c.gx = R.capRng() * (CONFIG.Grid.WIDTH - 1);
+        c.gz = R.capRng() * (CONFIG.Grid.HEIGHT - 1);
+      } while (state.map.land.has(cellKey(Math.round(c.gx), Math.round(c.gz))) && tries-- > 0);
+      c.life = 4 + R.capRng() * 6;
+      c.phase = R.capRng();
     }
     c.phase += dt * 1.4;
     c.mesh.position.x = worldX(c.gx);
     c.mesh.position.z = worldZ(c.gz);
     c.mesh.rotation.z = -Math.atan2(w.z, w.x);
     const onLand = state.map.land.has(cellKey(Math.round(c.gx), Math.round(c.gz)));
-    c.mesh.material.opacity = onLand ? 0 : 0.16 + 0.16 * Math.sin(c.phase * Math.PI * 2);
+    const fade = Math.min(1, Math.min(c.life, 1.2));
+    c.mesh.material.opacity = onLand ? 0 : (0.16 + 0.16 * Math.sin(c.phase * Math.PI * 2)) * fade;
   }
   // trees lean into the wind
   for (const t of R.trees) {
@@ -3923,6 +4084,14 @@ function renderTick(state, dt) {
     s.mesh.position.set(s.base.x + w.x * d, s.base.y + 0.85 + s.phase * 0.5, s.base.z + w.z * d);
     s.mesh.material.opacity = 0.32 * (1 - s.phase);
     s.mesh.scale.setScalar(0.7 + s.phase * 1.6);
+  }
+  // pulse the placement affordances so they are unmissable
+  const pulse = 1 + 0.13 * Math.sin(state.time * 5);
+  for (const g of R.socketGroup.children) {
+    if (g.userData.ring) g.userData.ring.scale.setScalar(pulse);
+  }
+  for (const m of R.previewGroup.children) {
+    if (m.userData && m.userData.spin) m.rotation.y += dt * 2.5;
   }
   syncSegments(state);
   R.renderer.render(R.scene, R.camera);
@@ -4086,12 +4255,12 @@ function syncStructures(state) {
       grp.add(chassis, payload);
       const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (st.owner === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
       grp.position.set(worldX(st.cell[0]), baseY, worldZ(st.cell[1]));
-      // progress ring while raising
+      // scaffold ring at ground level while raising
       const ring = new THREE.Mesh(
-        new THREE.RingGeometry(0.4, 0.48, 20),
-        new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+        new THREE.RingGeometry(0.42, 0.52, 20),
+        new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.95, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.9;
+      ring.position.y = 0.12;
       grp.add(ring);
       R.scene.add(grp);
       rec = { grp, payload, ring, chassis };
@@ -4233,7 +4402,13 @@ function syncMovers(state) {
 }
 
 // ---- island economy indicators: reserve bar + stockpile heap ----
+const ALLEGIANCE_BASE = { A: 0xc9a05e, P: 0x2e6b74, N: 0xd8c9a8 };
 function syncIslandBars(state) {
+  for (const isl of state.map.islands) {
+    if (isl.beachMat) {
+      isl.beachMat.color.setHex(ALLEGIANCE_BASE[isl.owner || 'N']);
+    }
+  }
   for (const isl of state.map.islands) {
     if (isl.role.startsWith('greatTemple')) continue;
     let rec = R.islandBars.get(isl.id);
@@ -4267,6 +4442,16 @@ function fxSpawn(state, kind, pos, data) {
 }
 
 function initFxEvents(state) {
+  // combat tracers: Aeolus drops ballast jars (gold, falling), Poseidon
+  // throws the sea upward (teal, rising); impacts flash at the target
+  const tracer = (payload, poseidon) => {
+    const { from, to, targetSide, kind } = payload;
+    const ya = poseidon ? 0.25 : 1.05;
+    const yb = targetSide === 'A' ? (kind === 'segment' ? CONFIG.Render.AIR_ALTITUDE : 0.9) : 0.25;
+    fxSpawn(state, 'tracer', from, { to: to.slice(), ya, yb, color: poseidon ? Palette.poseidonGlow : 0xffd977 });
+  };
+  Events.on('gunFired', (p) => tracer(p, p.side === 'P'));
+  Events.on('craftFired', (p) => tracer(p, true));
   Events.on('structureDestroyed', ({ st }) => fxSpawn(state, 'boom', st.cell));
   Events.on('segmentDestroyed', ({ seg, cause }) => {
     fxSpawn(state, cause === 'collapse' ? 'unravel' : 'boom', segMid(seg), { air: seg.owner === 'A' });
@@ -4305,6 +4490,26 @@ function fxTick(state, dt) {
       } else if (f.kind === 'windwall') {
         mesh = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8),
           new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.25 }));
+      } else if (f.kind === 'tracer') {
+        const d = f.data;
+        const ax = worldX(f.pos[0]), az = worldZ(f.pos[1]);
+        const bx = worldX(d.to[0]), bz = worldZ(d.to[1]);
+        const dx = bx - ax, dy = d.yb - d.ya, dz = bz - az;
+        const len = Math.max(0.01, Math.hypot(dx, dy, dz));
+        mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.022, 0.022, len, 5),
+          new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.85 }));
+        mesh.position.set((ax + bx) / 2, (d.ya + d.yb) / 2, (az + bz) / 2);
+        mesh.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          new THREE.Vector3(dx / len, dy / len, dz / len));
+        // impact spark
+        const spark = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }));
+        spark.position.set(bx, d.yb, bz);
+        mesh.add(new THREE.Group());   // keep child indices stable
+        R.scene.add(spark);
+        f.spark = spark;
       }
       const y = f.kind === 'wreck' || f.kind === 'surge' ? 0.04 : (f.data.air ? CONFIG.Render.AIR_ALTITUDE : 0.3);
       mesh.position.set(worldX(f.pos[0]), y, worldZ(f.pos[1]));
@@ -4312,10 +4517,17 @@ function fxTick(state, dt) {
       f.mesh = mesh;
     }
     const life = f.kind === 'wreck' ? 20 : f.kind === 'fogbank' ? CONFIG.Powers.FOG_BANK.DURATION
-      : f.kind === 'windwall' ? CONFIG.Powers.WIND_WALL.DURATION : f.kind === 'surge' ? 1.4 : 0.8;
+      : f.kind === 'windwall' ? CONFIG.Powers.WIND_WALL.DURATION : f.kind === 'surge' ? 1.4
+      : f.kind === 'tracer' ? 0.2 : 0.8;
     if (age > life) {
       R.scene.remove(f.mesh);
+      if (f.spark) R.scene.remove(f.spark);
       f.dead = true;
+      continue;
+    }
+    if (f.kind === 'tracer') {
+      f.mesh.material.opacity = 0.85 * (1 - age / life);
+      if (f.spark) f.spark.material.opacity = 0.9 * (1 - age / life);
       continue;
     }
     if (f.kind === 'boom' || f.kind === 'unravel') {
@@ -4332,6 +4544,32 @@ function fxTick(state, dt) {
   R.fx = R.fx.filter(f => !f.dead);
 }
 
+// ghost of a structure while the player decides (RAISE / cancel)
+function showStructPreview(state, side, type, cell) {
+  R.previewGroup.clear();
+  const onLand = !!islandAt(state, cell[0], cell[1]);
+  const grp = new THREE.Group();
+  const chassis = type === 'temple' || type === 'yard' ? new THREE.Group() : makeChassis(side, onLand);
+  const payload = makePayload(side, type, null);
+  grp.add(chassis, payload);
+  grp.traverse(o => {
+    if (o.material) {
+      o.material = o.material.clone();
+      o.material.transparent = true;
+      o.material.opacity = 0.45;
+    }
+  });
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.34, 0.46, 24),
+    new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.06;
+  grp.add(ring);
+  const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (side === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
+  grp.position.set(worldX(cell[0]), baseY, worldZ(cell[1]));
+  R.previewGroup.add(grp);
+}
+
 // ---- exploration shroud: unexplored terrain is dark until the player's
 // reach (structures, corridors, ships) lifts it. One-way. ----
 R.shroud = new Map();
@@ -4340,8 +4578,9 @@ function buildShroud(state) {
   for (const m of R.shroud.values()) R.scene.remove(m);
   R.shroud.clear();
   const geo = new THREE.BoxGeometry(1.02, 1.7, 1.02);
+  const opaque = CONFIG.Render.SHROUD_OPACITY >= 1;
   const mat = new THREE.MeshBasicMaterial({
-    color: 0x060f14, transparent: true, opacity: CONFIG.Render.SHROUD_OPACITY
+    color: 0x060f14, transparent: !opaque, opacity: CONFIG.Render.SHROUD_OPACITY
   });
   for (let z = 0; z < CONFIG.Grid.HEIGHT; z++) {
     for (let x = 0; x < CONFIG.Grid.WIDTH; x++) {
@@ -4396,7 +4635,7 @@ function initUI(state) {
   const $ = id => document.getElementById(id);
   UI.els = {
     supply: $('supply'), favor: $('favor'), seedchip: $('seedchip'), waveinfo: $('waveinfo'),
-    hand: $('hand'), confirm: $('btn-confirm'), cancel: $('btn-cancel'),
+    hand: $('hand'), confirm: $('btn-confirm'), cancel: $('btn-cancel'), rotate: $('btn-rotate'),
     discard: $('btn-discard'), tech: $('btn-tech'),
     banner: $('banner'), tutorial: $('tutorial'), ticker: $('ticker'),
     powTailwind: $('pow-tailwind'), powWindwall: $('pow-windwall'),
@@ -4407,6 +4646,7 @@ function initUI(state) {
   buildHand(state);
 
   UI.els.confirm.addEventListener('click', () => confirmPlacement(state));
+  UI.els.rotate.addEventListener('click', () => cyclePlacement(state));
   UI.els.cancel.addEventListener('click', () => cancelPlacement());
   UI.els.discard.addEventListener('click', () => discardPiece(state));
   UI.els.tech.addEventListener('click', () => {
@@ -4433,15 +4673,40 @@ function initUI(state) {
   // pan vs tap: a drag beyond the threshold pans the camera; a clean
   // press-and-release is a tap
   const canvas = R.renderer.domElement;
-  const pan = { active: false, panned: false, sx: 0, sy: 0, ground: null, target: null };
+  const pan = { active: false, panned: false, sx: 0, sy: 0, ground: null };
+  const pointers = new Map();     // two-finger pinch (zoom) and twist (rotate)
+  let pinch = null;
+  const gestureVals = () => {
+    const [a, b] = [...pointers.values()];
+    return {
+      d: Math.hypot(a.x - b.x, a.y - b.y),
+      ang: Math.atan2(b.y - a.y, b.x - a.x)
+    };
+  };
   canvas.addEventListener('pointerdown', (e) => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const g = gestureVals();
+      pinch = { d0: g.d, a0: g.ang, zoom0: R.camZoom || 1, az0: R.camAz || 0 };
+      pan.active = false;
+      pan.panned = true;   // suppress the tap on release
+      return;
+    }
     pan.active = true;
     pan.panned = false;
     pan.sx = e.clientX; pan.sy = e.clientY;
     pan.ground = pickGround(e.clientX, e.clientY);
-    pan.target = { ...R.camTarget };
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pointers.size === 2) {
+      const g = gestureVals();
+      R.camZoom = clamp(pinch.zoom0 * (pinch.d0 / Math.max(20, g.d)), 0.75, 2.6);
+      let da = g.ang - pinch.a0;
+      R.camAz = pinch.az0 + da;
+      updateCamera();
+      return;
+    }
     if (!pan.active) return;
     const moved = Math.hypot(e.clientX - pan.sx, e.clientY - pan.sy);
     if (!pan.panned && moved < CONFIG.Render.TAP_DRAG_THRESHOLD_PX) return;
@@ -4454,12 +4719,15 @@ function initUI(state) {
     updateCamera();
     pan.ground = pickGround(e.clientX, e.clientY);
   });
-  canvas.addEventListener('pointerup', (e) => {
-    const wasTap = pan.active && !pan.panned;
+  const release = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    const wasTap = pan.active && !pan.panned && e.type === 'pointerup';
     pan.active = false;
     if (wasTap) onTap(state, e);
-  });
-  canvas.addEventListener('pointercancel', () => { pan.active = false; });
+  };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
 }
 
 // ---- hand ----
@@ -4518,6 +4786,15 @@ function selectPiece(state, i) {
   showSockets(state, sockets);
   setConfirmVisible(false);
   refreshHand(state);
+  if (!sockets.length) {
+    flashTicker('NOWHERE TO BUILD FROM — EXTEND ANOTHER WAY');
+  } else if (sockets.length === 1) {
+    // only one place it can go (the opening move): step straight to preview
+    selectSocket(state, sockets[0]);
+    flashTicker('TAP THE GHOST TO TURN IT · CONFIRM TO BIND');
+  } else {
+    flashTicker('TAP A GLOWING SOCKET');
+  }
   Events.emit('uiSelectPiece', {});
 }
 
@@ -4531,6 +4808,10 @@ function selectSocket(state, socket) {
   showPreview(state, placements[0].segs, true);
   setConfirmVisible(true);
   updateGhostMultiplier(state);
+  if (!UI.hintedCycle) {
+    UI.hintedCycle = true;
+    flashTicker('TAP THE GHOST TO TURN IT · CONFIRM TO BIND');
+  }
   return true;
 }
 
@@ -4557,6 +4838,14 @@ function updateGhostMultiplier(state) {
 }
 
 function confirmPlacement(state) {
+  if (UI.structMode) {
+    const { type, at } = UI.structMode;
+    const why = whyNotBuild(state, 'A', type, at);
+    if (why) { flashTicker(why); cancelPlacement(); return; }
+    buildStructure(state, 'A', type, at);
+    cancelPlacement();
+    return;
+  }
   if (UI.mode !== 'placing' || !UI.placements.length) return;
   const type = state.hand[UI.pieceIdx];
   if (placePiece(state, 'A', type, UI.placements[UI.orient].segs)) {
@@ -4572,6 +4861,7 @@ function cancelPlacement() {
   UI.pieceIdx = -1;
   UI.socket = null;
   UI.placements = [];
+  UI.structMode = null;
   clearSockets();
   clearPreview();
   setConfirmVisible(false);
@@ -4589,6 +4879,8 @@ function discardPiece(state) {
 function setConfirmVisible(v) {
   UI.els.confirm.classList.toggle('hidden', !v);
   UI.els.cancel.classList.toggle('hidden', !v);
+  // TURN only shows when the piece has more than one legal orientation here
+  UI.els.rotate.classList.toggle('hidden', !v || !UI.placements || UI.placements.length < 2);
   if (v) UI.els.confirm.textContent = 'CONFIRM';
 }
 
@@ -4614,6 +4906,7 @@ function onTap(state, e) {
     return;
   }
   hideBuildMenu();
+  if (UI.structMode) { cancelPlacement(); return; }
   if (!cell) return;
 
   // armed Wind Wall aims at the tapped endpoint (§19.1)
@@ -4633,8 +4926,9 @@ function menuButton(label, cost, fn, disabledReason) {
   const btn = document.createElement('button');
   btn.innerHTML = label + (cost ? '<b>' + cost + ' ⚇</b>' : '');
   if (disabledReason) {
-    btn.disabled = true;
-    btn.title = disabledReason;
+    // still tappable: a tap explains WHY it is refused (mobile has no tooltips)
+    btn.style.opacity = 0.4;
+    btn.addEventListener('click', () => flashTicker(disabledReason));
   } else {
     btn.addEventListener('click', () => { fn(); hideBuildMenu(); });
   }
@@ -4650,10 +4944,14 @@ function openContextMenu(state, cell) {
   const plotIdx = isl ? isl.plots.findIndex(p => p.x === x && p.z === z) : -1;
   const deg = nodeDegrees(state, 'A').get(cellKey(x, z)) || 0;
 
+  // arming a build shows a ghost at the site; CONFIRM raises it (§8.1 rhythm)
   const tryBuild = (type, at) => () => {
     const why = whyNotBuild(state, 'A', type, at);
     if (why) { flashTicker(why); return; }
-    buildStructure(state, 'A', type, at);
+    UI.structMode = { type, at };
+    showStructPreview(state, 'A', type, at.cell);
+    setConfirmVisible(true);
+    UI.els.confirm.textContent = 'RAISE  ' + structureStats('A', type).cost + ' ⚇';
   };
 
   if (!isl && deg === 1 && !structureAt(state, x, z)) {
@@ -4675,7 +4973,23 @@ function openContextMenu(state, cell) {
       }
     }
   } else if (isl) {
-    // island body: priest travel, hauler purchase at home/yarded islands
+    // island body: offer builds on the first free plot too, so the player
+    // doesn't have to hit the small bronze disc exactly
+    const freeIdx = isl.plots.findIndex(pl => !pl.structure);
+    if (freeIdx >= 0) {
+      const at = { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
+      if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
+        options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at),
+          whyNotBuild(state, 'A', 'temple', at)));
+      }
+      if (isl.owner === 'A') {
+        for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
+          const why = whyNotBuild(state, 'A', type, at);
+          options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why));
+        }
+      }
+    }
+    // priest travel, hauler purchase at home/yarded islands
     const p = state.priests.A;
     const reachable = p && findNetPath(state, 'A', [Math.round(p.pos[0]), Math.round(p.pos[1])], isl.cells);
     options.push(menuButton('SEND<br>PRIEST', 0, () => {
@@ -4873,10 +5187,32 @@ if (typeof window !== 'undefined') {
   Object.defineProperty(window, 'WD', { get: () => ({ state: STATE, startMatch }) });
 }
 
+// The backstory plays on the title screen, above the call to action (§4).
+const INTRO_LORE = [
+  'Aeolus once gave Odysseus the winds, tied inside a leather bag. Within sight of home, his crew opened it — they thought it held gold. The winds escaped, and never fully returned.',
+  'For generations the escaped winds have tangled around these islands, snagging on headlands, rushing the straits. The sea stayed the only road — and every crossing paid Poseidon its honour.',
+  'Then the shipwrights found the light air: iron filings and sour wine, sealed in a bronze retort, give off an air that will not stay down. Lift was worked out in a foundry. No god was consulted.',
+  'But lift is not travel. A full envelope rises, then goes wherever the sky is going. To steer, a crew must bind a wind — and the only winds loose here are Aeolus’ own.',
+  'So the guild took a patron. They keep his rites; he grants the currents. And Poseidon watches cargo cross without asking him for calm water. He is not insulted. He is being forgotten.'
+];
+let loreIdx = 0, loreTimer = null;
+function cycleLore() {
+  const el = document.getElementById('lorecycle');
+  if (!el || document.getElementById('startscreen').classList.contains('hidden')) return;
+  el.style.opacity = 0;
+  setTimeout(() => {
+    el.textContent = INTRO_LORE[loreIdx % INTRO_LORE.length];
+    el.style.opacity = 1;
+    loreIdx++;
+  }, 700);
+  loreTimer = setTimeout(cycleLore, 8000);
+}
+
 // ---- boot ----
 window.addEventListener('DOMContentLoaded', () => {
   const seedInput = document.getElementById('seedinput');
   seedInput.value = makeSeedString();
+  cycleLore();
   document.getElementById('startbtn').addEventListener('click', () => {
     audioInit();
     const seed = (seedInput.value || makeSeedString()).trim().toLowerCase();

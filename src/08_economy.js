@@ -20,7 +20,7 @@ function economyTick(state, dt) {
       for (const isl of state.map.islands) {
         if (isl.role.startsWith('greatTemple')) continue;
         if (!islandConducts(state, isl, side) || !islandSupported(state, isl, side)) continue;
-        const r = CONFIG.Influence.TEMPLE_RADIUS;
+        const r = influenceRadius('temple');
         const [tx, tz] = isl.temple.cell;
         for (let z = Math.max(0, Math.floor(tz - r)); z <= Math.min(CONFIG.Grid.HEIGHT - 1, Math.ceil(tz + r)); z++) {
           for (let x = Math.max(0, Math.floor(tx - r)); x <= Math.min(CONFIG.Grid.WIDTH - 1, Math.ceil(tx + r)); x++) {

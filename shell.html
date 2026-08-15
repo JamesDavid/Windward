@@ -54,13 +54,15 @@
   #banner .sub { font-size: 15px; font-style: italic; margin-top: 6px; color: #cfe3e6; }
   #banner.poseidon .title { color: #7fd4dd; }
   #tutorial {
-    position: absolute; bottom: 258px; left: 12px; right: 12px; text-align: center;
-    pointer-events: none; font-size: 16px; font-style: italic; color: var(--ivory);
+    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 46px);
+    left: 12px; right: 12px; text-align: center;
+    pointer-events: none; font-size: 15px; font-style: italic; color: var(--ivory);
     text-shadow: 0 1px 4px #000; opacity: 0; transition: opacity 0.35s;
   }
   #tutorial.show { opacity: 1; }
   #ticker {
-    position: absolute; bottom: 148px; left: 0; right: 0; text-align: center;
+    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 88px);
+    left: 0; right: 0; text-align: center;
     font-size: 12px; letter-spacing: 1px; color: #ffd9a0; pointer-events: none;
     text-shadow: 0 1px 3px #000; opacity: 0; transition: opacity 0.3s;
   }
@@ -104,6 +106,7 @@
     border-radius: 12px; padding: 8px 22px; border: none;
   }
   #btn-confirm { background: var(--gold); color: var(--ink); font-weight: bold; }
+  #btn-rotate { background: rgba(16,21,26,0.85); color: var(--gold); border: 1px solid rgba(217,164,65,0.6); }
   #btn-cancel { background: rgba(16,21,26,0.85); color: var(--ivory); border: 1px solid rgba(242,232,207,0.4); }
   .hidden { display: none !important; }
 
@@ -142,7 +145,7 @@
     border: 1px solid rgba(242,232,207,0.4); border-radius: 8px; padding: 6px;
   }
   #skipbtn {
-    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 40px); left: 10px;
+    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 118px); left: 10px;
     pointer-events: auto; background: rgba(16,21,26,0.6); color: rgba(242,232,207,0.8);
     border: 1px solid rgba(242,232,207,0.3); border-radius: 8px;
     font-family: inherit; font-size: 11px; letter-spacing: 1px; padding: 5px 10px;
@@ -179,6 +182,7 @@
       </div>
       <div id="confirmrow">
         <button id="btn-confirm" class="hidden">CONFIRM</button>
+        <button id="btn-rotate" class="hidden">&#8635; TURN</button>
         <button id="btn-cancel" class="hidden">CANCEL</button>
       </div>
       <div style="display:flex; gap:8px; justify-content:center;">
@@ -194,7 +198,7 @@
   <div id="startscreen" class="screen">
     <h1>WINDWARD</h1>
     <h2>ARCHIPELAGO OF THE GODS</h2>
-    <p>Bind the wind into roads of the sky. Hold them together while the sea god tears them open.</p>
+    <p id="lorecycle" style="min-height:110px; transition: opacity 0.7s; font-style: italic;"></p>
     <div class="seedrow">SEED <input id="seedinput" maxlength="8" autocomplete="off"></div>
     <button id="startbtn">TAKE THE WIND</button>
   </div>

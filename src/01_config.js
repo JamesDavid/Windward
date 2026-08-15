@@ -121,8 +121,8 @@ const CONFIG = Object.freeze({
   },
 
   Craft: {
-    TRANSPORT:  { HP: 30, DPS: 5,  RANGE: 0, SPEED: 0.9 },
-    SIPHON:     { HP: 45, DPS: 8,  RANGE: 3, SPEED: 0.8 },
+    TRANSPORT:  { HP: 30, DPS: 4,  RANGE: 0, SPEED: 0.9 },
+    SIPHON:     { HP: 45, DPS: 6,  RANGE: 3, SPEED: 0.8 },
     HEAVY:      { HP: 80, DPS: 14, RANGE: 3, SPEED: 0.65 },
     SIPHON_MAST:{ HP: 50, DPS: 8,  RANGE: 3 }
   },
@@ -168,7 +168,7 @@ const CONFIG = Object.freeze({
 
   Waves: {
     ORIGIN_FROM_NEAREST_TEMPLE: true,
-    STRENGTH_BASE: 0.6, STRENGTH_PER_TEMPLE: 0.2,
+    STRENGTH_BASE: 0.6, STRENGTH_PER_TEMPLE: 0.15,
     STRENGTH_MIN: 0.6, STRENGTH_MAX: 1.4,
     FIRST_AT: 45.0, TELEGRAPH: 8.0,
     INTERVAL_EARLY: 55.0, INTERVAL_MID: 45.0, INTERVAL_LATE: 35.0,
@@ -208,7 +208,7 @@ const CONFIG = Object.freeze({
     CAM_HEIGHT: 13.8, CAM_BACK: 6.1, CAM_FOV: 46,
     PAN_MARGIN: 1.0,
     TAP_DRAG_THRESHOLD_PX: 10,
-    SHROUD_OPACITY: 0.93,
+    SHROUD_OPACITY: 1.0,
     WHITECAP_COUNT: 90, RIBBON_PARTICLES: 4,
     FRAYED_DESAT: 0.45
   }

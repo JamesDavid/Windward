@@ -110,31 +110,33 @@ function structureAt(state, x, z) {
 // - a claimed island's temple (limited ports)
 function getSockets(state, side) {
   const sockets = [];
+  const seen = new Set();
+  const push = (cell, kind) => {
+    const k = cellKey(cell[0], cell[1]);
+    if (seen.has(k)) return;
+    seen.add(k);
+    sockets.push({ cell: [cell[0], cell[1]], kind });
+  };
   const deg = nodeDegrees(state, side);
-  const gt = state.greatTemple[side];
-  if (gt.hp > 0) {
-    const used = deg.get(cellKey(gt.cell[0], gt.cell[1])) || 0;
-    if (used < CONFIG.Structures.PORTS_GREAT_TEMPLE) sockets.push({ cell: gt.cell.slice(), kind: 'greatTemple' });
-  }
+  // any cell of an island that conducts for this side (its whole coast is
+  // a harbour — a channel terminal may begin anywhere the island touches)
   for (const isl of state.map.islands) {
-    if (!islandConducts(state, isl, side) || isl.role.startsWith('greatTemple')) continue;
-    const c = isl.temple.cell;
-    const used = deg.get(cellKey(c[0], c[1])) || 0;
-    if (used < CONFIG.Structures.PORTS_ISLAND_TEMPLE && islandSupported(state, isl, side)) {
-      sockets.push({ cell: c.slice(), kind: 'temple' });
-    }
+    if (!islandConducts(state, isl, side)) continue;
+    if (!isl.role.startsWith('greatTemple') && !islandSupported(state, isl, side)) continue;
+    for (const [x, z] of isl.cells) push([x, z], 'island');
   }
   for (const [k, d] of deg) {
     const [x, z] = keyCell(k);
+    if (seen.has(k)) continue;
     const st = structureAt(state, x, z);
     if (st && st.owner === side) {
-      // structure node: 1 incoming + PORTS outgoing
+      // structure node: 1 incoming + PORTS outgoing (§14.0)
       if (st.buildProgress >= 1 && st.ports > 0 && d < st.ports + 1 && segmentSupportedAtCell(state, side, x, z)) {
-        sockets.push({ cell: [x, z], kind: 'structure' });
+        push([x, z], 'structure');
       }
       continue;
     }
-    if (d === 1 && segmentSupportedAtCell(state, side, x, z)) sockets.push({ cell: [x, z], kind: 'end' });
+    if (d === 1 && segmentSupportedAtCell(state, side, x, z)) push([x, z], 'end');
   }
   return sockets;
 }

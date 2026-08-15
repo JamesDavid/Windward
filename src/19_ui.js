@@ -17,7 +17,7 @@ function initUI(state) {
   const $ = id => document.getElementById(id);
   UI.els = {
     supply: $('supply'), favor: $('favor'), seedchip: $('seedchip'), waveinfo: $('waveinfo'),
-    hand: $('hand'), confirm: $('btn-confirm'), cancel: $('btn-cancel'),
+    hand: $('hand'), confirm: $('btn-confirm'), cancel: $('btn-cancel'), rotate: $('btn-rotate'),
     discard: $('btn-discard'), tech: $('btn-tech'),
     banner: $('banner'), tutorial: $('tutorial'), ticker: $('ticker'),
     powTailwind: $('pow-tailwind'), powWindwall: $('pow-windwall'),
@@ -28,6 +28,7 @@ function initUI(state) {
   buildHand(state);
 
   UI.els.confirm.addEventListener('click', () => confirmPlacement(state));
+  UI.els.rotate.addEventListener('click', () => cyclePlacement(state));
   UI.els.cancel.addEventListener('click', () => cancelPlacement());
   UI.els.discard.addEventListener('click', () => discardPiece(state));
   UI.els.tech.addEventListener('click', () => {
@@ -54,15 +55,40 @@ function initUI(state) {
   // pan vs tap: a drag beyond the threshold pans the camera; a clean
   // press-and-release is a tap
   const canvas = R.renderer.domElement;
-  const pan = { active: false, panned: false, sx: 0, sy: 0, ground: null, target: null };
+  const pan = { active: false, panned: false, sx: 0, sy: 0, ground: null };
+  const pointers = new Map();     // two-finger pinch (zoom) and twist (rotate)
+  let pinch = null;
+  const gestureVals = () => {
+    const [a, b] = [...pointers.values()];
+    return {
+      d: Math.hypot(a.x - b.x, a.y - b.y),
+      ang: Math.atan2(b.y - a.y, b.x - a.x)
+    };
+  };
   canvas.addEventListener('pointerdown', (e) => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const g = gestureVals();
+      pinch = { d0: g.d, a0: g.ang, zoom0: R.camZoom || 1, az0: R.camAz || 0 };
+      pan.active = false;
+      pan.panned = true;   // suppress the tap on release
+      return;
+    }
     pan.active = true;
     pan.panned = false;
     pan.sx = e.clientX; pan.sy = e.clientY;
     pan.ground = pickGround(e.clientX, e.clientY);
-    pan.target = { ...R.camTarget };
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pointers.size === 2) {
+      const g = gestureVals();
+      R.camZoom = clamp(pinch.zoom0 * (pinch.d0 / Math.max(20, g.d)), 0.75, 2.6);
+      let da = g.ang - pinch.a0;
+      R.camAz = pinch.az0 + da;
+      updateCamera();
+      return;
+    }
     if (!pan.active) return;
     const moved = Math.hypot(e.clientX - pan.sx, e.clientY - pan.sy);
     if (!pan.panned && moved < CONFIG.Render.TAP_DRAG_THRESHOLD_PX) return;
@@ -75,12 +101,15 @@ function initUI(state) {
     updateCamera();
     pan.ground = pickGround(e.clientX, e.clientY);
   });
-  canvas.addEventListener('pointerup', (e) => {
-    const wasTap = pan.active && !pan.panned;
+  const release = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    const wasTap = pan.active && !pan.panned && e.type === 'pointerup';
     pan.active = false;
     if (wasTap) onTap(state, e);
-  });
-  canvas.addEventListener('pointercancel', () => { pan.active = false; });
+  };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
 }
 
 // ---- hand ----
@@ -139,6 +168,15 @@ function selectPiece(state, i) {
   showSockets(state, sockets);
   setConfirmVisible(false);
   refreshHand(state);
+  if (!sockets.length) {
+    flashTicker('NOWHERE TO BUILD FROM — EXTEND ANOTHER WAY');
+  } else if (sockets.length === 1) {
+    // only one place it can go (the opening move): step straight to preview
+    selectSocket(state, sockets[0]);
+    flashTicker('TAP THE GHOST TO TURN IT · CONFIRM TO BIND');
+  } else {
+    flashTicker('TAP A GLOWING SOCKET');
+  }
   Events.emit('uiSelectPiece', {});
 }
 
@@ -152,6 +190,10 @@ function selectSocket(state, socket) {
   showPreview(state, placements[0].segs, true);
   setConfirmVisible(true);
   updateGhostMultiplier(state);
+  if (!UI.hintedCycle) {
+    UI.hintedCycle = true;
+    flashTicker('TAP THE GHOST TO TURN IT · CONFIRM TO BIND');
+  }
   return true;
 }
 
@@ -178,6 +220,14 @@ function updateGhostMultiplier(state) {
 }
 
 function confirmPlacement(state) {
+  if (UI.structMode) {
+    const { type, at } = UI.structMode;
+    const why = whyNotBuild(state, 'A', type, at);
+    if (why) { flashTicker(why); cancelPlacement(); return; }
+    buildStructure(state, 'A', type, at);
+    cancelPlacement();
+    return;
+  }
   if (UI.mode !== 'placing' || !UI.placements.length) return;
   const type = state.hand[UI.pieceIdx];
   if (placePiece(state, 'A', type, UI.placements[UI.orient].segs)) {
@@ -193,6 +243,7 @@ function cancelPlacement() {
   UI.pieceIdx = -1;
   UI.socket = null;
   UI.placements = [];
+  UI.structMode = null;
   clearSockets();
   clearPreview();
   setConfirmVisible(false);
@@ -210,6 +261,8 @@ function discardPiece(state) {
 function setConfirmVisible(v) {
   UI.els.confirm.classList.toggle('hidden', !v);
   UI.els.cancel.classList.toggle('hidden', !v);
+  // TURN only shows when the piece has more than one legal orientation here
+  UI.els.rotate.classList.toggle('hidden', !v || !UI.placements || UI.placements.length < 2);
   if (v) UI.els.confirm.textContent = 'CONFIRM';
 }
 
@@ -235,6 +288,7 @@ function onTap(state, e) {
     return;
   }
   hideBuildMenu();
+  if (UI.structMode) { cancelPlacement(); return; }
   if (!cell) return;
 
   // armed Wind Wall aims at the tapped endpoint (§19.1)
@@ -254,8 +308,9 @@ function menuButton(label, cost, fn, disabledReason) {
   const btn = document.createElement('button');
   btn.innerHTML = label + (cost ? '<b>' + cost + ' ⚇</b>' : '');
   if (disabledReason) {
-    btn.disabled = true;
-    btn.title = disabledReason;
+    // still tappable: a tap explains WHY it is refused (mobile has no tooltips)
+    btn.style.opacity = 0.4;
+    btn.addEventListener('click', () => flashTicker(disabledReason));
   } else {
     btn.addEventListener('click', () => { fn(); hideBuildMenu(); });
   }
@@ -271,10 +326,14 @@ function openContextMenu(state, cell) {
   const plotIdx = isl ? isl.plots.findIndex(p => p.x === x && p.z === z) : -1;
   const deg = nodeDegrees(state, 'A').get(cellKey(x, z)) || 0;
 
+  // arming a build shows a ghost at the site; CONFIRM raises it (§8.1 rhythm)
   const tryBuild = (type, at) => () => {
     const why = whyNotBuild(state, 'A', type, at);
     if (why) { flashTicker(why); return; }
-    buildStructure(state, 'A', type, at);
+    UI.structMode = { type, at };
+    showStructPreview(state, 'A', type, at.cell);
+    setConfirmVisible(true);
+    UI.els.confirm.textContent = 'RAISE  ' + structureStats('A', type).cost + ' ⚇';
   };
 
   if (!isl && deg === 1 && !structureAt(state, x, z)) {
@@ -296,7 +355,23 @@ function openContextMenu(state, cell) {
       }
     }
   } else if (isl) {
-    // island body: priest travel, hauler purchase at home/yarded islands
+    // island body: offer builds on the first free plot too, so the player
+    // doesn't have to hit the small bronze disc exactly
+    const freeIdx = isl.plots.findIndex(pl => !pl.structure);
+    if (freeIdx >= 0) {
+      const at = { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
+      if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
+        options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at),
+          whyNotBuild(state, 'A', 'temple', at)));
+      }
+      if (isl.owner === 'A') {
+        for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
+          const why = whyNotBuild(state, 'A', type, at);
+          options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why));
+        }
+      }
+    }
+    // priest travel, hauler purchase at home/yarded islands
     const p = state.priests.A;
     const reachable = p && findNetPath(state, 'A', [Math.round(p.pos[0]), Math.round(p.pos[1])], isl.cells);
     options.push(menuButton('SEND<br>PRIEST', 0, () => {

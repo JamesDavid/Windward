@@ -33,6 +33,37 @@ function gridFromWorld(wx, wz) {
   return [Math.round(wx + (CONFIG.Grid.WIDTH - 1) / 2), Math.round(wz + (CONFIG.Grid.HEIGHT - 1) / 2)];
 }
 
+// A tileable ripple texture painted at boot: layered sine swells with a
+// little seeded chop, in the sea palette. Zero assets, pure canvas.
+function makeSeaTexture() {
+  const S = 128;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d');
+  const rng = mulberry32(0x5EA);
+  const img = ctx.createImageData(S, S);
+  const base = { r: 0x10, g: 0x4b, b: 0x58 };
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const u = (x / S) * Math.PI * 2, v = (y / S) * Math.PI * 2;
+      let h = Math.sin(u * 3 + Math.sin(v * 2) * 1.3) * 0.5
+        + Math.sin(v * 5 + Math.sin(u * 4) * 0.8) * 0.3
+        + Math.sin((u + v) * 7) * 0.2;
+      h += (rng() - 0.5) * 0.25;
+      const crest = clamp(h * 0.5 + 0.5, 0, 1);
+      const lift = 0.82 + crest * 0.45;   // crests lighten, troughs deepen
+      const i = (y * S + x) * 4;
+      img.data[i] = Math.min(255, base.r * lift + crest * 14);
+      img.data[i + 1] = Math.min(255, base.g * lift + crest * 20);
+      img.data[i + 2] = Math.min(255, base.b * lift + crest * 22);
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  return tex;
+}
+
 function initRenderer() {
   const canvas = document.getElementById('gl');
   R.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -50,14 +81,18 @@ function initRenderer() {
   R.scene.add(sun);
   R.scene.add(new THREE.HemisphereLight(0xbcdce4, 0x27453a, 0.5));
 
-  // the Aegean
+  // the Aegean — rippled by a generated texture that streams with the wind
+  const seaTex = makeSeaTexture();
+  seaTex.wrapS = seaTex.wrapT = THREE.RepeatWrapping;
+  seaTex.repeat.set(CONFIG.Grid.WIDTH * 0.7, CONFIG.Grid.HEIGHT * 0.55);
   const sea = new THREE.Mesh(
     new THREE.PlaneGeometry(CONFIG.Grid.WIDTH * 4, CONFIG.Grid.HEIGHT * 3),
-    new THREE.MeshLambertMaterial({ color: Palette.sea })
+    new THREE.MeshLambertMaterial({ color: 0xd8f0f2, map: seaTex })
   );
   sea.rotation.x = -Math.PI / 2;
   sea.position.y = 0;
   R.scene.add(sea);
+  R.seaTex = seaTex;
 
   R.socketGroup = new THREE.Group();
   R.previewGroup = new THREE.Group();
@@ -89,7 +124,15 @@ function updateCamera() {
   const mz = (CONFIG.Grid.HEIGHT - 1) / 2 + CONFIG.Render.PAN_MARGIN;
   t.x = clamp(t.x, -mx, mx);
   t.z = clamp(t.z, -mz, mz + 1);
-  R.camera.position.set(t.x, CONFIG.Render.CAM_HEIGHT * fit, t.z + CONFIG.Render.CAM_BACK * fit);
+  // pinch zoom and two-finger rotation orbit the same fixed tilt
+  if (R.camZoom === undefined) { R.camZoom = 1; R.camAz = 0; }
+  R.camZoom = clamp(R.camZoom, 0.75, 2.6);
+  const back = CONFIG.Render.CAM_BACK * fit * R.camZoom;
+  const h = CONFIG.Render.CAM_HEIGHT * fit * R.camZoom;
+  R.camera.position.set(
+    t.x + Math.sin(R.camAz || 0) * back,
+    h,
+    t.z + Math.cos(R.camAz || 0) * back);
   R.camera.lookAt(t.x, 0, t.z);
 }
 
@@ -110,7 +153,9 @@ function buildMapMeshes(state) {
   for (const isl of state.map.islands) {
     const grp = new THREE.Group();
     const stoneMat = new THREE.MeshLambertMaterial({ color: Palette.limestone });
+    // the island's base tints with its allegiance (updated per frame)
     const beachMat = new THREE.MeshLambertMaterial({ color: Palette.limestoneShade });
+    isl.beachMat = beachMat;
     const rngIsl = mulberry32(hashString(state.seed + ':isl' + isl.id));
     for (const [cx, cz] of isl.cells) {
       const beach = new THREE.Mesh(beachGeo, beachMat);
@@ -162,8 +207,8 @@ function buildMapMeshes(state) {
       col.position.set(Math.cos(a) * 0.36, 0.4, Math.sin(a) * 0.36);
       grp.add(col);
     }
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.52, 0.3, 10), trim);
-    roof.position.y = 0.78;
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.26, 10), trim);
+    roof.position.y = 0.76;
     grp.add(roof);
     grp.position.set(worldX(gt.cell[0]), CONFIG.Render.ISLAND_HEIGHT + 0.04, worldZ(gt.cell[1]));
     R.islandGroup.add(grp);
@@ -292,14 +337,22 @@ function syncSegments(state) {
 function showSockets(state, sockets) {
   R.socketGroup.clear();
   for (const s of sockets) {
+    const grp = new THREE.Group();
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.22, 0.34, 20),
-      new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+      new THREE.RingGeometry(0.3, 0.46, 24),
+      new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.95, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2;
+    // a beacon of light so sockets read from anywhere on the map
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.09, 2.6, 8, 1, true),
+      new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+    beam.position.y = 1.3;
+    grp.add(ring, beam);
     const y = islandAtCells(state, s.cell) ? CONFIG.Render.ISLAND_HEIGHT + 0.06 : CONFIG.Render.AIR_ALTITUDE;
-    ring.position.set(worldX(s.cell[0]), y, worldZ(s.cell[1]));
-    ring.userData.socket = s;
-    R.socketGroup.add(ring);
+    grp.position.set(worldX(s.cell[0]), y, worldZ(s.cell[1]));
+    grp.userData.socket = s;
+    grp.userData.ring = ring;
+    R.socketGroup.add(grp);
   }
 }
 function islandAtCells(state, cell) { return islandAt(state, cell[0], cell[1]); }
@@ -307,19 +360,38 @@ function clearSockets() { R.socketGroup.clear(); }
 
 function showPreview(state, segs, ok) {
   R.previewGroup.clear();
+  const y = CONFIG.Render.AIR_ALTITUDE;
   for (const [a, b] of segs) {
-    const y = CONFIG.Render.AIR_ALTITUDE;
     const ax = worldX(a[0]), az = worldZ(a[1]), bx = worldX(b[0]), bz = worldZ(b[1]);
     const len = Math.hypot(bx - ax, bz - az);
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(len + 0.14, 0.06, 0.16),
+      new THREE.BoxGeometry(len + 0.14, 0.09, 0.24),
       new THREE.MeshBasicMaterial({
         color: ok ? Palette.socket : Palette.danger,
-        transparent: true, opacity: 0.55 + 0.2 * Math.sin(state.time * 6)
+        transparent: true, opacity: 0.7
       }));
     mesh.position.set((ax + bx) / 2, y, (az + bz) / 2);
     mesh.rotation.y = -Math.atan2(bz - az, bx - ax);
     R.previewGroup.add(mesh);
+  }
+  // arrowheads on every open end of the ghost, so its direction reads
+  const cellCount = new Map();
+  for (const [a, b] of segs) {
+    for (const c of [a, b]) {
+      const k = cellKey(c[0], c[1]);
+      cellCount.set(k, (cellCount.get(k) || 0) + 1);
+    }
+  }
+  for (const [a, b] of segs) {
+    for (const [tip, from] of [[b, a], [a, b]]) {
+      if (cellCount.get(cellKey(tip[0], tip[1])) !== 1) continue;
+      const gem = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.15),
+        new THREE.MeshBasicMaterial({ color: ok ? Palette.socket : Palette.danger, transparent: true, opacity: 0.95 }));
+      gem.position.set(worldX(tip[0]), y, worldZ(tip[1]));
+      gem.userData.spin = true;
+      R.previewGroup.add(gem);
+    }
   }
 }
 function clearPreview() { R.previewGroup.clear(); }
@@ -342,21 +414,39 @@ function refreshInfluenceView(state) {
 
 // ---------------- per-frame ----------------
 function renderTick(state, dt) {
-  // whitecaps drift with the wind and shimmer
+  // the sea itself streams with the wind under the camera
+  if (R.seaTex) {
+    const [cgx, cgz] = gridFromWorld(R.camTarget ? R.camTarget.x : 0, R.camTarget ? R.camTarget.z : 0);
+    const w = state.wind.at(clamp(cgx, 0, CONFIG.Grid.WIDTH - 1), clamp(cgz, 0, CONFIG.Grid.HEIGHT - 1));
+    R.seaTex.offset.x -= w.x * dt * 0.028;
+    R.seaTex.offset.y += w.z * dt * 0.028;
+  }
+  // whitecaps ride the wind for a few seconds, fade, and respawn at a
+  // fresh spot — so the field stays evenly alive instead of pooling at
+  // the rim where the sheared wind runs parallel to the edge
+  if (!R.capRng) R.capRng = mulberry32(0xCAB5);
   for (const c of R.whitecaps) {
     const w = state.wind.at(c.gx, c.gz);
     c.gx += w.x * dt * 0.55;
     c.gz += w.z * dt * 0.55;
-    if (c.gx < 0 || c.gx > CONFIG.Grid.WIDTH - 1 || c.gz < 0 || c.gz > CONFIG.Grid.HEIGHT - 1) {
-      c.gx = (c.gx + CONFIG.Grid.WIDTH) % (CONFIG.Grid.WIDTH - 0.01);
-      c.gz = (c.gz + CONFIG.Grid.HEIGHT) % (CONFIG.Grid.HEIGHT - 0.01);
+    c.life = (c.life === undefined ? 3 + c.phase * 5 : c.life) - dt;
+    if (c.life <= 0 ||
+        c.gx < 0 || c.gx > CONFIG.Grid.WIDTH - 1 || c.gz < 0 || c.gz > CONFIG.Grid.HEIGHT - 1) {
+      let tries = 12;
+      do {
+        c.gx = R.capRng() * (CONFIG.Grid.WIDTH - 1);
+        c.gz = R.capRng() * (CONFIG.Grid.HEIGHT - 1);
+      } while (state.map.land.has(cellKey(Math.round(c.gx), Math.round(c.gz))) && tries-- > 0);
+      c.life = 4 + R.capRng() * 6;
+      c.phase = R.capRng();
     }
     c.phase += dt * 1.4;
     c.mesh.position.x = worldX(c.gx);
     c.mesh.position.z = worldZ(c.gz);
     c.mesh.rotation.z = -Math.atan2(w.z, w.x);
     const onLand = state.map.land.has(cellKey(Math.round(c.gx), Math.round(c.gz)));
-    c.mesh.material.opacity = onLand ? 0 : 0.16 + 0.16 * Math.sin(c.phase * Math.PI * 2);
+    const fade = Math.min(1, Math.min(c.life, 1.2));
+    c.mesh.material.opacity = onLand ? 0 : (0.16 + 0.16 * Math.sin(c.phase * Math.PI * 2)) * fade;
   }
   // trees lean into the wind
   for (const t of R.trees) {
@@ -372,6 +462,14 @@ function renderTick(state, dt) {
     s.mesh.position.set(s.base.x + w.x * d, s.base.y + 0.85 + s.phase * 0.5, s.base.z + w.z * d);
     s.mesh.material.opacity = 0.32 * (1 - s.phase);
     s.mesh.scale.setScalar(0.7 + s.phase * 1.6);
+  }
+  // pulse the placement affordances so they are unmissable
+  const pulse = 1 + 0.13 * Math.sin(state.time * 5);
+  for (const g of R.socketGroup.children) {
+    if (g.userData.ring) g.userData.ring.scale.setScalar(pulse);
+  }
+  for (const m of R.previewGroup.children) {
+    if (m.userData && m.userData.spin) m.rotation.y += dt * 2.5;
   }
   syncSegments(state);
   R.renderer.render(R.scene, R.camera);
