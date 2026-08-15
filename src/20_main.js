@@ -98,6 +98,7 @@ function frame(t) {
   syncStructures(state);
   syncMovers(state);
   syncIslandBars(state);
+  syncGreatTemples(state);
   syncShroud(state);
   fxTick(state, dt);
   renderTick(state, dt);

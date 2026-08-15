@@ -50,6 +50,7 @@ function applyDamage(state, target, amount, sourcePos) {
     case 'greatTemple': {
       const gt = state.greatTemple[target.side];
       gt.hp -= amount;
+      if (target.side === 'A') state.gtaLastHit = state.time;
       Events.emit('greatTempleHit', { side: target.side });
       break;
     }

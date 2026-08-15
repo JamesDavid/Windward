@@ -2534,6 +2534,7 @@ function applyDamage(state, target, amount, sourcePos) {
     case 'greatTemple': {
       const gt = state.greatTemple[target.side];
       gt.hp -= amount;
+      if (target.side === 'A') state.gtaLastHit = state.time;
       Events.emit('greatTempleHit', { side: target.side });
       break;
     }
@@ -4401,6 +4402,46 @@ function syncMovers(state) {
   }
 }
 
+// ---- Great Temple health bars + threat warning (§30: temple threatened
+// -> strong edge warning) ----
+function syncGreatTemples(state) {
+  if (!R.gtBars) {
+    R.gtBars = {};
+    for (const side of ['A', 'P']) {
+      const gt = state.greatTemple[side];
+      const back = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 0.09, 0.14),
+        new THREE.MeshBasicMaterial({ color: 0x10151a, transparent: true, opacity: 0.7 }));
+      const bar = new THREE.Mesh(
+        new THREE.BoxGeometry(1.06, 0.1, 0.1),
+        new THREE.MeshBasicMaterial({ color: side === 'A' ? Palette.gold : Palette.poseidonGlow }));
+      back.position.set(worldX(gt.cell[0]), 1.7, worldZ(gt.cell[1]));
+      bar.position.copy(back.position);
+      R.scene.add(back, bar);
+      R.gtBars[side] = { bar, back, max: gt.hp };
+    }
+  }
+  for (const side of ['A', 'P']) {
+    const gt = state.greatTemple[side];
+    const rec = R.gtBars[side];
+    const frac = clamp(gt.hp / rec.max, 0, 1);
+    rec.bar.scale.x = Math.max(0.001, frac);
+    rec.bar.visible = rec.back.visible = frac < 1;
+    if (side === 'P') {
+      // enemy bar obeys fog memory: show only if his temple was ever seen
+      const seen = state.vision.A.has(cellKey(gt.cell[0], gt.cell[1])) || state.memory.A.has('gtP');
+      if (state.vision.A.has(cellKey(gt.cell[0], gt.cell[1]))) state.memory.A.set('gtP', state.time);
+      rec.bar.visible = rec.back.visible = rec.bar.visible && seen;
+    }
+  }
+  // edge warning while the home temple is under recent fire
+  const hud = document.getElementById('hud');
+  if (hud) {
+    const threatened = state.time - (state.gtaLastHit || -99) < 2.5;
+    hud.style.boxShadow = threatened ? 'inset 0 0 60px 18px rgba(217,83,79,0.55)' : '';
+  }
+}
+
 // ---- island economy indicators: reserve bar + stockpile heap ----
 const ALLEGIANCE_BASE = { A: 0xc9a05e, P: 0x2e6b74, N: 0xd8c9a8 };
 function syncIslandBars(state) {
@@ -4593,14 +4634,17 @@ function buildShroud(state) {
 }
 
 function syncShroud(state) {
-  if (!state.explored) return;
-  for (const k of state.explored) {
+  const lift = (k) => {
     const m = R.shroud.get(k);
     if (m) {
       R.scene.remove(m);
       R.shroud.delete(k);
     }
-  }
+  };
+  // ground once seen stays lifted — and ground inside your influence is
+  // always lifted, because influence is exactly where you may build
+  if (state.explored) for (const k of state.explored) lift(k);
+  for (const k of state.influence.A) lift(k);
 }
 
 // enemy segment fog handling is layered onto syncSegments via this hook
@@ -5177,6 +5221,7 @@ function frame(t) {
   syncStructures(state);
   syncMovers(state);
   syncIslandBars(state);
+  syncGreatTemples(state);
   syncShroud(state);
   fxTick(state, dt);
   renderTick(state, dt);
