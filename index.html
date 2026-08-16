@@ -382,7 +382,7 @@ const CONFIG = Object.freeze({
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
     DESTRUCTION_DAMAGE: 50,
-    GUN_VS_SEGMENT_MULT: 0.45   // guns cut lanes, but slowly - no single-gun blockade; sweep-validated (opt_difficulty.js): beats 0.3 and 0.65 at every difficulty
+    GUN_VS_SEGMENT_MULT: 0.2   // re-tuned for FIXED-SECTOR guns: no traverse downtime means ~100% uptime, so the old 0.45 ground both networks to dust (496 cuts/match); 0.12-0.3 all healthier in the spot sweep
   },
 
   Segments: { AIR_HP: 40, SEA_HP: 55, LEE_SHORE_CELLS: 1 },
@@ -3586,7 +3586,11 @@ function aiTick(state, dt) {
   // 3.5 stationary defense (player report: he never placed guns) — he
   // GARRISONS what he takes: a drum on every claimed island, and every
   // so often a lance on the forward end nearest the player's holdings
-  if (res.supply >= structureStats('P', 'vane').cost + 14) {
+  // capped: an uncapped garrison shredded the player's whole network
+  // (22 structures, 496 segments destroyed in one sim) — he guards,
+  // he does not blanket the map
+  const drumCount = state.structures.filter(s => s.owner === 'P' && s.type === 'vane' && s.site === 'plot' && s.hp > 0).length;
+  if (drumCount < 4 && res.supply >= structureStats('P', 'vane').cost + 14) {
     for (const isl of state.map.islands) {
       if (isl.owner !== 'P' || isl.role.startsWith('greatTemple')) continue;
       const hasGun = state.structures.some(s => s.owner === 'P' && s.islandId === isl.id && (s.dps || 0) > 0 && s.hp > 0);
@@ -3598,7 +3602,8 @@ function aiTick(state, dt) {
       }
     }
   }
-  if (state.time >= (ai.gunAt || 0) && res.supply >= structureStats('P', 'bolt').cost + 20) {
+  const lanceCount = state.structures.filter(s => s.owner === 'P' && s.type === 'bolt' && s.site === 'endpoint' && s.hp > 0).length;
+  if (lanceCount < 3 && state.time >= (ai.gunAt || 0) && res.supply >= structureStats('P', 'bolt').cost + 20) {
     ai.gunAt = state.time + 45;
     const targets = aiAttackTargets(state);
     const ends = getSockets(state, 'P').filter(s => s.kind === 'end' && !structureAt(state, s.cell[0], s.cell[1]));
@@ -5134,17 +5139,18 @@ function syncStructures(state) {
       const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (airSide(st.owner) ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
       grp.position.set(worldX(st.cell[0]), baseY, worldZ(st.cell[1]));
       grp.userData.baseY = baseY;
-      // fixed-sector guns wear their quarter openly — a faint permanent
-      // wedge everyone can read, friend or foe (player-directed)
+      // fixed-sector guns wear their quarter as a DISCRETE marking on the
+      // hull — a short arc off the gondola, not a map-painting cone
+      // (player-directed). The placement ghost still shows full reach.
       if (st.type === 'bolt' && st.arc && st.arc < Math.PI * 2) {
         const wedge = new THREE.Mesh(
-          new THREE.RingGeometry(0.35, st.range, 20, 1, -st.facing - st.arc / 2, st.arc),
+          new THREE.RingGeometry(0.3, 0.75, 14, 1, -st.facing - st.arc / 2, st.arc),
           new THREE.MeshBasicMaterial({
             color: airSide(st.owner) ? 0xffd977 : 0x7fd4dd,
-            transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false
+            transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false
           }));
         wedge.rotation.x = -Math.PI / 2;
-        wedge.position.y = 0.085 - baseY;
+        wedge.position.y = (airSide(st.owner) ? 0.66 : 0.24);
         grp.add(wedge);
       }
       // scaffold ring at ground level while raising

@@ -261,7 +261,11 @@ function aiTick(state, dt) {
   // 3.5 stationary defense (player report: he never placed guns) — he
   // GARRISONS what he takes: a drum on every claimed island, and every
   // so often a lance on the forward end nearest the player's holdings
-  if (res.supply >= structureStats('P', 'vane').cost + 14) {
+  // capped: an uncapped garrison shredded the player's whole network
+  // (22 structures, 496 segments destroyed in one sim) — he guards,
+  // he does not blanket the map
+  const drumCount = state.structures.filter(s => s.owner === 'P' && s.type === 'vane' && s.site === 'plot' && s.hp > 0).length;
+  if (drumCount < 4 && res.supply >= structureStats('P', 'vane').cost + 14) {
     for (const isl of state.map.islands) {
       if (isl.owner !== 'P' || isl.role.startsWith('greatTemple')) continue;
       const hasGun = state.structures.some(s => s.owner === 'P' && s.islandId === isl.id && (s.dps || 0) > 0 && s.hp > 0);
@@ -273,7 +277,8 @@ function aiTick(state, dt) {
       }
     }
   }
-  if (state.time >= (ai.gunAt || 0) && res.supply >= structureStats('P', 'bolt').cost + 20) {
+  const lanceCount = state.structures.filter(s => s.owner === 'P' && s.type === 'bolt' && s.site === 'endpoint' && s.hp > 0).length;
+  if (lanceCount < 3 && state.time >= (ai.gunAt || 0) && res.supply >= structureStats('P', 'bolt').cost + 20) {
     ai.gunAt = state.time + 45;
     const targets = aiAttackTargets(state);
     const ends = getSockets(state, 'P').filter(s => s.kind === 'end' && !structureAt(state, s.cell[0], s.cell[1]));

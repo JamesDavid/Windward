@@ -130,7 +130,7 @@ const CONFIG = Object.freeze({
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
     DESTRUCTION_DAMAGE: 50,
-    GUN_VS_SEGMENT_MULT: 0.45   // guns cut lanes, but slowly - no single-gun blockade; sweep-validated (opt_difficulty.js): beats 0.3 and 0.65 at every difficulty
+    GUN_VS_SEGMENT_MULT: 0.2   // re-tuned for FIXED-SECTOR guns: no traverse downtime means ~100% uptime, so the old 0.45 ground both networks to dust (496 cuts/match); 0.12-0.3 all healthier in the spot sweep
   },
 
   Segments: { AIR_HP: 40, SEA_HP: 55, LEE_SHORE_CELLS: 1 },

@@ -266,17 +266,18 @@ function syncStructures(state) {
       const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (airSide(st.owner) ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
       grp.position.set(worldX(st.cell[0]), baseY, worldZ(st.cell[1]));
       grp.userData.baseY = baseY;
-      // fixed-sector guns wear their quarter openly — a faint permanent
-      // wedge everyone can read, friend or foe (player-directed)
+      // fixed-sector guns wear their quarter as a DISCRETE marking on the
+      // hull — a short arc off the gondola, not a map-painting cone
+      // (player-directed). The placement ghost still shows full reach.
       if (st.type === 'bolt' && st.arc && st.arc < Math.PI * 2) {
         const wedge = new THREE.Mesh(
-          new THREE.RingGeometry(0.35, st.range, 20, 1, -st.facing - st.arc / 2, st.arc),
+          new THREE.RingGeometry(0.3, 0.75, 14, 1, -st.facing - st.arc / 2, st.arc),
           new THREE.MeshBasicMaterial({
             color: airSide(st.owner) ? 0xffd977 : 0x7fd4dd,
-            transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false
+            transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false
           }));
         wedge.rotation.x = -Math.PI / 2;
-        wedge.position.y = 0.085 - baseY;
+        wedge.position.y = (airSide(st.owner) ? 0.66 : 0.24);
         grp.add(wedge);
       }
       // scaffold ring at ground level while raising
