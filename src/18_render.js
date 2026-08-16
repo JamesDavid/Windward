@@ -15,6 +15,12 @@ const Palette = {
   socket: 0xffd977, danger: 0xd9534f
 };
 
+// Which side READS as the air faction? RIDE THE WAVES mirrors the whole
+// presentation: your network becomes Poseidon's sea-lanes, the enemy
+// becomes the Air Guild with sky-roads and balloons. Mechanics are
+// untouched - only the skin, ships, and names swap (player-directed).
+function airSide(side) { return (side === 'A') !== !!R.themeSea; }
+
 const R = {
   renderer: null, scene: null, camera: null,
   segMeshes: new Map(),       // 'side:key' -> mesh
@@ -365,7 +371,7 @@ function buildMapMeshes(state) {
   for (const side of ['A', 'P']) {
     const gt = state.greatTemple[side];
     const grp = new THREE.Group();
-    const isA = side === 'A';
+    const isA = airSide(side);
     const stone = new THREE.MeshLambertMaterial({ color: isA ? Palette.ivory : Palette.poseidonStone });
     const trim = new THREE.MeshLambertMaterial({ color: isA ? Palette.gold : Palette.poseidonGlow });
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.6, 0.16, 10), stone);
@@ -416,7 +422,7 @@ function buildMapMeshes(state) {
 function segMeshKey(seg) { return seg.owner + ':' + seg.key; }
 
 function makeSegMesh(seg) {
-  const isAir = seg.owner === 'A';
+  const isAir = airSide(seg.owner);
   const y = isAir ? CONFIG.Render.AIR_ALTITUDE : CONFIG.Render.SEA_ALTITUDE;
   const ax = worldX(seg.a[0]), az = worldZ(seg.a[1]);
   const bx = worldX(seg.b[0]), bz = worldZ(seg.b[1]);

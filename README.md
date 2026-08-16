@@ -104,7 +104,13 @@ Cinema that never takes the controls: low stylized clouds drift on the wind fiel
 
 <img src="screenshots/cinematic.png" width="300">
 
-### 11. Tuned by simulation *(done)*
+### 11. Choose your god *(done — player-directed)*
+
+Two calls to action: **BIND THE AIR** or **RIDE THE WAVES**. Playing Poseidon mirrors the entire presentation — your network becomes sea-lanes lying dark on the water, your fleet becomes triremes, your temples wear the teal, and the enemy becomes the Air Guild with ivory sky-roads and balloons — while the underlying, sweep-tuned match stays identical, so both sides play a game that is proven fair. A five-line first-play tutorial teaches the loop (pathways, mining and haulers, temples and Favor, coin for arms, Favor for divine aid) once ever, with SKIP TUTORIAL for returners.
+
+<img src="screenshots/poseidon_side.png" width="300">
+
+### 12. Tuned by simulation *(done)*
 
 Three parameter-sweep harnesses (`test/opt_favor.js`, `opt_income.js`, `opt_capacity.js`) run scripted full matches across seeds and score match quality — arc length, pressure survived, engagement, economies alive, no degenerate spam. They set the flat Favor price of route pieces, the temple-income baseline and divisor, and hauler capacity (12/24 — larger loads flood the economy now that every connected island mines). The match video above is the reference seed those sweeps optimise.
 

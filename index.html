@@ -162,9 +162,11 @@
   .screen h2 { font-size: 18px; letter-spacing: 2px; color: var(--gold); font-weight: normal; }
   .screen p { font-size: 14px; max-width: 300px; color: #cfd8d3; line-height: 1.5; }
   .screen button {
-    font-family: inherit; font-size: 17px; letter-spacing: 2px; border: none;
-    background: var(--gold); color: var(--ink); padding: 12px 34px; border-radius: 12px;
+    font-family: inherit; font-size: 16px; letter-spacing: 2px; border: none;
+    background: var(--gold); color: var(--ink); padding: 12px 22px; border-radius: 12px;
   }
+  /* the rival call to action: play as Poseidon */
+  #startsea { background: #2e6b74; color: var(--ivory); }
   .screen .seedrow { display: flex; gap: 8px; align-items: center; font-size: 13px; }
   .screen input {
     font-family: monospace; font-size: 14px; width: 110px; text-align: center;
@@ -223,12 +225,15 @@
   <div id="startscreen" class="screen">
     <h1>WINDWARD</h1>
     <h2>THE AGE OF AIR</h2>
-    <p id="lorepara" style="max-width:340px; font-style: italic; line-height:1.5;">The winds
-      Odysseus lost still tangle these islands. Now the guild binds them into roads of
-      bound air, and cargo crosses without paying the sea. Poseidon is passed over —
-      and the tide is coming to collect.</p>
+    <p id="lorepara" style="max-width:340px; font-style: italic; line-height:1.5;">When the
+      shipwrights discovered lift, the Air Guild bound Odysseus' lost winds into roads of
+      bound air — and cargo began crossing without paying the sea. Poseidon is passed
+      over, and his forces are rising to collect. Choose your side.</p>
     <div class="seedrow">SEED <input id="seedinput" maxlength="8" autocomplete="off"></div>
-    <button id="startbtn">TAKE THE WIND</button>
+    <div style="display:flex; gap:12px;">
+      <button id="startbtn">BIND THE AIR</button>
+      <button id="startsea">RIDE THE WAVES</button>
+    </div>
   </div>
   <div id="endscreen" class="screen hidden">
     <h1 id="endtitle"></h1>
@@ -3702,12 +3707,15 @@ function castWindWall(state, cell) {
 // already exist; nothing here interrupts play.
 // ================================================================
 
-// Poseidon never speaks mid-match (player-directed — gone, ever); the
-// remaining lines are Aeolus' practical onboarding, each shown once.
+// A REAL first-play tutorial (player-directed): five plain lines that
+// teach the whole loop — pathways, mining, temples, the two coins.
+// Each shows once EVER; SKIP TUTORIAL silences the lot.
 const TUTORIAL_SCRIPT = [
-  { at: 0.5, key: 'tut1', text: '“The bag lifts them. Only bound air moves them. Take a wind.”' },
-  { at: 5, key: 'tut2', text: '“Lay it toward the shrine. Nothing you build need touch the sea.”' },
-  { at: 20, key: 'tut4', text: '“An open end is exposed. Cap it, or continue it.”' }
+  { at: 1, key: 'tu1', text: 'Tap a glowing spot on your island and lay path pieces — pathways are how everything moves.' },
+  { at: 10, key: 'tu2', text: 'Every island your pathways touch is mined. Haulers carry the ore home — that is your coin ⚇.' },
+  { at: 20, key: 'tu3', text: 'Coin builds guns, shields, yards and ships. Send your priest to an island to consecrate a temple and claim it.' },
+  { at: 30, key: 'tu4', text: 'Temples earn Favor ✦ — your god\'s regard. Favor lays pathways and buys divine aid: Tailwind, the Wind Wall.' },
+  { at: 40, key: 'tu5', text: 'Cap open path ends with guns: severed paths unbind. The first tide is nearly here.' }
 ];
 
 // (Poseidon's tide titles and grievances retired from mid-match banners
@@ -3772,7 +3780,7 @@ function flowTick(state) {
         if (dist2d(s.a[0], s.a[1], st.cell[0], st.cell[1]) <= 5 ||
             dist2d(s.b[0], s.b[1], st.cell[0], st.cell[1]) <= 5) {
           f.laneNoteShown = true;
-          showTutorialLine('His lanes obey the same law as your corridors — every one traces home to a temple. Cut one anywhere behind its tip and everything beyond unbinds.', 5600, 'lanesTraceHome');
+          showTutorialLine('Enemy paths obey the same law as yours — every one traces home to a temple. Cut one anywhere behind its tip and everything beyond unbinds.', 5600, 'lanesTraceHome');
           break outer;
         }
       }
@@ -3781,17 +3789,20 @@ function flowTick(state) {
 
   // (wave-1 lore line removed with the rest of his mid-match voice)
 
-  // win / lose (§28)
+  // win / lose (§28) — worded for whichever god you served
   if (!state.over) {
+    const sea = state.theme === 'sea';
     if (state.greatTemple.P.hp <= 0) {
       state.over = 'win';
       endScreen('THE ARCHIPELAGO ACKNOWLEDGES YOUR GOD',
-        'Poseidon’s temple is fallen. The winds hold every road.', state);
+        sea ? 'The Guild’s temple is fallen. The tide has collected.'
+            : 'Poseidon’s temple is fallen. The winds hold every road.', state);
       audioPlay('victory');
     } else if (state.greatTemple.A.hp <= 0) {
       state.over = 'lose';
       endScreen('YOUR TEMPLE HAS FALLEN',
-        'The sea remembers what the sky forgot.', state);
+        sea ? 'The sky remembers what the sea forgot.'
+            : 'The sea remembers what the sky forgot.', state);
       audioPlay('defeat');
     }
   }
@@ -4043,6 +4054,12 @@ const Palette = {
   frayed: 0x8a8578, collapsing: 0xc25a4a,
   socket: 0xffd977, danger: 0xd9534f
 };
+
+// Which side READS as the air faction? RIDE THE WAVES mirrors the whole
+// presentation: your network becomes Poseidon's sea-lanes, the enemy
+// becomes the Air Guild with sky-roads and balloons. Mechanics are
+// untouched - only the skin, ships, and names swap (player-directed).
+function airSide(side) { return (side === 'A') !== !!R.themeSea; }
 
 const R = {
   renderer: null, scene: null, camera: null,
@@ -4394,7 +4411,7 @@ function buildMapMeshes(state) {
   for (const side of ['A', 'P']) {
     const gt = state.greatTemple[side];
     const grp = new THREE.Group();
-    const isA = side === 'A';
+    const isA = airSide(side);
     const stone = new THREE.MeshLambertMaterial({ color: isA ? Palette.ivory : Palette.poseidonStone });
     const trim = new THREE.MeshLambertMaterial({ color: isA ? Palette.gold : Palette.poseidonGlow });
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.6, 0.16, 10), stone);
@@ -4445,7 +4462,7 @@ function buildMapMeshes(state) {
 function segMeshKey(seg) { return seg.owner + ':' + seg.key; }
 
 function makeSegMesh(seg) {
-  const isAir = seg.owner === 'A';
+  const isAir = airSide(seg.owner);
   const y = isAir ? CONFIG.Render.AIR_ALTITUDE : CONFIG.Render.SEA_ALTITUDE;
   const ax = worldX(seg.a[0]), az = worldZ(seg.a[1]);
   const bx = worldX(seg.b[0]), bz = worldZ(seg.b[1]);
@@ -4875,9 +4892,9 @@ function makeChassis(side, onLand, type) {
 
 function makePayload(side, type, stats) {
   const grp = new THREE.Group();
-  const trim = new THREE.MeshLambertMaterial({ color: side === 'A' ? Palette.gold : Palette.poseidonGlow });
+  const trim = new THREE.MeshLambertMaterial({ color: airSide(side) ? Palette.gold : Palette.poseidonGlow });
   const dark = new THREE.MeshLambertMaterial({ color: Palette.bronze });
-  const y = side === 'A' ? 0.62 : 0.2;
+  const y = airSide(side) ? 0.62 : 0.2;
   switch (type) {
     case 'vane': {
       for (let i = 0; i < 4; i++) {
@@ -4901,7 +4918,7 @@ function makePayload(side, type, stats) {
     case 'shield': {
       // a bound whirlwind (player-directed 360° ward): translucent vortex
       // bands around the pylon, with wisps that visibly orbit
-      const glow = side === 'A' ? Palette.aeolusGlow : Palette.poseidonGlow;
+      const glow = airSide(side) ? Palette.aeolusGlow : Palette.poseidonGlow;
       const whirl = new THREE.Group();
       for (let i = 0; i < 3; i++) {
         const band = new THREE.Mesh(
@@ -4942,7 +4959,7 @@ function makePayload(side, type, stats) {
       break;
     }
     case 'temple': {
-      const stone = new THREE.MeshLambertMaterial({ color: side === 'A' ? Palette.ivory : Palette.poseidonStone });
+      const stone = new THREE.MeshLambertMaterial({ color: airSide(side) ? Palette.ivory : Palette.poseidonStone });
       const base = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.36, 0.1, 8), stone);
       base.position.y = 0.1;
       for (let i = 0; i < 5; i++) {
@@ -4976,7 +4993,7 @@ function makePayload(side, type, stats) {
       cap.position.set(0.36, 0.63, 0);
       const pennant = new THREE.Mesh(
         new THREE.PlaneGeometry(0.16, 0.07),
-        new THREE.MeshBasicMaterial({ color: side === 'A' ? Palette.gold : Palette.poseidonGlow, side: THREE.DoubleSide }));
+        new THREE.MeshBasicMaterial({ color: airSide(side) ? Palette.gold : Palette.poseidonGlow, side: THREE.DoubleSide }));
       pennant.position.set(0.46, 0.57, 0);
       grp.add(floor, roof, mast, cap, pennant);
       grp.userData.pennant = pennant;
@@ -5007,7 +5024,7 @@ function syncStructures(state) {
       const chassis = st.type === 'temple' || st.type === 'yard' ? new THREE.Group() : makeChassis(st.owner, onLand, st.type);
       const payload = makePayload(st.owner, st.type, st);
       grp.add(chassis, payload);
-      const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (st.owner === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
+      const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (airSide(st.owner) ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
       grp.position.set(worldX(st.cell[0]), baseY, worldZ(st.cell[1]));
       grp.userData.baseY = baseY;
       // scaffold ring at ground level while raising
@@ -5351,8 +5368,19 @@ function buildTrireme(grp, m) {
 
 function makeMoverMesh(m, hydrogen) {
   const grp = new THREE.Group();
-  if (m.owner === 'A') {
+  if (airSide(m.owner)) {
+    // the air faction (yours, or the Guild's when you ride the waves)
     if (m.kind === 'priest') buildPriestShip(grp);
+    else if (m.kind === 'siphon') {
+      buildHotAir(grp);
+      const pipe = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.045, 0.3, 6), shipMat('glow', Palette.poseidonGlow));
+      pipe.position.y = -0.04;
+      pipe.rotation.z = 0.2;
+      grp.add(pipe);
+    }
+    else if (m.kind === 'heavy') buildZeppelin(grp);
+    else if (m.kind === 'transport') buildHotAir(grp);
     else if (hydrogen) buildZeppelin(grp);
     else buildHotAir(grp);
   } else buildTrireme(grp, m);
@@ -5363,7 +5391,7 @@ function makeMoverMesh(m, hydrogen) {
 }
 
 function moverY(m) {
-  return m.owner === 'A' ? CONFIG.Render.AIR_ALTITUDE + 0.05 : 0.03;
+  return airSide(m.owner) ? CONFIG.Render.AIR_ALTITUDE + 0.05 : 0.03;
 }
 
 function syncMovers(state) {
@@ -5525,7 +5553,7 @@ function syncGreatTemples(state) {
         new THREE.MeshBasicMaterial({ color: 0x10151a, transparent: true, opacity: 0.7 }));
       const bar = new THREE.Mesh(
         new THREE.BoxGeometry(1.06, 0.1, 0.1),
-        new THREE.MeshBasicMaterial({ color: side === 'A' ? Palette.gold : Palette.poseidonGlow }));
+        new THREE.MeshBasicMaterial({ color: airSide(side) ? Palette.gold : Palette.poseidonGlow }));
       back.position.set(worldX(gt.cell[0]), 1.7, worldZ(gt.cell[1]));
       bar.position.copy(back.position);
       R.scene.add(back, bar);
@@ -5601,7 +5629,8 @@ const ALLEGIANCE_BASE = { A: 0xc9a05e, P: 0x2e6b74, N: 0xd8c9a8 };
 function syncIslandBars(state) {
   for (const isl of state.map.islands) {
     if (isl.beachMat) {
-      isl.beachMat.color.setHex(ALLEGIANCE_BASE[isl.owner || 'N']);
+      const key = isl.owner ? (airSide(isl.owner) ? 'A' : 'P') : 'N';
+      isl.beachMat.color.setHex(ALLEGIANCE_BASE[key]);
     }
   }
   for (const isl of state.map.islands) {
@@ -5699,7 +5728,7 @@ function syncIslandBars(state) {
     const frac = rec.baseReserve > 0 ? isl.reserve / rec.baseReserve : 0;
     rec.bar.scale.x = Math.max(0.02, frac);
     rec.bar.visible = lifted && !!isl.owner && !isl.minedOut;
-    rec.bar.material.color.setHex(isl.owner === 'A' ? 0x76d09a : 0x4fb6c4);
+    rec.bar.material.color.setHex(airSide(isl.owner) ? 0x76d09a : 0x4fb6c4);
   }
 }
 
@@ -5966,7 +5995,7 @@ function showStructPreview(state, side, type, cell, facing) {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.06;
   grp.add(ring);
-  const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (side === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
+  const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (airSide(side) ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
   grp.position.set(worldX(cell[0]), baseY, worldZ(cell[1]));
   R.previewGroup.add(grp);
 }
@@ -6601,17 +6630,17 @@ function identifyUnit(state, fx, fz) {
   };
   for (const h of state.haulers) {
     if (h.owner === 'A') {
-      consider(h, (state.hydrogen.A ? 'YOUR DIRIGIBLE' : 'YOUR HOT-AIR HAULER'));
+      consider(h, R.themeSea ? 'YOUR HAULER TRIREME' : (state.hydrogen.A ? 'YOUR DIRIGIBLE' : 'YOUR HOT-AIR HAULER'));
     } else if (state.vision.A.has(cellKey(Math.round(h.pos[0]), Math.round(h.pos[1])))) {
-      consider(h, 'HIS HAULER');
+      consider(h, R.themeSea ? 'GUILD HAULER' : 'HIS HAULER');
     }
   }
   consider(state.priests.A, 'YOUR PRIEST');
   const pp = state.priests.P;
-  if (pp && state.vision.A.has(cellKey(Math.round(pp.pos[0]), Math.round(pp.pos[1])))) consider(pp, 'HIS PRIEST');
+  if (pp && state.vision.A.has(cellKey(Math.round(pp.pos[0]), Math.round(pp.pos[1])))) consider(pp, R.themeSea ? 'THE GUILD PRIEST' : 'HIS PRIEST');
   for (const c of state.craft) {
     if (!state.vision.A.has(cellKey(Math.round(c.pos[0]), Math.round(c.pos[1])))) continue;
-    consider(c, 'HIS ' + c.kind.toUpperCase() + ' CRAFT');
+    consider(c, (R.themeSea ? 'GUILD ' : 'HIS ') + c.kind.toUpperCase() + ' CRAFT');
   }
   if (!best) return null;
   const m = best.m;
@@ -6690,7 +6719,7 @@ const ISLAND_NAMES = {
 function identifyCell(state, cell) {
   const st = structureAt(state, cell[0], cell[1]);
   if (st) {
-    const who = st.owner === 'A' ? '' : 'HIS ';
+    const who = st.owner === 'A' ? '' : (R.themeSea ? 'GUILD ' : 'HIS ');
     let extra = '';
     if (st.type === 'yard' && st.owner === 'A') {
       const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
@@ -6703,7 +6732,7 @@ function identifyCell(state, cell) {
   if (isl) {
     let s = ISLAND_NAMES[isl.role] || 'AN ISLAND';
     if (!isl.role.startsWith('greatTemple')) {
-      s += isl.owner ? (isl.owner === 'A' ? ' — YOURS' : ' — HIS') : ' — UNCLAIMED';
+      s += isl.owner ? (isl.owner === 'A' ? ' — YOURS' : (R.themeSea ? ' — THE GUILD’S' : ' — HIS')) : ' — UNCLAIMED';
       if (isl.reserve > 0) s += ' · ORE ' + Math.floor(isl.reserve);
       else if (isl.minedOut) s += ' · MINED OUT';
       if (isl.stockpile > 1) s += ' · PILE ' + Math.floor(isl.stockpile);
@@ -6718,8 +6747,8 @@ function identifyCell(state, cell) {
     if (!onCell) continue;
     const stateTxt = seg.supportState === 'SUPPORTED' ? '' :
       (seg.supportState === 'FRAYED' ? ' — CUT · FRAYING' : ' — CUT · UNBINDING');
-    if (seg.owner === 'A') return 'YOUR WIND CORRIDOR' + stateTxt;
-    return 'HIS SEA-LANE — TRACES HOME TO HIS TEMPLES' + stateTxt;
+    if (seg.owner === 'A') return (R.themeSea ? 'YOUR SEA-LANE' : 'YOUR WIND CORRIDOR') + stateTxt;
+    return (R.themeSea ? 'GUILD SKY-ROAD — TRACES HOME TO ITS TEMPLES' : 'HIS SEA-LANE — TRACES HOME TO HIS TEMPLES') + stateTxt;
   }
   return null;
 }
@@ -7064,9 +7093,14 @@ function flashTicker(text) {
 let STATE = null;
 let lastFrame = 0;
 
-function startMatch(seedStr) {
+function startMatch(seedStr, theme) {
   Events.clear();
+  // RIDE THE WAVES mirrors the presentation only: you still run the
+  // network game (side A in the sim); the skin, ships, and names swap
+  // so your roads are Poseidon's sea-lanes and the enemy is the Guild.
+  R.themeSea = theme === 'sea';
   STATE = newGameState(seedStr);
+  STATE.theme = theme || 'air';
   recalcSupport(STATE, 'A');
   recalcSupport(STATE, 'P');
   refreshInfluence(STATE);
@@ -7177,13 +7211,15 @@ if (typeof window !== 'undefined') {
 window.addEventListener('DOMContentLoaded', () => {
   const seedInput = document.getElementById('seedinput');
   seedInput.value = makeSeedString();
-  document.getElementById('startbtn').addEventListener('click', () => {
+  const begin = (theme) => {
     audioInit();
     const seed = (seedInput.value || makeSeedString()).trim().toLowerCase();
-    startMatch(seed);
-  });
+    startMatch(seed, theme);
+  };
+  document.getElementById('startbtn').addEventListener('click', () => begin('air'));
+  document.getElementById('startsea').addEventListener('click', () => begin('sea'));
   document.getElementById('resetbtn').addEventListener('click', () => {
-    startMatch(makeSeedString());
+    startMatch(makeSeedString(), STATE ? STATE.theme : 'air');
   });
   requestAnimationFrame(frame);
 });

@@ -444,17 +444,17 @@ function identifyUnit(state, fx, fz) {
   };
   for (const h of state.haulers) {
     if (h.owner === 'A') {
-      consider(h, (state.hydrogen.A ? 'YOUR DIRIGIBLE' : 'YOUR HOT-AIR HAULER'));
+      consider(h, R.themeSea ? 'YOUR HAULER TRIREME' : (state.hydrogen.A ? 'YOUR DIRIGIBLE' : 'YOUR HOT-AIR HAULER'));
     } else if (state.vision.A.has(cellKey(Math.round(h.pos[0]), Math.round(h.pos[1])))) {
-      consider(h, 'HIS HAULER');
+      consider(h, R.themeSea ? 'GUILD HAULER' : 'HIS HAULER');
     }
   }
   consider(state.priests.A, 'YOUR PRIEST');
   const pp = state.priests.P;
-  if (pp && state.vision.A.has(cellKey(Math.round(pp.pos[0]), Math.round(pp.pos[1])))) consider(pp, 'HIS PRIEST');
+  if (pp && state.vision.A.has(cellKey(Math.round(pp.pos[0]), Math.round(pp.pos[1])))) consider(pp, R.themeSea ? 'THE GUILD PRIEST' : 'HIS PRIEST');
   for (const c of state.craft) {
     if (!state.vision.A.has(cellKey(Math.round(c.pos[0]), Math.round(c.pos[1])))) continue;
-    consider(c, 'HIS ' + c.kind.toUpperCase() + ' CRAFT');
+    consider(c, (R.themeSea ? 'GUILD ' : 'HIS ') + c.kind.toUpperCase() + ' CRAFT');
   }
   if (!best) return null;
   const m = best.m;
@@ -533,7 +533,7 @@ const ISLAND_NAMES = {
 function identifyCell(state, cell) {
   const st = structureAt(state, cell[0], cell[1]);
   if (st) {
-    const who = st.owner === 'A' ? '' : 'HIS ';
+    const who = st.owner === 'A' ? '' : (R.themeSea ? 'GUILD ' : 'HIS ');
     let extra = '';
     if (st.type === 'yard' && st.owner === 'A') {
       const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
@@ -546,7 +546,7 @@ function identifyCell(state, cell) {
   if (isl) {
     let s = ISLAND_NAMES[isl.role] || 'AN ISLAND';
     if (!isl.role.startsWith('greatTemple')) {
-      s += isl.owner ? (isl.owner === 'A' ? ' — YOURS' : ' — HIS') : ' — UNCLAIMED';
+      s += isl.owner ? (isl.owner === 'A' ? ' — YOURS' : (R.themeSea ? ' — THE GUILD’S' : ' — HIS')) : ' — UNCLAIMED';
       if (isl.reserve > 0) s += ' · ORE ' + Math.floor(isl.reserve);
       else if (isl.minedOut) s += ' · MINED OUT';
       if (isl.stockpile > 1) s += ' · PILE ' + Math.floor(isl.stockpile);
@@ -561,8 +561,8 @@ function identifyCell(state, cell) {
     if (!onCell) continue;
     const stateTxt = seg.supportState === 'SUPPORTED' ? '' :
       (seg.supportState === 'FRAYED' ? ' — CUT · FRAYING' : ' — CUT · UNBINDING');
-    if (seg.owner === 'A') return 'YOUR WIND CORRIDOR' + stateTxt;
-    return 'HIS SEA-LANE — TRACES HOME TO HIS TEMPLES' + stateTxt;
+    if (seg.owner === 'A') return (R.themeSea ? 'YOUR SEA-LANE' : 'YOUR WIND CORRIDOR') + stateTxt;
+    return (R.themeSea ? 'GUILD SKY-ROAD — TRACES HOME TO ITS TEMPLES' : 'HIS SEA-LANE — TRACES HOME TO HIS TEMPLES') + stateTxt;
   }
   return null;
 }

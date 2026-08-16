@@ -162,9 +162,11 @@
   .screen h2 { font-size: 18px; letter-spacing: 2px; color: var(--gold); font-weight: normal; }
   .screen p { font-size: 14px; max-width: 300px; color: #cfd8d3; line-height: 1.5; }
   .screen button {
-    font-family: inherit; font-size: 17px; letter-spacing: 2px; border: none;
-    background: var(--gold); color: var(--ink); padding: 12px 34px; border-radius: 12px;
+    font-family: inherit; font-size: 16px; letter-spacing: 2px; border: none;
+    background: var(--gold); color: var(--ink); padding: 12px 22px; border-radius: 12px;
   }
+  /* the rival call to action: play as Poseidon */
+  #startsea { background: #2e6b74; color: var(--ivory); }
   .screen .seedrow { display: flex; gap: 8px; align-items: center; font-size: 13px; }
   .screen input {
     font-family: monospace; font-size: 14px; width: 110px; text-align: center;
@@ -223,12 +225,15 @@
   <div id="startscreen" class="screen">
     <h1>WINDWARD</h1>
     <h2>THE AGE OF AIR</h2>
-    <p id="lorepara" style="max-width:340px; font-style: italic; line-height:1.5;">The winds
-      Odysseus lost still tangle these islands. Now the guild binds them into roads of
-      bound air, and cargo crosses without paying the sea. Poseidon is passed over —
-      and the tide is coming to collect.</p>
+    <p id="lorepara" style="max-width:340px; font-style: italic; line-height:1.5;">When the
+      shipwrights discovered lift, the Air Guild bound Odysseus' lost winds into roads of
+      bound air — and cargo began crossing without paying the sea. Poseidon is passed
+      over, and his forces are rising to collect. Choose your side.</p>
     <div class="seedrow">SEED <input id="seedinput" maxlength="8" autocomplete="off"></div>
-    <button id="startbtn">TAKE THE WIND</button>
+    <div style="display:flex; gap:12px;">
+      <button id="startbtn">BIND THE AIR</button>
+      <button id="startsea">RIDE THE WAVES</button>
+    </div>
   </div>
   <div id="endscreen" class="screen hidden">
     <h1 id="endtitle"></h1>

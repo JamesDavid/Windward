@@ -4,12 +4,15 @@
 // already exist; nothing here interrupts play.
 // ================================================================
 
-// Poseidon never speaks mid-match (player-directed — gone, ever); the
-// remaining lines are Aeolus' practical onboarding, each shown once.
+// A REAL first-play tutorial (player-directed): five plain lines that
+// teach the whole loop — pathways, mining, temples, the two coins.
+// Each shows once EVER; SKIP TUTORIAL silences the lot.
 const TUTORIAL_SCRIPT = [
-  { at: 0.5, key: 'tut1', text: '“The bag lifts them. Only bound air moves them. Take a wind.”' },
-  { at: 5, key: 'tut2', text: '“Lay it toward the shrine. Nothing you build need touch the sea.”' },
-  { at: 20, key: 'tut4', text: '“An open end is exposed. Cap it, or continue it.”' }
+  { at: 1, key: 'tu1', text: 'Tap a glowing spot on your island and lay path pieces — pathways are how everything moves.' },
+  { at: 10, key: 'tu2', text: 'Every island your pathways touch is mined. Haulers carry the ore home — that is your coin ⚇.' },
+  { at: 20, key: 'tu3', text: 'Coin builds guns, shields, yards and ships. Send your priest to an island to consecrate a temple and claim it.' },
+  { at: 30, key: 'tu4', text: 'Temples earn Favor ✦ — your god\'s regard. Favor lays pathways and buys divine aid: Tailwind, the Wind Wall.' },
+  { at: 40, key: 'tu5', text: 'Cap open path ends with guns: severed paths unbind. The first tide is nearly here.' }
 ];
 
 // (Poseidon's tide titles and grievances retired from mid-match banners
@@ -74,7 +77,7 @@ function flowTick(state) {
         if (dist2d(s.a[0], s.a[1], st.cell[0], st.cell[1]) <= 5 ||
             dist2d(s.b[0], s.b[1], st.cell[0], st.cell[1]) <= 5) {
           f.laneNoteShown = true;
-          showTutorialLine('His lanes obey the same law as your corridors — every one traces home to a temple. Cut one anywhere behind its tip and everything beyond unbinds.', 5600, 'lanesTraceHome');
+          showTutorialLine('Enemy paths obey the same law as yours — every one traces home to a temple. Cut one anywhere behind its tip and everything beyond unbinds.', 5600, 'lanesTraceHome');
           break outer;
         }
       }
@@ -83,17 +86,20 @@ function flowTick(state) {
 
   // (wave-1 lore line removed with the rest of his mid-match voice)
 
-  // win / lose (§28)
+  // win / lose (§28) — worded for whichever god you served
   if (!state.over) {
+    const sea = state.theme === 'sea';
     if (state.greatTemple.P.hp <= 0) {
       state.over = 'win';
       endScreen('THE ARCHIPELAGO ACKNOWLEDGES YOUR GOD',
-        'Poseidon’s temple is fallen. The winds hold every road.', state);
+        sea ? 'The Guild’s temple is fallen. The tide has collected.'
+            : 'Poseidon’s temple is fallen. The winds hold every road.', state);
       audioPlay('victory');
     } else if (state.greatTemple.A.hp <= 0) {
       state.over = 'lose';
       endScreen('YOUR TEMPLE HAS FALLEN',
-        'The sea remembers what the sky forgot.', state);
+        sea ? 'The sky remembers what the sea forgot.'
+            : 'The sea remembers what the sky forgot.', state);
       audioPlay('defeat');
     }
   }

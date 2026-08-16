@@ -68,9 +68,9 @@ function makeChassis(side, onLand, type) {
 
 function makePayload(side, type, stats) {
   const grp = new THREE.Group();
-  const trim = new THREE.MeshLambertMaterial({ color: side === 'A' ? Palette.gold : Palette.poseidonGlow });
+  const trim = new THREE.MeshLambertMaterial({ color: airSide(side) ? Palette.gold : Palette.poseidonGlow });
   const dark = new THREE.MeshLambertMaterial({ color: Palette.bronze });
-  const y = side === 'A' ? 0.62 : 0.2;
+  const y = airSide(side) ? 0.62 : 0.2;
   switch (type) {
     case 'vane': {
       for (let i = 0; i < 4; i++) {
@@ -94,7 +94,7 @@ function makePayload(side, type, stats) {
     case 'shield': {
       // a bound whirlwind (player-directed 360° ward): translucent vortex
       // bands around the pylon, with wisps that visibly orbit
-      const glow = side === 'A' ? Palette.aeolusGlow : Palette.poseidonGlow;
+      const glow = airSide(side) ? Palette.aeolusGlow : Palette.poseidonGlow;
       const whirl = new THREE.Group();
       for (let i = 0; i < 3; i++) {
         const band = new THREE.Mesh(
@@ -135,7 +135,7 @@ function makePayload(side, type, stats) {
       break;
     }
     case 'temple': {
-      const stone = new THREE.MeshLambertMaterial({ color: side === 'A' ? Palette.ivory : Palette.poseidonStone });
+      const stone = new THREE.MeshLambertMaterial({ color: airSide(side) ? Palette.ivory : Palette.poseidonStone });
       const base = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.36, 0.1, 8), stone);
       base.position.y = 0.1;
       for (let i = 0; i < 5; i++) {
@@ -169,7 +169,7 @@ function makePayload(side, type, stats) {
       cap.position.set(0.36, 0.63, 0);
       const pennant = new THREE.Mesh(
         new THREE.PlaneGeometry(0.16, 0.07),
-        new THREE.MeshBasicMaterial({ color: side === 'A' ? Palette.gold : Palette.poseidonGlow, side: THREE.DoubleSide }));
+        new THREE.MeshBasicMaterial({ color: airSide(side) ? Palette.gold : Palette.poseidonGlow, side: THREE.DoubleSide }));
       pennant.position.set(0.46, 0.57, 0);
       grp.add(floor, roof, mast, cap, pennant);
       grp.userData.pennant = pennant;
@@ -200,7 +200,7 @@ function syncStructures(state) {
       const chassis = st.type === 'temple' || st.type === 'yard' ? new THREE.Group() : makeChassis(st.owner, onLand, st.type);
       const payload = makePayload(st.owner, st.type, st);
       grp.add(chassis, payload);
-      const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (st.owner === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
+      const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (airSide(st.owner) ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
       grp.position.set(worldX(st.cell[0]), baseY, worldZ(st.cell[1]));
       grp.userData.baseY = baseY;
       // scaffold ring at ground level while raising
@@ -544,8 +544,19 @@ function buildTrireme(grp, m) {
 
 function makeMoverMesh(m, hydrogen) {
   const grp = new THREE.Group();
-  if (m.owner === 'A') {
+  if (airSide(m.owner)) {
+    // the air faction (yours, or the Guild's when you ride the waves)
     if (m.kind === 'priest') buildPriestShip(grp);
+    else if (m.kind === 'siphon') {
+      buildHotAir(grp);
+      const pipe = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.045, 0.3, 6), shipMat('glow', Palette.poseidonGlow));
+      pipe.position.y = -0.04;
+      pipe.rotation.z = 0.2;
+      grp.add(pipe);
+    }
+    else if (m.kind === 'heavy') buildZeppelin(grp);
+    else if (m.kind === 'transport') buildHotAir(grp);
     else if (hydrogen) buildZeppelin(grp);
     else buildHotAir(grp);
   } else buildTrireme(grp, m);
@@ -556,7 +567,7 @@ function makeMoverMesh(m, hydrogen) {
 }
 
 function moverY(m) {
-  return m.owner === 'A' ? CONFIG.Render.AIR_ALTITUDE + 0.05 : 0.03;
+  return airSide(m.owner) ? CONFIG.Render.AIR_ALTITUDE + 0.05 : 0.03;
 }
 
 function syncMovers(state) {
@@ -718,7 +729,7 @@ function syncGreatTemples(state) {
         new THREE.MeshBasicMaterial({ color: 0x10151a, transparent: true, opacity: 0.7 }));
       const bar = new THREE.Mesh(
         new THREE.BoxGeometry(1.06, 0.1, 0.1),
-        new THREE.MeshBasicMaterial({ color: side === 'A' ? Palette.gold : Palette.poseidonGlow }));
+        new THREE.MeshBasicMaterial({ color: airSide(side) ? Palette.gold : Palette.poseidonGlow }));
       back.position.set(worldX(gt.cell[0]), 1.7, worldZ(gt.cell[1]));
       bar.position.copy(back.position);
       R.scene.add(back, bar);
@@ -794,7 +805,8 @@ const ALLEGIANCE_BASE = { A: 0xc9a05e, P: 0x2e6b74, N: 0xd8c9a8 };
 function syncIslandBars(state) {
   for (const isl of state.map.islands) {
     if (isl.beachMat) {
-      isl.beachMat.color.setHex(ALLEGIANCE_BASE[isl.owner || 'N']);
+      const key = isl.owner ? (airSide(isl.owner) ? 'A' : 'P') : 'N';
+      isl.beachMat.color.setHex(ALLEGIANCE_BASE[key]);
     }
   }
   for (const isl of state.map.islands) {
@@ -892,7 +904,7 @@ function syncIslandBars(state) {
     const frac = rec.baseReserve > 0 ? isl.reserve / rec.baseReserve : 0;
     rec.bar.scale.x = Math.max(0.02, frac);
     rec.bar.visible = lifted && !!isl.owner && !isl.minedOut;
-    rec.bar.material.color.setHex(isl.owner === 'A' ? 0x76d09a : 0x4fb6c4);
+    rec.bar.material.color.setHex(airSide(isl.owner) ? 0x76d09a : 0x4fb6c4);
   }
 }
 
@@ -1159,7 +1171,7 @@ function showStructPreview(state, side, type, cell, facing) {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.06;
   grp.add(ring);
-  const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (side === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
+  const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (airSide(side) ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
   grp.position.set(worldX(cell[0]), baseY, worldZ(cell[1]));
   R.previewGroup.add(grp);
 }

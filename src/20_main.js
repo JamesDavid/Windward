@@ -5,9 +5,14 @@
 let STATE = null;
 let lastFrame = 0;
 
-function startMatch(seedStr) {
+function startMatch(seedStr, theme) {
   Events.clear();
+  // RIDE THE WAVES mirrors the presentation only: you still run the
+  // network game (side A in the sim); the skin, ships, and names swap
+  // so your roads are Poseidon's sea-lanes and the enemy is the Guild.
+  R.themeSea = theme === 'sea';
   STATE = newGameState(seedStr);
+  STATE.theme = theme || 'air';
   recalcSupport(STATE, 'A');
   recalcSupport(STATE, 'P');
   refreshInfluence(STATE);
@@ -118,13 +123,15 @@ if (typeof window !== 'undefined') {
 window.addEventListener('DOMContentLoaded', () => {
   const seedInput = document.getElementById('seedinput');
   seedInput.value = makeSeedString();
-  document.getElementById('startbtn').addEventListener('click', () => {
+  const begin = (theme) => {
     audioInit();
     const seed = (seedInput.value || makeSeedString()).trim().toLowerCase();
-    startMatch(seed);
-  });
+    startMatch(seed, theme);
+  };
+  document.getElementById('startbtn').addEventListener('click', () => begin('air'));
+  document.getElementById('startsea').addEventListener('click', () => begin('sea'));
   document.getElementById('resetbtn').addEventListener('click', () => {
-    startMatch(makeSeedString());
+    startMatch(makeSeedString(), STATE ? STATE.theme : 'air');
   });
   requestAnimationFrame(frame);
 });
