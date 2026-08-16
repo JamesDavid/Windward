@@ -4,7 +4,7 @@ A portrait mobile web prototype for the Meta Horizon Creator Competition (Tower 
 
 **▶ Play the current build: https://jamesdavid.github.io/Windward/** (open on a phone, or a narrow browser window)
 
-> You are the high priest of Aeolus. Build circuits of bound wind into a working logistics network across a Greek archipelago, cap its exposed ends with defenses, survive nine escalating waves from Poseidon's priesthood, watch severed infrastructure physically unravel — and race to reconnect it before the collapse reaches something you love.
+> **One road, five jobs.** A single system carries the whole game — the bound road. It is *movement* (everything rides it), *income* (islands it touches are mined; haulers must land the ore), *reach* (only the road lifts the fog and grants ground), *attack surface* (roads are invulnerable along their length — the raw ends and capping towers are the joints), and *drama* (a severed branch visibly unbinds segment by segment while you race to reconnect it). The hard constraint is the clock: **the tide comes nine times**, each further and harder — and the ninth only says *come down*. Play either god: bind the air, or ride the waves.
 
 **Tech:** Three.js / HTML5, single-player, portrait, fully offline. All entrant-authored code assembles into one readable `index.html`; Three.js lives under `/vendor`. All art is procedural Three.js geometry and all audio is runtime WebAudio synthesis — no external assets of any kind.
 
@@ -24,7 +24,7 @@ A nine-wave match on seed `simtest1` (the balance suite's reference seed), filme
 
 Open `index.html` in a browser (portrait phone, or a narrow browser window). No server or network needed.
 
-- **Tap anywhere gold markers glow** — island coasts, route ends, structure ports. A context menu opens at your thumb: the route pieces in your hand that fit there, every building valid at that spot (each explained in a line), and a Favor-priced reroll.
+- **Tap anywhere gold markers glow** — island coasts, route ends, structure ports. A context menu opens at your thumb: the route pieces in your hand that fit there, every building valid at that spot (each explained in a line), the divine powers (Tailwind anywhere; the Wall shelters the very spot you tapped), salvage, and a Favor-priced reroll. The bottom bar is empty by design — the whole screen belongs to the map.
 - **Route pieces cost Favor (✦), flat rate**; buildings and haulers cost Supply (⚇), hauled home as ore.
 - **Tap the ghost to turn it, CONFIRM to bind.** The confirm button quotes the wind multiplier the new corridor would ride.
 - **Tap an island** to send your priest; ten seconds of his presence consecrates a Temple and claims the island.
