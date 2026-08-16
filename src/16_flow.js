@@ -4,31 +4,16 @@
 // already exist; nothing here interrupts play.
 // ================================================================
 
+// Poseidon never speaks mid-match (player-directed — gone, ever); the
+// remaining lines are Aeolus' practical onboarding, each shown once.
 const TUTORIAL_SCRIPT = [
   { at: 0.5, key: 'tut1', text: '“The bag lifts them. Only bound air moves them. Take a wind.”' },
   { at: 5, key: 'tut2', text: '“Lay it toward the shrine. Nothing you build need touch the sea.”' },
-  { at: 12, key: 'tut3', text: '“My ships move where you have bound the air. Favor follows.”' },
   { at: 20, key: 'tut4', text: '“An open end is exposed. Cap it, or continue it.”' }
 ];
 
-const POSEIDON_BANNERS = [
-  ['THE FIRST TIDE', '“Something is above my water.”'],
-  ['THE SECOND TIDE', '“It has not come down.”'],
-  ['THE THIRD TIDE', '“They no longer sail. They no longer pay. They no longer ask.”'],
-  ['THE FOURTH TIDE', '“Then break the road, not the ships.”'],
-  ['THE FIFTH TIDE', '“Cut it where it reaches farthest.”'],
-  ['THE SIXTH TIDE', '“They made a sky out of rocks and sour wine. Drown it.”'],
-  ['THE SEVENTH TIDE', '“Everywhere at once.”'],
-  ['THE AGE OF WRATH', '“Three generations I have waited to be needed again.”'],
-  ['THE LAST TIDE', '“Come down.”']
-];
-
-const ORIGIN_NAMES = {
-  greatTempleP: 'HIS TEMPLE', supplyP: 'HIS HARBOURS', neutralP: 'THE WESTERN SHALLOWS',
-  sacredA: 'THE WESTERN SHRINE', sacredP: 'THE EASTERN SHRINE',
-  chokepoint: 'THE CHOKEPOINT', neutralA: 'THE EASTERN SHALLOWS',
-  supplyA: 'YOUR OWN WATERS', greatTempleA: 'YOUR DOORSTEP'
-};
+// (Poseidon's tide titles and grievances retired from mid-match banners
+// by player direction — his voice lives on the intro screen only.)
 
 function initFlow(state) {
   state.flow = { tutorialIdx: 0, skipped: false, waveOneAnnounced: false };
@@ -49,24 +34,15 @@ function initFlow(state) {
     skipBtn.classList.add('hidden');
   }
 
-  // In-game telegraphs are compact and high: the wave title and where it
-  // comes from — no theatre. Poseidon's grievance lives on the intro screen.
-  Events.on('waveTelegraph', ({ index, origin }) => {
-    const [title] = POSEIDON_BANNERS[index];
-    const name = ORIGIN_NAMES[origin.island.role] || 'THE DEEP';
-    showBanner('WAVE ' + (index + 1) + ' · ' + title, 'from ' + name.toLowerCase(), true);
-    audioPlay('telegraph');
-  });
-  Events.on('templeFallen', ({ island, side }) => {
-    if (side === 'P') flashTicker('HIS TIDE MUST COME FURTHER NOW');
-  });
-  Events.on('islandClaimed', ({ island, side }) => {
-    showBanner('ISLAND CLAIMED', side === 'A' ? 'The wind holds this ground now.' : 'The sea has taken ground.', side === 'P');
-  });
-  Events.on('ageOfWrath', () => showBanner('THE AGE OF WRATH', 'everything hits harder now', true));
+  // No mid-match theatre (player-directed): Poseidon's grievance lives on
+  // the intro screen only. Waves announce themselves through the HUD
+  // countdown, the telegraph sound, and the camera's slow breath — no
+  // banner. Claims speak through the board itself (island bases tint).
+  Events.on('waveTelegraph', () => audioPlay('telegraph'));
+  Events.on('ageOfWrath', () => flashTicker('THE AGE OF WRATH — EVERYTHING HITS HARDER'));
   Events.on('convoyLost', ({ ent }) => { if (ent.owner === 'A') flashTicker('CONVOY LOST'); });
   Events.on('priestDead', ({ side }) => {
-    if (side === 'A') showBanner('THE PRIEST IS LOST', 'A successor is invested at the Temple.');
+    if (side === 'A') flashTicker('THE PRIEST IS LOST — A SUCCESSOR IS INVESTED');
   });
   Events.on('islandDepleted', ({ island }) => {
     if (island.owner === 'A') flashTicker('AN ISLAND RUNS DRY');
@@ -105,12 +81,7 @@ function flowTick(state) {
     }
   }
 
-  // Wave 1's telegraph line is delivered by the telegraph system itself;
-  // this is the only Aeolus line after control releases (§23)
-  if (!f.waveOneAnnounced && state.time >= CONFIG.Waves.FIRST_AT - CONFIG.Waves.TELEGRAPH) {
-    f.waveOneAnnounced = true;
-    if (!f.skipped) showTutorialLine('“They cross without asking him. He rises.”', 4200, 'wave1lore');
-  }
+  // (wave-1 lore line removed with the rest of his mid-match voice)
 
   // win / lose (§28)
   if (!state.over) {
@@ -135,41 +106,9 @@ function endScreen(title, text, state) {
   document.getElementById('endscreen').classList.remove('hidden');
 }
 
-// ---- Codex (§27): long-press an island or structure ----
-const CODEX = {
-  askos: ['Askos', 'Linen over bronze ribs. A trireme turned over and lightened until it left the water.'],
-  lightair: ['The Light Air', 'Iron filings and sour wine in a sealed retort give off an air that will not stay down. No god was consulted, because none was needed.'],
-  corridor: ['Wind Corridor', 'Bound air, renewed from the Temple. Severed, it does not fall. It remembers, and unbinds itself backward from the cut.'],
-  temple: ['Temple', 'Where mortals thank the wind for not killing them. Favor accumulates only over ground no rival god also claims.'],
-  bolt: ['Bolt Battery', 'It fires nothing. It drops ballast jars — bronze, heavy, full of seawater — into the lanes below. Every gun in this war points at water.'],
-  siphon: ['Siphon Craft', 'Bronze pumps that throw the sea upward. Wet air will not hold a binding, and a drowned wind is no road at all.'],
-  poseidon: ['Poseidon’s Complaint', 'Every crossing once owed him honour. The sky asks him for nothing, so it thanks him for nothing. There is no rite for being forgotten.'],
-  bag: ['The Opened Bag', 'Odysseus slept within sight of Ithaca. His crew thought the bag held gold. Everything since is consequence.']
-};
-
-let codexTimer = null;
-function initCodex(state) {
-  const canvas = R.renderer.domElement;
-  const codexEl = document.getElementById('codex');
-  const open = (entry) => {
-    const [title, body] = CODEX[entry];
-    codexEl.innerHTML = '<h3>' + title + '</h3>' + body;
-    codexEl.classList.remove('hidden');
-    setTimeout(() => codexEl.classList.add('hidden'), 6000);
-  };
-  canvas.addEventListener('pointerdown', (e) => {
-    const cell = pickCell(e.clientX, e.clientY);
-    codexTimer = setTimeout(() => {
-      if (!cell) { open('bag'); return; }
-      const st = structureAt(state, cell[0], cell[1]);
-      if (st) { open(st.type === 'bolt' ? 'bolt' : st.type === 'temple' ? 'temple' : 'askos'); return; }
-      const isl = islandAt(state, cell[0], cell[1]);
-      if (isl) { open('temple'); return; }
-      const onSeg = [...state.segments.values()].some(s => s.owner === 'A' &&
-        Math.abs((s.a[0] + s.b[0]) / 2 - cell[0]) < 1 && Math.abs((s.a[1] + s.b[1]) / 2 - cell[1]) < 1);
-      open(onSeg ? 'corridor' : 'poseidon');
-    }, 950);
-  });
-  canvas.addEventListener('pointerup', () => clearTimeout(codexTimer));
-  canvas.addEventListener('pointermove', () => clearTimeout(codexTimer));
-}
+// ---- Codex (§27): REMOVED by player direction. The long-press trigger
+// fired "Poseidon's Complaint" whenever a finger rested ~1s on open
+// water (constantly, while pinching or thinking zoomed out) and the
+// Temple entry on any island hold. His voice lives on the intro screen;
+// the board explains itself through tap-to-identify instead. ----
+function initCodex(state) { }

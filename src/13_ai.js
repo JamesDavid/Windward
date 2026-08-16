@@ -180,7 +180,8 @@ function aiTick(state, dt) {
   if (p && p.state === 'idle') {
     const isl = p.islandId !== null ? state.map.islands[p.islandId] : null;
     if (isl && !isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0) &&
-        res.supply >= CONFIG.Structures.TEMPLE.COST) {
+        res.supply >= CONFIG.Structures.TEMPLE.COST &&
+        res.favor >= (CONFIG.Structures.TEMPLE.FAVOR || 0)) {
       const plotIdx = isl.plots.findIndex(pl => !pl.structure);
       if (plotIdx >= 0) {
         buildStructure(state, 'P', 'temple', { site: 'plot', islandId: isl.id, plotIdx, cell: [isl.plots[plotIdx].x, isl.plots[plotIdx].z] });

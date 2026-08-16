@@ -109,13 +109,17 @@ const CONFIG = Object.freeze({
   },
 
   Structures: {
-    TEMPLE:   { COST: 14, HP: 100, RADIUS: 5, BUILD_SECONDS: 10 },
+    // pricing doctrine (player-directed): physical things cost Supply,
+    // wind-magic costs Favor, and what is both requires both.
+    TEMPLE:   { COST: 14, FAVOR: 4, HP: 100, RADIUS: 5, BUILD_SECONDS: 10 },   // stone AND rite
     VANE:     { COST: 7,  HP: 45,  DPS: 6,  RADIUS: 2 },
     DRUM:     { COST: 7,  HP: 60,  DPS: 5,  RADIUS: 2 },
     BOLT_DIR: { COST: 10, HP: 50,  DPS: 16, RANGE: 6, ARC_DEG: 90, TURN_DEG_S: 45 },
     LANCE:    { COST: 10, HP: 70,  DPS: 13, RANGE: 6, ARC_DEG: 90, TURN_DEG_S: 45 },
-    AEGIS:    { COST: 12, HP: 130, INTERCEPT: 0.70, ARC_DEG: 120 },
-    BULWARK:  { COST: 12, HP: 160, INTERCEPT: 0.70, ARC_DEG: 120 },
+    // the Aegis is a bound whirlwind on a pylon: full-circle ward (player-
+    // directed 360°), and priced in both coins — bronze and petition
+    AEGIS:    { COST: 12, FAVOR: 4, HP: 130, INTERCEPT: 0.70, ARC_DEG: 360 },
+    BULWARK:  { COST: 12, FAVOR: 4, HP: 160, INTERCEPT: 0.70, ARC_DEG: 360 },
     // player-directed: defenses are solid — they cap a route dead, accept
     // no onward attachment, and block transit (ships/priests can't pass)
     PORTS_GUN: 0, PORTS_SHIELD: 0, PORTS_ALTAR: 0,

@@ -92,16 +92,29 @@ function makePayload(side, type, stats) {
       break;
     }
     case 'shield': {
-      const arc = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.42, 0.42, 0.32, 12, 1, true, -Math.PI / 3, (2 * Math.PI) / 3),
-        new THREE.MeshLambertMaterial({
-          color: side === 'A' ? Palette.aeolusGlow : Palette.poseidonGlow,
-          transparent: true, opacity: 0.4, side: THREE.DoubleSide
-        }));
-      arc.position.y = y + 0.1;
-      arc.rotation.y = Math.PI / 2;
-      grp.add(arc);
-      grp.userData.rotates = true;
+      // a bound whirlwind (player-directed 360° ward): translucent vortex
+      // bands around the pylon, with wisps that visibly orbit
+      const glow = side === 'A' ? Palette.aeolusGlow : Palette.poseidonGlow;
+      const whirl = new THREE.Group();
+      for (let i = 0; i < 3; i++) {
+        const band = new THREE.Mesh(
+          new THREE.TorusGeometry(0.20 + i * 0.09, 0.032, 6, 18),
+          new THREE.MeshLambertMaterial({ color: glow, transparent: true, opacity: 0.42 - i * 0.08 }));
+        band.rotation.x = Math.PI / 2;
+        band.position.y = y + 0.06 + i * 0.15;
+        whirl.add(band);
+        for (let w = 0; w < 3; w++) {
+          const wisp = new THREE.Mesh(
+            new THREE.SphereGeometry(0.045, 5, 4),
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 }));
+          const a = (w / 3) * Math.PI * 2 + i * 0.8;
+          wisp.position.set(Math.cos(a) * (0.20 + i * 0.09), y + 0.06 + i * 0.15, Math.sin(a) * (0.20 + i * 0.09));
+          wisp.scale.set(2.2, 0.5, 0.5);
+          whirl.add(wisp);
+        }
+      }
+      grp.add(whirl);
+      grp.userData.whirl = whirl;
       break;
     }
     case 'temple': {
@@ -198,6 +211,10 @@ function syncStructures(state) {
     if (st.type === 'vane') {
       const firing = state.time - (st.lastFired || -99) < 0.6;
       rec.payload.rotation.y = state.time * (firing ? 7 : 1.1);
+    }
+    // the Aegis whirlwind never stops turning
+    if (st.type === 'shield' && rec.payload.userData.whirl) {
+      rec.payload.userData.whirl.rotation.y = state.time * 2.4;
     }
     // mooring yard extras: fluttering pennant + fleet-status dots above
     // the roof — one dot per mooring the fleet cap allows, lit while a
@@ -790,6 +807,18 @@ function showStructPreview(state, side, type, cell) {
       fill.rotation.x = -Math.PI / 2;
       fill.position.y = 0.065;
       grp.add(ring, fill);
+      // the bolt is a TURRET: long reach but only a 90° sector at a time
+      // (it traverses slowly). Show the wedge, not just the ring — the
+      // vane's full circle and the bolt's slice must read differently.
+      if (type === 'bolt' && stats.arc) {
+        const facing = defaultFacing(state, side, cell);
+        const wedge = new THREE.Mesh(
+          new THREE.RingGeometry(0.35, r, 24, 1, -facing - stats.arc / 2, stats.arc),
+          new THREE.MeshBasicMaterial({ color: 0xffd977, transparent: true, opacity: 0.22, side: THREE.DoubleSide }));
+        wedge.rotation.x = -Math.PI / 2;
+        wedge.position.y = 0.068;
+        grp.add(wedge);
+      }
     }
   }
   grp.traverse(o => {

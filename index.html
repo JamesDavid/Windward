@@ -355,13 +355,17 @@ const CONFIG = Object.freeze({
   },
 
   Structures: {
-    TEMPLE:   { COST: 14, HP: 100, RADIUS: 5, BUILD_SECONDS: 10 },
+    // pricing doctrine (player-directed): physical things cost Supply,
+    // wind-magic costs Favor, and what is both requires both.
+    TEMPLE:   { COST: 14, FAVOR: 4, HP: 100, RADIUS: 5, BUILD_SECONDS: 10 },   // stone AND rite
     VANE:     { COST: 7,  HP: 45,  DPS: 6,  RADIUS: 2 },
     DRUM:     { COST: 7,  HP: 60,  DPS: 5,  RADIUS: 2 },
     BOLT_DIR: { COST: 10, HP: 50,  DPS: 16, RANGE: 6, ARC_DEG: 90, TURN_DEG_S: 45 },
     LANCE:    { COST: 10, HP: 70,  DPS: 13, RANGE: 6, ARC_DEG: 90, TURN_DEG_S: 45 },
-    AEGIS:    { COST: 12, HP: 130, INTERCEPT: 0.70, ARC_DEG: 120 },
-    BULWARK:  { COST: 12, HP: 160, INTERCEPT: 0.70, ARC_DEG: 120 },
+    // the Aegis is a bound whirlwind on a pylon: full-circle ward (player-
+    // directed 360°), and priced in both coins — bronze and petition
+    AEGIS:    { COST: 12, FAVOR: 4, HP: 130, INTERCEPT: 0.70, ARC_DEG: 360 },
+    BULWARK:  { COST: 12, FAVOR: 4, HP: 160, INTERCEPT: 0.70, ARC_DEG: 360 },
     // player-directed: defenses are solid — they cap a route dead, accept
     // no onward attachment, and block transit (ships/priests can't pass)
     PORTS_GUN: 0, PORTS_SHIELD: 0, PORTS_ALTAR: 0,
@@ -2442,10 +2446,10 @@ function structureStats(side, type) {
     }
     case 'shield': {
       const d = isA ? S.AEGIS : S.BULWARK;
-      return { cost: d.COST, hp: d.HP, intercept: d.INTERCEPT, arc: d.ARC_DEG * Math.PI / 180, ports: S.PORTS_SHIELD, buildTime: CONFIG.BuildTimes.SHIELD };
+      return { cost: d.COST, favor: d.FAVOR || 0, hp: d.HP, intercept: d.INTERCEPT, arc: d.ARC_DEG * Math.PI / 180, ports: S.PORTS_SHIELD, buildTime: CONFIG.BuildTimes.SHIELD };
     }
     case 'temple':
-      return { cost: S.TEMPLE.COST, hp: S.TEMPLE.HP, radius: S.TEMPLE.RADIUS, ports: 0, buildTime: CONFIG.BuildTimes.TEMPLE };
+      return { cost: S.TEMPLE.COST, favor: S.TEMPLE.FAVOR || 0, hp: S.TEMPLE.HP, radius: S.TEMPLE.RADIUS, ports: 0, buildTime: CONFIG.BuildTimes.TEMPLE };
     case 'yard':
       return { cost: CONFIG.Yard.COST, hp: isA ? CONFIG.Yard.HP_AEOLUS : CONFIG.Yard.HP_POSEIDON, ports: 0, buildTime: CONFIG.BuildTimes.YARD };
     case 'mast': {
@@ -2474,6 +2478,7 @@ function structureSupported(state, st) {
 function whyNotBuild(state, side, type, at) {
   const stats = structureStats(side, type);
   if (state.res[side].supply < stats.cost) return 'NOT ENOUGH SUPPLY';
+  if ((stats.favor || 0) > state.res[side].favor) return 'NOT ENOUGH FAVOR';
   // Roads are reach: an endpoint the network has arrived at is buildable
   // regardless of influence — the tower exists because the road got there
   // (§14A.2). Temples are gated by the priest's journey instead.
@@ -2502,6 +2507,7 @@ function buildStructure(state, side, type, at, facing) {
   if (whyNotBuild(state, side, type, at)) return null;
   const stats = structureStats(side, type);
   state.res[side].supply -= stats.cost;
+  state.res[side].favor -= stats.favor || 0;   // what is both costs both
   const st = {
     id: eid(), owner: side, type,
     cell: at.cell.slice(),
@@ -3456,7 +3462,8 @@ function aiTick(state, dt) {
   if (p && p.state === 'idle') {
     const isl = p.islandId !== null ? state.map.islands[p.islandId] : null;
     if (isl && !isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0) &&
-        res.supply >= CONFIG.Structures.TEMPLE.COST) {
+        res.supply >= CONFIG.Structures.TEMPLE.COST &&
+        res.favor >= (CONFIG.Structures.TEMPLE.FAVOR || 0)) {
       const plotIdx = isl.plots.findIndex(pl => !pl.structure);
       if (plotIdx >= 0) {
         buildStructure(state, 'P', 'temple', { site: 'plot', islandId: isl.id, plotIdx, cell: [isl.plots[plotIdx].x, isl.plots[plotIdx].z] });
@@ -3668,31 +3675,16 @@ function castWindWall(state, cell) {
 // already exist; nothing here interrupts play.
 // ================================================================
 
+// Poseidon never speaks mid-match (player-directed — gone, ever); the
+// remaining lines are Aeolus' practical onboarding, each shown once.
 const TUTORIAL_SCRIPT = [
   { at: 0.5, key: 'tut1', text: '“The bag lifts them. Only bound air moves them. Take a wind.”' },
   { at: 5, key: 'tut2', text: '“Lay it toward the shrine. Nothing you build need touch the sea.”' },
-  { at: 12, key: 'tut3', text: '“My ships move where you have bound the air. Favor follows.”' },
   { at: 20, key: 'tut4', text: '“An open end is exposed. Cap it, or continue it.”' }
 ];
 
-const POSEIDON_BANNERS = [
-  ['THE FIRST TIDE', '“Something is above my water.”'],
-  ['THE SECOND TIDE', '“It has not come down.”'],
-  ['THE THIRD TIDE', '“They no longer sail. They no longer pay. They no longer ask.”'],
-  ['THE FOURTH TIDE', '“Then break the road, not the ships.”'],
-  ['THE FIFTH TIDE', '“Cut it where it reaches farthest.”'],
-  ['THE SIXTH TIDE', '“They made a sky out of rocks and sour wine. Drown it.”'],
-  ['THE SEVENTH TIDE', '“Everywhere at once.”'],
-  ['THE AGE OF WRATH', '“Three generations I have waited to be needed again.”'],
-  ['THE LAST TIDE', '“Come down.”']
-];
-
-const ORIGIN_NAMES = {
-  greatTempleP: 'HIS TEMPLE', supplyP: 'HIS HARBOURS', neutralP: 'THE WESTERN SHALLOWS',
-  sacredA: 'THE WESTERN SHRINE', sacredP: 'THE EASTERN SHRINE',
-  chokepoint: 'THE CHOKEPOINT', neutralA: 'THE EASTERN SHALLOWS',
-  supplyA: 'YOUR OWN WATERS', greatTempleA: 'YOUR DOORSTEP'
-};
+// (Poseidon's tide titles and grievances retired from mid-match banners
+// by player direction — his voice lives on the intro screen only.)
 
 function initFlow(state) {
   state.flow = { tutorialIdx: 0, skipped: false, waveOneAnnounced: false };
@@ -3713,24 +3705,15 @@ function initFlow(state) {
     skipBtn.classList.add('hidden');
   }
 
-  // In-game telegraphs are compact and high: the wave title and where it
-  // comes from — no theatre. Poseidon's grievance lives on the intro screen.
-  Events.on('waveTelegraph', ({ index, origin }) => {
-    const [title] = POSEIDON_BANNERS[index];
-    const name = ORIGIN_NAMES[origin.island.role] || 'THE DEEP';
-    showBanner('WAVE ' + (index + 1) + ' · ' + title, 'from ' + name.toLowerCase(), true);
-    audioPlay('telegraph');
-  });
-  Events.on('templeFallen', ({ island, side }) => {
-    if (side === 'P') flashTicker('HIS TIDE MUST COME FURTHER NOW');
-  });
-  Events.on('islandClaimed', ({ island, side }) => {
-    showBanner('ISLAND CLAIMED', side === 'A' ? 'The wind holds this ground now.' : 'The sea has taken ground.', side === 'P');
-  });
-  Events.on('ageOfWrath', () => showBanner('THE AGE OF WRATH', 'everything hits harder now', true));
+  // No mid-match theatre (player-directed): Poseidon's grievance lives on
+  // the intro screen only. Waves announce themselves through the HUD
+  // countdown, the telegraph sound, and the camera's slow breath — no
+  // banner. Claims speak through the board itself (island bases tint).
+  Events.on('waveTelegraph', () => audioPlay('telegraph'));
+  Events.on('ageOfWrath', () => flashTicker('THE AGE OF WRATH — EVERYTHING HITS HARDER'));
   Events.on('convoyLost', ({ ent }) => { if (ent.owner === 'A') flashTicker('CONVOY LOST'); });
   Events.on('priestDead', ({ side }) => {
-    if (side === 'A') showBanner('THE PRIEST IS LOST', 'A successor is invested at the Temple.');
+    if (side === 'A') flashTicker('THE PRIEST IS LOST — A SUCCESSOR IS INVESTED');
   });
   Events.on('islandDepleted', ({ island }) => {
     if (island.owner === 'A') flashTicker('AN ISLAND RUNS DRY');
@@ -3769,12 +3752,7 @@ function flowTick(state) {
     }
   }
 
-  // Wave 1's telegraph line is delivered by the telegraph system itself;
-  // this is the only Aeolus line after control releases (§23)
-  if (!f.waveOneAnnounced && state.time >= CONFIG.Waves.FIRST_AT - CONFIG.Waves.TELEGRAPH) {
-    f.waveOneAnnounced = true;
-    if (!f.skipped) showTutorialLine('“They cross without asking him. He rises.”', 4200, 'wave1lore');
-  }
+  // (wave-1 lore line removed with the rest of his mid-match voice)
 
   // win / lose (§28)
   if (!state.over) {
@@ -3799,44 +3777,12 @@ function endScreen(title, text, state) {
   document.getElementById('endscreen').classList.remove('hidden');
 }
 
-// ---- Codex (§27): long-press an island or structure ----
-const CODEX = {
-  askos: ['Askos', 'Linen over bronze ribs. A trireme turned over and lightened until it left the water.'],
-  lightair: ['The Light Air', 'Iron filings and sour wine in a sealed retort give off an air that will not stay down. No god was consulted, because none was needed.'],
-  corridor: ['Wind Corridor', 'Bound air, renewed from the Temple. Severed, it does not fall. It remembers, and unbinds itself backward from the cut.'],
-  temple: ['Temple', 'Where mortals thank the wind for not killing them. Favor accumulates only over ground no rival god also claims.'],
-  bolt: ['Bolt Battery', 'It fires nothing. It drops ballast jars — bronze, heavy, full of seawater — into the lanes below. Every gun in this war points at water.'],
-  siphon: ['Siphon Craft', 'Bronze pumps that throw the sea upward. Wet air will not hold a binding, and a drowned wind is no road at all.'],
-  poseidon: ['Poseidon’s Complaint', 'Every crossing once owed him honour. The sky asks him for nothing, so it thanks him for nothing. There is no rite for being forgotten.'],
-  bag: ['The Opened Bag', 'Odysseus slept within sight of Ithaca. His crew thought the bag held gold. Everything since is consequence.']
-};
-
-let codexTimer = null;
-function initCodex(state) {
-  const canvas = R.renderer.domElement;
-  const codexEl = document.getElementById('codex');
-  const open = (entry) => {
-    const [title, body] = CODEX[entry];
-    codexEl.innerHTML = '<h3>' + title + '</h3>' + body;
-    codexEl.classList.remove('hidden');
-    setTimeout(() => codexEl.classList.add('hidden'), 6000);
-  };
-  canvas.addEventListener('pointerdown', (e) => {
-    const cell = pickCell(e.clientX, e.clientY);
-    codexTimer = setTimeout(() => {
-      if (!cell) { open('bag'); return; }
-      const st = structureAt(state, cell[0], cell[1]);
-      if (st) { open(st.type === 'bolt' ? 'bolt' : st.type === 'temple' ? 'temple' : 'askos'); return; }
-      const isl = islandAt(state, cell[0], cell[1]);
-      if (isl) { open('temple'); return; }
-      const onSeg = [...state.segments.values()].some(s => s.owner === 'A' &&
-        Math.abs((s.a[0] + s.b[0]) / 2 - cell[0]) < 1 && Math.abs((s.a[1] + s.b[1]) / 2 - cell[1]) < 1);
-      open(onSeg ? 'corridor' : 'poseidon');
-    }, 950);
-  });
-  canvas.addEventListener('pointerup', () => clearTimeout(codexTimer));
-  canvas.addEventListener('pointermove', () => clearTimeout(codexTimer));
-}
+// ---- Codex (§27): REMOVED by player direction. The long-press trigger
+// fired "Poseidon's Complaint" whenever a finger rested ~1s on open
+// water (constantly, while pinching or thinking zoomed out) and the
+// Temple entry on any island hold. His voice lives on the intro screen;
+// the board explains itself through tap-to-identify instead. ----
+function initCodex(state) { }
 
 // ============================================================
 // AUDIO
@@ -4159,8 +4105,10 @@ function updateCamera() {
   if (R.camZoom === undefined) { R.camZoom = 1; R.camAz = 0; }
   R.camZoom = clamp(R.camZoom, 0.75, 2.6);
   const zoomFx = R.camZoom * (R.zoomPulse || 1);   // telegraph breath rides on top
-  const back = CONFIG.Render.CAM_BACK * fit * zoomFx;
-  const h = CONFIG.Render.CAM_HEIGHT * fit * zoomFx;
+  // three-finger tilt: trade height for distance around the same target
+  const tilt = clamp(R.camTilt || 1, 0.65, 1.35);
+  const back = CONFIG.Render.CAM_BACK * fit * zoomFx * (2 - tilt);
+  const h = CONFIG.Render.CAM_HEIGHT * fit * zoomFx * tilt;
   R.camera.position.set(
     t.x + Math.sin(R.camAz || 0) * back,
     h,
@@ -4757,16 +4705,29 @@ function makePayload(side, type, stats) {
       break;
     }
     case 'shield': {
-      const arc = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.42, 0.42, 0.32, 12, 1, true, -Math.PI / 3, (2 * Math.PI) / 3),
-        new THREE.MeshLambertMaterial({
-          color: side === 'A' ? Palette.aeolusGlow : Palette.poseidonGlow,
-          transparent: true, opacity: 0.4, side: THREE.DoubleSide
-        }));
-      arc.position.y = y + 0.1;
-      arc.rotation.y = Math.PI / 2;
-      grp.add(arc);
-      grp.userData.rotates = true;
+      // a bound whirlwind (player-directed 360° ward): translucent vortex
+      // bands around the pylon, with wisps that visibly orbit
+      const glow = side === 'A' ? Palette.aeolusGlow : Palette.poseidonGlow;
+      const whirl = new THREE.Group();
+      for (let i = 0; i < 3; i++) {
+        const band = new THREE.Mesh(
+          new THREE.TorusGeometry(0.20 + i * 0.09, 0.032, 6, 18),
+          new THREE.MeshLambertMaterial({ color: glow, transparent: true, opacity: 0.42 - i * 0.08 }));
+        band.rotation.x = Math.PI / 2;
+        band.position.y = y + 0.06 + i * 0.15;
+        whirl.add(band);
+        for (let w = 0; w < 3; w++) {
+          const wisp = new THREE.Mesh(
+            new THREE.SphereGeometry(0.045, 5, 4),
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 }));
+          const a = (w / 3) * Math.PI * 2 + i * 0.8;
+          wisp.position.set(Math.cos(a) * (0.20 + i * 0.09), y + 0.06 + i * 0.15, Math.sin(a) * (0.20 + i * 0.09));
+          wisp.scale.set(2.2, 0.5, 0.5);
+          whirl.add(wisp);
+        }
+      }
+      grp.add(whirl);
+      grp.userData.whirl = whirl;
       break;
     }
     case 'temple': {
@@ -4863,6 +4824,10 @@ function syncStructures(state) {
     if (st.type === 'vane') {
       const firing = state.time - (st.lastFired || -99) < 0.6;
       rec.payload.rotation.y = state.time * (firing ? 7 : 1.1);
+    }
+    // the Aegis whirlwind never stops turning
+    if (st.type === 'shield' && rec.payload.userData.whirl) {
+      rec.payload.userData.whirl.rotation.y = state.time * 2.4;
     }
     // mooring yard extras: fluttering pennant + fleet-status dots above
     // the roof — one dot per mooring the fleet cap allows, lit while a
@@ -5455,6 +5420,18 @@ function showStructPreview(state, side, type, cell) {
       fill.rotation.x = -Math.PI / 2;
       fill.position.y = 0.065;
       grp.add(ring, fill);
+      // the bolt is a TURRET: long reach but only a 90° sector at a time
+      // (it traverses slowly). Show the wedge, not just the ring — the
+      // vane's full circle and the bolt's slice must read differently.
+      if (type === 'bolt' && stats.arc) {
+        const facing = defaultFacing(state, side, cell);
+        const wedge = new THREE.Mesh(
+          new THREE.RingGeometry(0.35, r, 24, 1, -facing - stats.arc / 2, stats.arc),
+          new THREE.MeshBasicMaterial({ color: 0xffd977, transparent: true, opacity: 0.22, side: THREE.DoubleSide }));
+        wedge.rotation.x = -Math.PI / 2;
+        wedge.position.y = 0.068;
+        grp.add(wedge);
+      }
     }
   }
   grp.traverse(o => {
@@ -5547,45 +5524,17 @@ function visibleLaneCells(state) {
 
 // ================================================================
 // CINEMATICS (player-directed) — atmosphere that never takes control
-// away: drifting clouds with sea shadows, Poseidon's breakers crashing
-// against the rim of the arena, and a slow zoom-out breath while a wave
-// is telegraphed. All original geometry; nothing blocks input.
+// away: Poseidon's breakers crashing against the rim of the arena, and
+// a slow zoom-out breath while a wave is telegraphed. All original
+// geometry; nothing blocks input.
 // ================================================================
 
 function initCinematics(state) {
-  const cine = { clouds: [], breakers: [], pulseT0: -99 };
+  // (clouds tried and removed by player direction — they sat between the
+  // camera and the board and cost more readability than they earned)
+  const cine = { breakers: [], pulseT0: -99 };
   R.cine = cine;
-
-  // ---- clouds: sparse puff clusters riding high above the airships,
-  // each dragging a soft shadow across the sea ----
-  const rng = mulberry32(1234567);
   const W = CONFIG.Grid.WIDTH, H = CONFIG.Grid.HEIGHT;
-  // opaque stylized puffs: transparency on overlapping spheres depth-fights
-  // against the transparent sea and reads as hollow bowls
-  const puffMat = new THREE.MeshLambertMaterial({ color: 0xf7f4ec });
-  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x06222a, transparent: true, opacity: 0.10 });
-  for (let i = 0; i < 7; i++) {
-    const grp = new THREE.Group();
-    const n = 4 + Math.floor(rng() * 3);
-    let span = 0;
-    for (let p = 0; p < n; p++) {
-      const puff = new THREE.Mesh(new THREE.SphereGeometry(0.5 + rng() * 0.5, 8, 6), puffMat);
-      const px = (p - (n - 1) / 2) * 0.7 + (rng() - 0.5) * 0.3;
-      puff.position.set(px, (rng() - 0.5) * 0.25, (rng() - 0.5) * 0.8);
-      puff.scale.y = 0.55;
-      grp.add(puff);
-      span = Math.max(span, Math.abs(px) + 0.6);
-    }
-    const shadow = new THREE.Mesh(new THREE.CircleGeometry(span * 0.9, 12), shadowMat);
-    shadow.rotation.x = -Math.PI / 2;
-    R.scene.add(grp, shadow);
-    cine.clouds.push({
-      grp, shadow,
-      x: rng() * W, z: rng() * H,
-      y: 3.4 + rng() * 1.2,
-      drift: 0.10 + rng() * 0.08
-    });
-  }
 
   // ---- breakers: swells that rise and burst white against the outside
   // of the arena, all four rims — the sea besieging the sky's ground ----
@@ -5621,18 +5570,6 @@ function cinematicTick(state, dt) {
   if (!R.cine) initCinematics(state);
   const cine = R.cine;
   cine.now = state.time;
-  const W = CONFIG.Grid.WIDTH, H = CONFIG.Grid.HEIGHT;
-
-  // clouds ride the wind at altitude, wrapping around the arena
-  for (const c of cine.clouds) {
-    const w = state.wind.at(c.x, c.z);
-    c.x += w.x * c.drift * dt * 3;
-    c.z += w.z * c.drift * dt * 3;
-    if (c.x < -3) c.x += W + 6; if (c.x > W + 3) c.x -= W + 6;
-    if (c.z < -3) c.z += H + 6; if (c.z > H + 3) c.z -= H + 6;
-    c.grp.position.set(worldX(c.x), c.y, worldZ(c.z));
-    c.shadow.position.set(worldX(c.x + 0.8), 0.055, worldZ(c.z + 0.8));
-  }
 
   // breakers: rise, lunge at the rim, burst to foam, slide back
   for (const b of cine.breakers) {
@@ -5697,7 +5634,7 @@ function initUI(state) {
   UI.els.cancel.addEventListener('click', () => cancelPlacement());
   UI.els.tech.addEventListener('click', () => {
     if (buyHydrogen(state, 'A')) {
-      showBanner('THE LIGHT AIR', 'Iron filings and sour wine. The fleet is reborn.');
+      flashTicker('THE LIGHT AIR — THE FLEET REFITS TO HYDROGEN');
       UI.els.tech.disabled = true;
     } else flashTicker('NEEDS 25 SUPPLY AND 6 FAVOR');
   });
@@ -5722,6 +5659,8 @@ function initUI(state) {
   const pan = { active: false, panned: false, sx: 0, sy: 0, ground: null };
   const pointers = new Map();     // two-finger pinch (zoom) and twist (rotate)
   let pinch = null;
+  let tilt3 = null;               // three-finger vertical swipe adjusts the tilt
+  const avgY = () => [...pointers.values()].reduce((s, p) => s + p.y, 0) / pointers.size;
   const gestureVals = () => {
     const [a, b] = [...pointers.values()];
     return {
@@ -5731,6 +5670,13 @@ function initUI(state) {
   };
   canvas.addEventListener('pointerdown', (e) => {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 3) {
+      pinch = null;
+      tilt3 = { y0: avgY(), tilt0: R.camTilt || 1 };
+      pan.active = false;
+      pan.panned = true;
+      return;
+    }
     if (pointers.size === 2) {
       const g = gestureVals();
       pinch = { d0: g.d, a0: g.ang, zoom0: R.camZoom || 1, az0: R.camAz || 0 };
@@ -5745,6 +5691,13 @@ function initUI(state) {
   });
   canvas.addEventListener('pointermove', (e) => {
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (tilt3 && pointers.size === 3) {
+      // swipe up = higher eye (more top-down); swipe down = lower and
+      // more oblique. Applied in updateCamera as height vs distance.
+      R.camTilt = clamp(tilt3.tilt0 - (avgY() - tilt3.y0) / 280, 0.65, 1.35);
+      updateCamera();
+      return;
+    }
     if (pinch && pointers.size === 2) {
       const g = gestureVals();
       R.camZoom = clamp(pinch.zoom0 * (pinch.d0 / Math.max(20, g.d)), 0.75, 2.6);
@@ -5767,6 +5720,7 @@ function initUI(state) {
   });
   const release = (e) => {
     pointers.delete(e.pointerId);
+    if (pointers.size < 3) tilt3 = null;
     if (pointers.size < 2) pinch = null;
     const wasTap = pan.active && !pan.panned && e.type === 'pointerup';
     pan.active = false;
@@ -6039,7 +5993,7 @@ function hideBuildMenu() { UI.els.buildmenu.classList.add('hidden'); }
 // what each thing IS, right on the button — menus must be self-explanatory
 const MENU_DESC = {
   vane: 'short range, hits all around', bolt: 'long range, one target',
-  shield: 'absorbs hits for allies behind', temple: 'claims isle, spreads influence',
+  shield: 'bound whirlwind: absorbs hits all around', temple: 'claims isle, spreads influence',
   yard: 'lets you build 2 more haulers', priest: 'must stand here to found temples',
   hauler: 'carries mined ore home',
   salvage: 'reclaim it: half its cost back',
@@ -6047,10 +6001,14 @@ const MENU_DESC = {
   salvageseg: 'unbind one segment; branches beyond may fray'
 };
 
-function menuButton(label, cost, fn, disabledReason, descKey) {
+function menuButton(label, cost, fn, disabledReason, descKey, favorCost) {
   const btn = document.createElement('button');
   const desc = MENU_DESC[descKey] ? '<span style="font-size:9px; opacity:0.75; line-height:1.1; display:block; max-width:70px">' + MENU_DESC[descKey] + '</span>' : '';
-  btn.innerHTML = label + desc + (cost ? '<b>' + cost + ' ⚇</b>' : '');
+  // pricing doctrine: physical → ⚇, wind-magic → ✦, both → both shown
+  const costTxt = (cost || favorCost)
+    ? '<b>' + (cost ? cost + ' ⚇' : '') + (cost && favorCost ? ' + ' : '') + (favorCost ? favorCost + ' ✦' : '') + '</b>'
+    : '';
+  btn.innerHTML = label + desc + costTxt;
   if (disabledReason) {
     // still tappable: a tap explains WHY it is refused (mobile has no tooltips)
     btn.style.opacity = 0.4;
@@ -6062,7 +6020,7 @@ function menuButton(label, cost, fn, disabledReason, descKey) {
 }
 
 const STRUCT_NAMES = {
-  vane: 'CHAIN VANE (radial gun)', bolt: 'BOLT BATTERY (long gun)', shield: 'AEGIS SCREEN (shield)',
+  vane: 'CHAIN VANE (radial gun)', bolt: 'BOLT BATTERY (long gun)', shield: 'AEGIS SCREEN (whirlwind ward)',
   temple: 'TEMPLE', yard: 'MOORING YARD (builds haulers)', mast: 'SIPHON MAST (his anti-air)'
 };
 const ISLAND_NAMES = {
@@ -6213,7 +6171,8 @@ function openContextMenu(state, cell, tapX, tapY) {
     showSockets(state, UI.structSites.map(s => ({ cell: s.cell, kind: 'site' })));
     showStructPreview(state, 'A', type, at.cell);
     setConfirmVisible(true);
-    UI.els.confirm.textContent = 'RAISE  ' + structureStats('A', type).cost + ' ⚇';
+    const ss = structureStats('A', type);
+    UI.els.confirm.textContent = 'RAISE  ' + ss.cost + ' ⚇' + (ss.favor ? ' + ' + ss.favor + ' ✦' : '');
   };
 
   if (!yardMenu)
@@ -6221,17 +6180,19 @@ function openContextMenu(state, cell, tapX, tapY) {
     const at = { site: 'endpoint', cell };
     for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN']]) {
       const why = whyNotBuild(state, 'A', type, at);
-      options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why, type));
+      const ss = structureStats('A', type);
+        options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
     }
   } else if (isl && plotIdx >= 0) {
     const at = { site: 'plot', islandId: isl.id, plotIdx, cell };
     if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
-      options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple'));
+      options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
     }
     if (isl.owner === 'A') {
       for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
         const why = whyNotBuild(state, 'A', type, at);
-        options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why, type));
+        const ss = structureStats('A', type);
+        options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
       }
     }
   } else if (isl) {
@@ -6241,12 +6202,13 @@ function openContextMenu(state, cell, tapX, tapY) {
     if (freeIdx >= 0) {
       const at = { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
       if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
-        options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple'));
+        options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
       }
       if (isl.owner === 'A') {
         for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
           const why = whyNotBuild(state, 'A', type, at);
-          options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why, type));
+          const ss = structureStats('A', type);
+        options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
         }
       }
     }
@@ -6490,7 +6452,7 @@ function wireGameEvents(state) {
     }
   });
   Events.on('networkRestored', ({ side }) => {
-    if (side === 'A') showBanner('NETWORK RESTORED', 'The wind remembers its road.');
+    if (side === 'A') flashTicker('NETWORK RESTORED');
     refreshInfluenceView(state);
   });
   Events.on('segmentDestroyed', () => refreshInfluenceView(state));

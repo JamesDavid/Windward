@@ -33,7 +33,7 @@ function initUI(state) {
   UI.els.cancel.addEventListener('click', () => cancelPlacement());
   UI.els.tech.addEventListener('click', () => {
     if (buyHydrogen(state, 'A')) {
-      showBanner('THE LIGHT AIR', 'Iron filings and sour wine. The fleet is reborn.');
+      flashTicker('THE LIGHT AIR — THE FLEET REFITS TO HYDROGEN');
       UI.els.tech.disabled = true;
     } else flashTicker('NEEDS 25 SUPPLY AND 6 FAVOR');
   });
@@ -58,6 +58,8 @@ function initUI(state) {
   const pan = { active: false, panned: false, sx: 0, sy: 0, ground: null };
   const pointers = new Map();     // two-finger pinch (zoom) and twist (rotate)
   let pinch = null;
+  let tilt3 = null;               // three-finger vertical swipe adjusts the tilt
+  const avgY = () => [...pointers.values()].reduce((s, p) => s + p.y, 0) / pointers.size;
   const gestureVals = () => {
     const [a, b] = [...pointers.values()];
     return {
@@ -67,6 +69,13 @@ function initUI(state) {
   };
   canvas.addEventListener('pointerdown', (e) => {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 3) {
+      pinch = null;
+      tilt3 = { y0: avgY(), tilt0: R.camTilt || 1 };
+      pan.active = false;
+      pan.panned = true;
+      return;
+    }
     if (pointers.size === 2) {
       const g = gestureVals();
       pinch = { d0: g.d, a0: g.ang, zoom0: R.camZoom || 1, az0: R.camAz || 0 };
@@ -81,6 +90,13 @@ function initUI(state) {
   });
   canvas.addEventListener('pointermove', (e) => {
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (tilt3 && pointers.size === 3) {
+      // swipe up = higher eye (more top-down); swipe down = lower and
+      // more oblique. Applied in updateCamera as height vs distance.
+      R.camTilt = clamp(tilt3.tilt0 - (avgY() - tilt3.y0) / 280, 0.65, 1.35);
+      updateCamera();
+      return;
+    }
     if (pinch && pointers.size === 2) {
       const g = gestureVals();
       R.camZoom = clamp(pinch.zoom0 * (pinch.d0 / Math.max(20, g.d)), 0.75, 2.6);
@@ -103,6 +119,7 @@ function initUI(state) {
   });
   const release = (e) => {
     pointers.delete(e.pointerId);
+    if (pointers.size < 3) tilt3 = null;
     if (pointers.size < 2) pinch = null;
     const wasTap = pan.active && !pan.panned && e.type === 'pointerup';
     pan.active = false;
@@ -375,7 +392,7 @@ function hideBuildMenu() { UI.els.buildmenu.classList.add('hidden'); }
 // what each thing IS, right on the button — menus must be self-explanatory
 const MENU_DESC = {
   vane: 'short range, hits all around', bolt: 'long range, one target',
-  shield: 'absorbs hits for allies behind', temple: 'claims isle, spreads influence',
+  shield: 'bound whirlwind: absorbs hits all around', temple: 'claims isle, spreads influence',
   yard: 'lets you build 2 more haulers', priest: 'must stand here to found temples',
   hauler: 'carries mined ore home',
   salvage: 'reclaim it: half its cost back',
@@ -383,10 +400,14 @@ const MENU_DESC = {
   salvageseg: 'unbind one segment; branches beyond may fray'
 };
 
-function menuButton(label, cost, fn, disabledReason, descKey) {
+function menuButton(label, cost, fn, disabledReason, descKey, favorCost) {
   const btn = document.createElement('button');
   const desc = MENU_DESC[descKey] ? '<span style="font-size:9px; opacity:0.75; line-height:1.1; display:block; max-width:70px">' + MENU_DESC[descKey] + '</span>' : '';
-  btn.innerHTML = label + desc + (cost ? '<b>' + cost + ' ⚇</b>' : '');
+  // pricing doctrine: physical → ⚇, wind-magic → ✦, both → both shown
+  const costTxt = (cost || favorCost)
+    ? '<b>' + (cost ? cost + ' ⚇' : '') + (cost && favorCost ? ' + ' : '') + (favorCost ? favorCost + ' ✦' : '') + '</b>'
+    : '';
+  btn.innerHTML = label + desc + costTxt;
   if (disabledReason) {
     // still tappable: a tap explains WHY it is refused (mobile has no tooltips)
     btn.style.opacity = 0.4;
@@ -398,7 +419,7 @@ function menuButton(label, cost, fn, disabledReason, descKey) {
 }
 
 const STRUCT_NAMES = {
-  vane: 'CHAIN VANE (radial gun)', bolt: 'BOLT BATTERY (long gun)', shield: 'AEGIS SCREEN (shield)',
+  vane: 'CHAIN VANE (radial gun)', bolt: 'BOLT BATTERY (long gun)', shield: 'AEGIS SCREEN (whirlwind ward)',
   temple: 'TEMPLE', yard: 'MOORING YARD (builds haulers)', mast: 'SIPHON MAST (his anti-air)'
 };
 const ISLAND_NAMES = {
@@ -549,7 +570,8 @@ function openContextMenu(state, cell, tapX, tapY) {
     showSockets(state, UI.structSites.map(s => ({ cell: s.cell, kind: 'site' })));
     showStructPreview(state, 'A', type, at.cell);
     setConfirmVisible(true);
-    UI.els.confirm.textContent = 'RAISE  ' + structureStats('A', type).cost + ' ⚇';
+    const ss = structureStats('A', type);
+    UI.els.confirm.textContent = 'RAISE  ' + ss.cost + ' ⚇' + (ss.favor ? ' + ' + ss.favor + ' ✦' : '');
   };
 
   if (!yardMenu)
@@ -557,17 +579,19 @@ function openContextMenu(state, cell, tapX, tapY) {
     const at = { site: 'endpoint', cell };
     for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN']]) {
       const why = whyNotBuild(state, 'A', type, at);
-      options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why, type));
+      const ss = structureStats('A', type);
+        options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
     }
   } else if (isl && plotIdx >= 0) {
     const at = { site: 'plot', islandId: isl.id, plotIdx, cell };
     if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
-      options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple'));
+      options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
     }
     if (isl.owner === 'A') {
       for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
         const why = whyNotBuild(state, 'A', type, at);
-        options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why, type));
+        const ss = structureStats('A', type);
+        options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
       }
     }
   } else if (isl) {
@@ -577,12 +601,13 @@ function openContextMenu(state, cell, tapX, tapY) {
     if (freeIdx >= 0) {
       const at = { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
       if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
-        options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple'));
+        options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
       }
       if (isl.owner === 'A') {
         for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
           const why = whyNotBuild(state, 'A', type, at);
-          options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why, type));
+          const ss = structureStats('A', type);
+        options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
         }
       }
     }

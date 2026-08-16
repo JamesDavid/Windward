@@ -1,44 +1,16 @@
 // ================================================================
 // CINEMATICS (player-directed) — atmosphere that never takes control
-// away: drifting clouds with sea shadows, Poseidon's breakers crashing
-// against the rim of the arena, and a slow zoom-out breath while a wave
-// is telegraphed. All original geometry; nothing blocks input.
+// away: Poseidon's breakers crashing against the rim of the arena, and
+// a slow zoom-out breath while a wave is telegraphed. All original
+// geometry; nothing blocks input.
 // ================================================================
 
 function initCinematics(state) {
-  const cine = { clouds: [], breakers: [], pulseT0: -99 };
+  // (clouds tried and removed by player direction — they sat between the
+  // camera and the board and cost more readability than they earned)
+  const cine = { breakers: [], pulseT0: -99 };
   R.cine = cine;
-
-  // ---- clouds: sparse puff clusters riding high above the airships,
-  // each dragging a soft shadow across the sea ----
-  const rng = mulberry32(1234567);
   const W = CONFIG.Grid.WIDTH, H = CONFIG.Grid.HEIGHT;
-  // opaque stylized puffs: transparency on overlapping spheres depth-fights
-  // against the transparent sea and reads as hollow bowls
-  const puffMat = new THREE.MeshLambertMaterial({ color: 0xf7f4ec });
-  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x06222a, transparent: true, opacity: 0.10 });
-  for (let i = 0; i < 7; i++) {
-    const grp = new THREE.Group();
-    const n = 4 + Math.floor(rng() * 3);
-    let span = 0;
-    for (let p = 0; p < n; p++) {
-      const puff = new THREE.Mesh(new THREE.SphereGeometry(0.5 + rng() * 0.5, 8, 6), puffMat);
-      const px = (p - (n - 1) / 2) * 0.7 + (rng() - 0.5) * 0.3;
-      puff.position.set(px, (rng() - 0.5) * 0.25, (rng() - 0.5) * 0.8);
-      puff.scale.y = 0.55;
-      grp.add(puff);
-      span = Math.max(span, Math.abs(px) + 0.6);
-    }
-    const shadow = new THREE.Mesh(new THREE.CircleGeometry(span * 0.9, 12), shadowMat);
-    shadow.rotation.x = -Math.PI / 2;
-    R.scene.add(grp, shadow);
-    cine.clouds.push({
-      grp, shadow,
-      x: rng() * W, z: rng() * H,
-      y: 3.4 + rng() * 1.2,
-      drift: 0.10 + rng() * 0.08
-    });
-  }
 
   // ---- breakers: swells that rise and burst white against the outside
   // of the arena, all four rims — the sea besieging the sky's ground ----
@@ -74,18 +46,6 @@ function cinematicTick(state, dt) {
   if (!R.cine) initCinematics(state);
   const cine = R.cine;
   cine.now = state.time;
-  const W = CONFIG.Grid.WIDTH, H = CONFIG.Grid.HEIGHT;
-
-  // clouds ride the wind at altitude, wrapping around the arena
-  for (const c of cine.clouds) {
-    const w = state.wind.at(c.x, c.z);
-    c.x += w.x * c.drift * dt * 3;
-    c.z += w.z * c.drift * dt * 3;
-    if (c.x < -3) c.x += W + 6; if (c.x > W + 3) c.x -= W + 6;
-    if (c.z < -3) c.z += H + 6; if (c.z > H + 3) c.z -= H + 6;
-    c.grp.position.set(worldX(c.x), c.y, worldZ(c.z));
-    c.shadow.position.set(worldX(c.x + 0.8), 0.055, worldZ(c.z + 0.8));
-  }
 
   // breakers: rise, lunge at the rim, burst to foam, slide back
   for (const b of cine.breakers) {

@@ -136,8 +136,10 @@ function updateCamera() {
   if (R.camZoom === undefined) { R.camZoom = 1; R.camAz = 0; }
   R.camZoom = clamp(R.camZoom, 0.75, 2.6);
   const zoomFx = R.camZoom * (R.zoomPulse || 1);   // telegraph breath rides on top
-  const back = CONFIG.Render.CAM_BACK * fit * zoomFx;
-  const h = CONFIG.Render.CAM_HEIGHT * fit * zoomFx;
+  // three-finger tilt: trade height for distance around the same target
+  const tilt = clamp(R.camTilt || 1, 0.65, 1.35);
+  const back = CONFIG.Render.CAM_BACK * fit * zoomFx * (2 - tilt);
+  const h = CONFIG.Render.CAM_HEIGHT * fit * zoomFx * tilt;
   R.camera.position.set(
     t.x + Math.sin(R.camAz || 0) * back,
     h,

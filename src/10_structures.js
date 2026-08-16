@@ -19,10 +19,10 @@ function structureStats(side, type) {
     }
     case 'shield': {
       const d = isA ? S.AEGIS : S.BULWARK;
-      return { cost: d.COST, hp: d.HP, intercept: d.INTERCEPT, arc: d.ARC_DEG * Math.PI / 180, ports: S.PORTS_SHIELD, buildTime: CONFIG.BuildTimes.SHIELD };
+      return { cost: d.COST, favor: d.FAVOR || 0, hp: d.HP, intercept: d.INTERCEPT, arc: d.ARC_DEG * Math.PI / 180, ports: S.PORTS_SHIELD, buildTime: CONFIG.BuildTimes.SHIELD };
     }
     case 'temple':
-      return { cost: S.TEMPLE.COST, hp: S.TEMPLE.HP, radius: S.TEMPLE.RADIUS, ports: 0, buildTime: CONFIG.BuildTimes.TEMPLE };
+      return { cost: S.TEMPLE.COST, favor: S.TEMPLE.FAVOR || 0, hp: S.TEMPLE.HP, radius: S.TEMPLE.RADIUS, ports: 0, buildTime: CONFIG.BuildTimes.TEMPLE };
     case 'yard':
       return { cost: CONFIG.Yard.COST, hp: isA ? CONFIG.Yard.HP_AEOLUS : CONFIG.Yard.HP_POSEIDON, ports: 0, buildTime: CONFIG.BuildTimes.YARD };
     case 'mast': {
@@ -51,6 +51,7 @@ function structureSupported(state, st) {
 function whyNotBuild(state, side, type, at) {
   const stats = structureStats(side, type);
   if (state.res[side].supply < stats.cost) return 'NOT ENOUGH SUPPLY';
+  if ((stats.favor || 0) > state.res[side].favor) return 'NOT ENOUGH FAVOR';
   // Roads are reach: an endpoint the network has arrived at is buildable
   // regardless of influence — the tower exists because the road got there
   // (§14A.2). Temples are gated by the priest's journey instead.
@@ -79,6 +80,7 @@ function buildStructure(state, side, type, at, facing) {
   if (whyNotBuild(state, side, type, at)) return null;
   const stats = structureStats(side, type);
   state.res[side].supply -= stats.cost;
+  state.res[side].favor -= stats.favor || 0;   // what is both costs both
   const st = {
     id: eid(), owner: side, type,
     cell: at.cell.slice(),

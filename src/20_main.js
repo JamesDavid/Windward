@@ -64,7 +64,7 @@ function wireGameEvents(state) {
     }
   });
   Events.on('networkRestored', ({ side }) => {
-    if (side === 'A') showBanner('NETWORK RESTORED', 'The wind remembers its road.');
+    if (side === 'A') flashTicker('NETWORK RESTORED');
     refreshInfluenceView(state);
   });
   Events.on('segmentDestroyed', () => refreshInfluenceView(state));
