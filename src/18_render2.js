@@ -115,6 +115,23 @@ function makePayload(side, type, stats) {
       }
       grp.add(whirl);
       grp.userData.whirl = whirl;
+      // the protection ZONE made visible: wind wisps swirling slowly
+      // around the full cover radius (player-directed)
+      const zone = new THREE.Group();
+      const R2 = CONFIG.Structures.SHIELD_COVER_RADIUS;
+      for (let w = 0; w < 10; w++) {
+        const wisp = new THREE.Mesh(
+          new THREE.SphereGeometry(0.05, 5, 4),
+          new THREE.MeshBasicMaterial({ color: 0xeafaf2, transparent: true, opacity: 0.4 }));
+        const a = (w / 10) * Math.PI * 2;
+        const r = R2 * (0.55 + (w % 3) * 0.22);
+        wisp.position.set(Math.cos(a) * r, 0.25 + (w % 4) * 0.12, Math.sin(a) * r);
+        wisp.scale.set(3.2, 0.4, 0.4);
+        wisp.rotation.y = -a - Math.PI / 2;   // stretched along its orbit
+        zone.add(wisp);
+      }
+      grp.add(zone);
+      grp.userData.zone = zone;
       break;
     }
     case 'temple': {
@@ -212,9 +229,13 @@ function syncStructures(state) {
       const firing = state.time - (st.lastFired || -99) < 0.6;
       rec.payload.rotation.y = state.time * (firing ? 7 : 1.1);
     }
-    // the Aegis whirlwind never stops turning
+    // the Aegis whirlwind never stops turning; its zone swirls slower
     if (st.type === 'shield' && rec.payload.userData.whirl) {
       rec.payload.userData.whirl.rotation.y = state.time * 2.4;
+      if (rec.payload.userData.zone) {
+        rec.payload.userData.zone.rotation.y = state.time * 0.55;
+        rec.payload.userData.zone.visible = st.buildProgress >= 1;
+      }
     }
     // mooring yard extras: fluttering pennant + fleet-status dots above
     // the roof — one dot per mooring the fleet cap allows, lit while a
@@ -295,103 +316,237 @@ function syncStructures(state) {
 }
 
 // ---- movers: haulers, priests, wave craft ----
+// ---- ship model builders: every class its own silhouette ----
+const ShipMats = {};
+function shipMat(key, color, basic) {
+  if (!ShipMats[key]) {
+    ShipMats[key] = basic ? new THREE.MeshBasicMaterial({ color })
+      : new THREE.MeshLambertMaterial({ color });
+  }
+  return ShipMats[key];
+}
+
+// hot-air hauler: a FREE BALLOON — gored teardrop envelope, crown ring,
+// wicker basket slung on cables, burner that flares as air is heated
+function buildHotAir(grp) {
+  const env = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 12), shipMat('ivory', Palette.ivory));
+  env.scale.set(1, 1.2, 1);
+  env.position.y = 0.42;
+  // gores: alternating panels read as a real balloon at any distance
+  for (let i = 0; i < 3; i++) {
+    const gore = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.012, 5, 20), shipMat('gold', Palette.gold));
+    gore.position.y = 0.42;
+    gore.scale.y = 1.2;
+    gore.rotation.y = (i / 3) * Math.PI;
+    grp.add(gore);
+  }
+  const crown = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.014, 5, 10), shipMat('bronze', Palette.bronze));
+  crown.rotation.x = Math.PI / 2;
+  crown.position.y = 0.65;
+  const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.09, 10, 1, true), shipMat('gold', Palette.gold));
+  skirt.rotation.x = Math.PI;
+  skirt.position.y = 0.22;
+  const basket = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.08, 0.11), shipMat('wicker', 0x8a6a3d));
+  basket.position.y = 0.05;
+  const rim = new THREE.Mesh(new THREE.BoxGeometry(0.125, 0.02, 0.125), shipMat('bronze', Palette.bronze));
+  rim.position.y = 0.095;
+  for (const [cx, cz] of [[-0.05, -0.05], [0.05, -0.05], [-0.05, 0.05], [0.05, 0.05]]) {
+    const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.14, 3), shipMat('rope', 0x6b5a3a, true));
+    cable.position.set(cx, 0.16, cz);
+    cable.rotation.z = cx > 0 ? -0.12 : 0.12;
+    grp.add(cable);
+  }
+  const burner = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.12, 6),
+    new THREE.MeshBasicMaterial({ color: 0xffa63f, transparent: true, opacity: 0.15 }));
+  burner.position.y = 0.16;
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.1, 0.13), shipMat('gold', Palette.gold));
+  crate.position.y = -0.08;
+  crate.visible = false;
+  grp.add(env, crown, skirt, basket, rim, burner, crate);
+  grp.userData.crate = crate;
+  grp.userData.burner = burner;
+  grp.userData.env = env;
+  return grp;
+}
+
+// hydrogen hauler: a SANTOS-DUMONT DIRIGIBLE — long cigar envelope with
+// nose and tail cones, cruciform tail fins, an open keel gondola slung
+// on struts, and a spinning pusher propeller at the stern
+function buildZeppelin(grp) {
+  const env = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.115, 0.34, 12), shipMat('ivory', Palette.ivory));
+  env.rotation.z = Math.PI / 2;
+  env.position.y = 0.34;
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.115, 10, 8), shipMat('ivory', Palette.ivory));
+  nose.scale.set(1.5, 1, 1);
+  nose.position.set(0.17, 0.34, 0);
+  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.115, 10, 8), shipMat('ivory', Palette.ivory));
+  tail.scale.set(2.1, 1, 1);
+  tail.position.set(-0.17, 0.34, 0);
+  const noseCap = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 5), shipMat('bronze', Palette.bronze));
+  noseCap.position.set(0.34, 0.34, 0);
+  // gold girdle bands
+  for (const bx of [-0.08, 0.08]) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.011, 5, 14), shipMat('gold', Palette.gold));
+    band.rotation.y = Math.PI / 2;
+    band.position.set(bx, 0.34, 0);
+    grp.add(band);
+  }
+  // cruciform tail fins
+  const finV = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.13, 0.014), shipMat('gold', Palette.gold));
+  finV.position.set(-0.3, 0.36, 0);
+  const finH = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.014, 0.24), shipMat('gold', Palette.gold));
+  finH.position.set(-0.3, 0.34, 0);
+  // open keel gondola on struts
+  const keel = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.035, 0.055), shipMat('wicker', 0x8a6a3d));
+  keel.position.y = 0.15;
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.012, 0.07), shipMat('bronze', Palette.bronze));
+  rail.position.y = 0.175;
+  for (const sx of [-0.09, 0.09]) {
+    const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.13, 3), shipMat('rope', 0x6b5a3a, true));
+    strut.position.set(sx, 0.245, 0);
+    grp.add(strut);
+  }
+  // pusher propeller
+  const prop = new THREE.Group();
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(0.02, 5, 4), shipMat('bronze', Palette.bronze));
+  for (const a of [0, Math.PI / 2]) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.11, 0.02), shipMat('wicker', 0x8a6a3d));
+    blade.rotation.x = a;
+    prop.add(blade);
+  }
+  prop.add(hub);
+  prop.position.set(-0.42, 0.34, 0);   // blades sweep the YZ plane; spun about X
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.11, 0.14), shipMat('gold', Palette.gold));
+  crate.position.y = -0.02;
+  crate.visible = false;
+  grp.add(env, nose, tail, noseCap, finV, finH, keel, rail, prop, crate);
+  grp.userData.crate = crate;
+  grp.userData.env = env;
+  grp.userData.prop = prop;
+  return grp;
+}
+
+// the priest: a gilded processional balloon with a shrine gondola
+function buildPriestShip(grp) {
+  const env = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 12), shipMat('gold', Palette.gold));
+  env.scale.set(1, 1.15, 1);
+  env.position.y = 0.46;
+  for (let i = 0; i < 2; i++) {
+    const gore = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.013, 5, 20), shipMat('ivory', Palette.ivory));
+    gore.position.y = 0.46;
+    gore.scale.y = 1.15;
+    gore.rotation.y = (i / 2) * Math.PI;
+    grp.add(gore);
+  }
+  const crown = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.08, 8), shipMat('ivory', Palette.ivory));
+  crown.position.y = 0.75;
+  // a tiny flying shrine: white floor, four columns, gold roof
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.16), shipMat('marble', 0xf3ecd9));
+  floor.position.y = 0.06;
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.06, 4), shipMat('gold', Palette.gold));
+  roof.position.y = 0.17;
+  roof.rotation.y = Math.PI / 4;
+  for (const [cx, cz] of [[-0.06, -0.06], [0.06, -0.06], [-0.06, 0.06], [0.06, 0.06]]) {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.09, 5), shipMat('marble', 0xf3ecd9));
+    col.position.set(cx, 0.11, cz);
+    grp.add(col);
+  }
+  const banner = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.09),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+  banner.position.set(-0.32, 0.5, 0);
+  grp.add(env, crown, floor, roof, banner);
+  grp.userData.env = env;
+  return grp;
+}
+
+// Poseidon's hulls: proper triremes — tapered bow with a bronze ram at
+// the waterline, curled sternpost, oar banks, shields on the gunwale
+function buildTrireme(grp, m) {
+  const big = m.kind === 'heavy';
+  const L = big ? 0.62 : 0.44, W = big ? 0.24 : 0.17;
+  const hullCol = m.kind === 'transport' ? 0x3a5b52 : m.kind === 'hauler' ? 0x33565e : 0x22454e;
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(L, 0.08, W), new THREE.MeshLambertMaterial({ color: hullCol }));
+  hull.position.y = 0.055;
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(L * 0.92, 0.015, W * 0.7), shipMat('deck', 0x5d7a70));
+  deck.position.y = 0.1;
+  // tapered bow + bronze ram low at the waterline
+  const bow = new THREE.Mesh(new THREE.ConeGeometry(W * 0.5, 0.16, 4), new THREE.MeshLambertMaterial({ color: hullCol }));
+  bow.rotation.z = -Math.PI / 2;
+  bow.rotation.x = Math.PI / 4;
+  bow.scale.y = 0.55;
+  bow.position.set(L / 2 + 0.07, 0.055, 0);
+  const ram = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 5), shipMat('bronze', Palette.bronze));
+  ram.rotation.z = -Math.PI / 2;
+  ram.position.set(L / 2 + 0.12, 0.025, 0);
+  // curled sternpost
+  const stern = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.035, 0.16, 6), new THREE.MeshLambertMaterial({ color: hullCol }));
+  stern.rotation.z = -0.55;
+  stern.position.set(-L / 2 + 0.02, 0.14, 0);
+  grp.add(hull, deck, bow, ram, stern);
+  // oar banks
+  const nOars = big ? 4 : 3;
+  for (let i = 0; i < nOars; i++) {
+    const ox = -L / 2 + 0.12 + i * (L - 0.2) / nOars;
+    for (const s of [-1, 1]) {
+      const oar = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.16, 3), shipMat('rope', 0x6b5a3a, true));
+      oar.position.set(ox, 0.045, s * (W / 2 + 0.05));
+      oar.rotation.x = s * 1.05;
+      grp.add(oar);
+    }
+  }
+  if (m.kind === 'heavy') {
+    // armored: plates along the sides and a second ram above the first
+    for (const s of [-1, 1]) {
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(L * 0.7, 0.06, 0.014), shipMat('bronze', Palette.bronze));
+      plate.position.set(0, 0.085, s * (W / 2 + 0.005));
+      grp.add(plate);
+    }
+    const ram2 = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.1, 5), shipMat('bronze', Palette.bronze));
+    ram2.rotation.z = -Math.PI / 2;
+    ram2.position.set(L / 2 + 0.1, 0.07, 0);
+    grp.add(ram2);
+  } else if (m.kind === 'transport') {
+    // shields along the gunwale and boarding parties' cargo on deck
+    for (let i = 0; i < 3; i++) {
+      for (const s of [-1, 1]) {
+        const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.012, 8), shipMat('shield', 0x7fd4dd));
+        sh.rotation.x = Math.PI / 2 + s * 0.2;
+        sh.position.set(-0.12 + i * 0.12, 0.1, s * (W / 2));
+        grp.add(sh);
+      }
+    }
+  } else if (m.kind === 'siphon') {
+    // the pump works: a bronze housing feeding the glowing siphon pipe
+    const pump = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.11), shipMat('bronze', Palette.bronze));
+    pump.position.y = 0.13;
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.32, 6), shipMat('glow', Palette.poseidonGlow));
+    pipe.position.y = 0.3;
+    pipe.rotation.z = 0.12;
+    const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.06, 6), shipMat('glow', Palette.poseidonGlow));
+    nozzle.position.set(0.02, 0.47, 0);
+    grp.add(pump, pipe, nozzle);
+  } else if (m.kind === 'hauler') {
+    // amphorae mounded on deck
+    for (let i = 0; i < 3; i++) {
+      const amp = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 5), shipMat('clay', 0x9a6a45));
+      amp.scale.y = 1.3;
+      amp.position.set(-0.1 + i * 0.1, 0.13, (i % 2 ? 0.03 : -0.03));
+      grp.add(amp);
+    }
+  }
+  return grp;
+}
+
 function makeMoverMesh(m, hydrogen) {
   const grp = new THREE.Group();
   if (m.owner === 'A') {
-    const isPriest = m.kind === 'priest';
-    if (!isPriest && !hydrogen) {
-      // hot-air hauler: a FREE BALLOON — round envelope, wicker basket
-      // slung on cables, and a burner that flares as the air is heated
-      const env = new THREE.Mesh(
-        new THREE.SphereGeometry(0.19, 12, 10),
-        new THREE.MeshLambertMaterial({ color: Palette.ivory }));
-      env.scale.set(1, 1.18, 1);
-      env.position.y = 0.4;
-      const throat = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.07, 0.05, 0.08, 8),
-        new THREE.MeshLambertMaterial({ color: Palette.gold }));
-      throat.position.y = 0.2;
-      const basket = new THREE.Mesh(
-        new THREE.BoxGeometry(0.11, 0.08, 0.11),
-        new THREE.MeshLambertMaterial({ color: Palette.bronze }));
-      basket.position.y = 0.04;
-      for (const [cx, cz] of [[-0.045, -0.045], [0.045, -0.045], [-0.045, 0.045], [0.045, 0.045]]) {
-        const cable = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.006, 0.006, 0.13, 3),
-          new THREE.MeshBasicMaterial({ color: 0x6b5a3a }));
-        cable.position.set(cx, 0.13, cz);
-        grp.add(cable);
-      }
-      const burner = new THREE.Mesh(
-        new THREE.ConeGeometry(0.045, 0.12, 6),
-        new THREE.MeshBasicMaterial({ color: 0xffa63f, transparent: true, opacity: 0.15 }));
-      burner.position.y = 0.14;
-      const crate = new THREE.Mesh(
-        new THREE.BoxGeometry(0.13, 0.1, 0.13),
-        new THREE.MeshLambertMaterial({ color: Palette.gold }));
-      crate.position.y = -0.09;
-      crate.visible = false;
-      grp.add(env, throat, basket, burner, crate);
-      grp.userData.crate = crate;
-      grp.userData.burner = burner;
-      grp.userData.env = env;
-      return grp;
-    }
-    const env = new THREE.Mesh(
-      new THREE.SphereGeometry(isPriest ? 0.24 : 0.18, 10, 8),
-      new THREE.MeshLambertMaterial({ color: isPriest ? Palette.gold : Palette.ivory }));
-    env.scale.set(1.5, 0.9, 0.9);
-    env.position.y = 0.22;
-    const gond = new THREE.Mesh(
-      new THREE.BoxGeometry(isPriest ? 0.3 : 0.24, 0.07, 0.1),
-      new THREE.MeshLambertMaterial({ color: Palette.bronze }));
-    gond.position.y = 0.02;
-    grp.add(env, gond);
-    if (!isPriest) {
-      // hydrogen zeppelin: equator band + slung ore crate while carrying
-      const band = new THREE.Mesh(
-        new THREE.TorusGeometry(0.185, 0.02, 6, 14),
-        new THREE.MeshLambertMaterial({ color: Palette.bronze }));
-      band.rotation.x = Math.PI / 2;
-      band.position.y = 0.22;
-      band.scale.set(1.5, 0.9, 1);
-      const crate = new THREE.Mesh(
-        new THREE.BoxGeometry(0.13, 0.1, 0.13),
-        new THREE.MeshLambertMaterial({ color: Palette.gold }));
-      crate.position.y = -0.09;
-      crate.visible = false;
-      grp.add(band, crate);
-      grp.userData.crate = crate;
-    }
-    if (isPriest) {
-      const banner = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.3, 0.1),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
-      banner.position.set(-0.3, 0.28, 0);
-      grp.add(banner);
-    }
-    grp.userData.env = env;
-  } else {
-    // sea craft: trireme silhouettes
-    const big = m.kind === 'heavy';
-    const hull = new THREE.Mesh(
-      new THREE.BoxGeometry(big ? 0.6 : 0.42, 0.09, big ? 0.26 : 0.18),
-      new THREE.MeshLambertMaterial({ color: m.kind === 'transport' ? 0x3a5b52 : 0x22454e }));
-    hull.position.y = 0.06;
-    const prow = new THREE.Mesh(
-      new THREE.ConeGeometry(0.07, 0.2, 5),
-      new THREE.MeshLambertMaterial({ color: Palette.bronze }));
-    prow.rotation.z = -Math.PI / 2;
-    prow.position.set(big ? 0.36 : 0.27, 0.08, 0);
-    grp.add(hull, prow);
-    if (m.kind === 'siphon' || m.kind === 'priest') {
-      const pipe = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.035, 0.05, 0.34, 6),
-        new THREE.MeshLambertMaterial({ color: Palette.poseidonGlow }));
-      pipe.position.y = 0.26;
-      grp.add(pipe);
-    }
-  }
+    if (m.kind === 'priest') buildPriestShip(grp);
+    else if (hydrogen) buildZeppelin(grp);
+    else buildHotAir(grp);
+  } else buildTrireme(grp, m);
+  // per-ship effects (venting flicker, burner glow) mutate materials, so
+  // every ship gets its own copies of the shared templates
+  grp.traverse(o => { if (o.material) o.material = o.material.clone(); });
   return grp;
 }
 
@@ -470,10 +625,12 @@ function syncMovers(state) {
       rec.grp.userData.burner.scale.setScalar(0.8 + 0.5 * f);
       rec.grp.userData.env.material.emissive.setRGB(0.55 * f, 0.3 * f, 0.08 * f);
     }
+    // the dirigible's pusher prop never stops turning
+    if (rec.grp.userData.prop) rec.grp.userData.prop.rotation.x = state.time * 16 + m.id;
     // hydrogen fleets fly visibly larger envelopes (§33E)
     if (m.kind === 'hauler' && m.owner === 'A') {
-      const scale = state.hydrogen.A ? 1.3 : 1.0;
-      rec.grp.scale.setScalar(scale);
+      // the dirigible mesh is inherently larger; no extra scaling
+      rec.grp.scale.setScalar(1.0);
       // venting tell below threshold (§33C.5)
       if (rec.grp.userData !== undefined && m.hull < CONFIG.Airship.VENT_THRESHOLD) {
         rec.grp.children.forEach(ch => { if (ch.material && ch.material.color) ch.material.opacity = 0.6 + 0.3 * Math.sin(state.time * 10); });
@@ -591,8 +748,18 @@ function syncIslandBars(state) {
       rec = { mine, pit, heap, bar, baseReserve: isl.reserve };
       R.islandBars.set(isl.id, rec);
     }
-    rec.mine.visible = isl.reserve > 0 || isl.stockpile > 0.5;
-    if (isl.minedOut && rec.pit) rec.pit.material.color.setHex(0x4a4237);
+    // a depleted quarry vanishes (blasted level) and a bronze build pad
+    // takes its place — the heap stays until the stockpile is hauled off
+    rec.mine.visible = !isl.minedOut;
+    if (isl.minedOut && !rec.pad) {
+      const [hx, hz] = isl.cells[0];
+      const pad = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.17, 0.19, 0.05, 10),
+        new THREE.MeshLambertMaterial({ color: Palette.bronze }));
+      pad.position.set(worldX(hx), CONFIG.Render.ISLAND_HEIGHT + 0.02, worldZ(hz));
+      R.scene.add(pad);
+      rec.pad = pad;
+    }
     // gems twinkle while ore remains; a worked-out pit goes dark
     if (rec.mine.userData.gems) {
       rec.mine.userData.gems.forEach((gem, g) => {
@@ -646,6 +813,18 @@ function initFxEvents(state) {
     fxSpawn(state, cause === 'collapse' ? 'unravel' : 'boom', segMid(seg), { air: seg.owner === 'A' });
   });
   Events.on('convoyLost', ({ ent }) => fxSpawn(state, 'wreck', ent.pos));
+  // the emptied quarry is blasted level: one good explosion, then a pad
+  Events.on('islandDepleted', ({ island }) => {
+    const c = island.cells[0];
+    fxSpawn(state, 'boom', c);
+    const rng = mulberry32(island.id + 77);
+    for (let i = 0; i < 4; i++) {
+      const a = rng() * Math.PI * 2;
+      fxSpawn(state, 'ember', c, {
+        vx: Math.cos(a) * (0.8 + rng()), vy: 1.5 + rng() * 1.5, vz: Math.sin(a) * (0.8 + rng())
+      });
+    }
+  });
   Events.on('tidalSurge', ({ center }) => fxSpawn(state, 'surge', center));
   Events.on('fogBank', ({ center }) => fxSpawn(state, 'fogbank', center));
   Events.on('windwall', ({ cell }) => fxSpawn(state, 'windwall', cell));

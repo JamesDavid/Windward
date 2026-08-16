@@ -615,8 +615,14 @@ function renderTick(state, dt) {
   if (R.waterShader) {
     const [cgx, cgz] = gridFromWorld(R.camTarget ? R.camTarget.x : 0, R.camTarget ? R.camTarget.z : 0);
     const w = state.wind.at(clamp(cgx, 0, CONFIG.Grid.WIDTH - 1), clamp(cgz, 0, CONFIG.Grid.HEIGHT - 1));
-    const speed = (0.35 + Math.hypot(w.x, w.z) * 0.5) * (R.seaSurge || 1);
-    R.seaMesh.material.uniforms.time.value += dt * speed;
+    // panning sweeps the reflections across the screen already — if the
+    // waves churn at full speed at the same time the sea reads as racing.
+    // Calm the water while the eye is moving, ease back when it rests.
+    const panning = R.userMovingCam && performance.now() - R.userMovingCam < 180;
+    const target = (0.35 + Math.hypot(w.x, w.z) * 0.5) * (R.seaSurge || 1) * (panning ? 0.12 : 1);
+    R.waterSpeedSm = (R.waterSpeedSm === undefined ? target : R.waterSpeedSm) +
+      (target - R.waterSpeedSm) * Math.min(1, dt * 4);
+    R.seaMesh.material.uniforms.time.value += dt * R.waterSpeedSm;
     // steer the flow with the wind under the camera, smoothed so panning
     // across sheared wind never snaps the whole sea
     const fd = R.seaMesh.material.uniforms.flowDir;

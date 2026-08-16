@@ -146,6 +146,7 @@ function initUI(state) {
     if (!now) return;
     R.camTarget.x = R.camTarget.x + (pan.ground.x - now.x);
     R.camTarget.z = R.camTarget.z + (pan.ground.z - now.z);
+    R.userMovingCam = performance.now();   // the water calms while the eye moves
     updateCamera();
     pan.ground = pickGround(e.clientX, e.clientY);
   });

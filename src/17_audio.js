@@ -186,6 +186,7 @@ function wireAudio() {
   Events.on('islandClaimed', () => audioPlay('capture'));
   Events.on('consecrationStarted', () => audioPlay('chant'));
   Events.on('tidalSurge', () => { noiseBurst(1.2, 0.5, 250); });
+  Events.on('islandDepleted', () => audioPlay('boom'));
   // the Great Temple under fire sounds like BOMBARDMENT, not a slot
   // machine: the hit event streams at damage-tick rate, so one heavy
   // boom lands at most every 1.2s (visual vignette carries the rest)

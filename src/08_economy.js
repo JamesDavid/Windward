@@ -53,6 +53,12 @@ function economyTick(state, dt) {
     if (isl.reserve <= 0) {
       isl.reserve = 0;
       isl.minedOut = true;
+      // the worked-out quarry is blasted level and becomes an ordinary
+      // building plot (player-directed) — depletion opens ground
+      const [qx, qz] = isl.cells[0];
+      if (!isl.plots.some(p => p.x === qx && p.z === qz)) {
+        isl.plots.push({ x: qx, z: qz, structure: null });
+      }
       Events.emit('islandDepleted', { island: isl });
     }
   }
