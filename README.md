@@ -1,4 +1,4 @@
-# WINDWARD — The Winds Inherit the Waves
+# WINDWARD — The Age of Air
 
 A portrait mobile web prototype for the Meta Horizon Creator Competition (Tower Defense & Strategy).
 
