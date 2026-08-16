@@ -56,7 +56,7 @@ const CONFIG = Object.freeze({
 
   Economy: {
     START_SUPPLY: 100, START_FAVOR: 100,
-    TEMPLE_SUPPLY_PER_10S: 3, TEMPLE_FAVOR_PER_10S: 1,
+    TEMPLE_SUPPLY_PER_10S: 3, TEMPLE_FAVOR_PER_10S: 6,   // sweep-derived floor: rebuild insurance when territory is lost
     INCOME_TICK_SECONDS: 10.0,
     REROLL_FAVOR: 1
   },
@@ -142,7 +142,7 @@ const CONFIG = Object.freeze({
     GREAT_TEMPLE_RADIUS: 8,
     TEMPLE_RADIUS: 5,
     FAVOR_PER_10S_PER_4_CELLS: 1,
-    FAVOR_CELL_DIVISOR: 4,
+    FAVOR_CELL_DIVISOR: 16,   // sweep-derived: territory favor is lean, so every cast competes with roads
     GATES_CONSTRUCTION: true,
     OVERLAP_BUILDABLE_BY_BOTH: true,
     OVERLAP_YIELDS_FAVOR: false
