@@ -68,5 +68,11 @@ Nine authored waves, each telegraphed eight seconds out with Poseidon's own word
 
 ### 7. Reading the fight *(done)*
 
-Combat is drawn: gold ballast tracers falling from your guns, teal jets rising from his, impact sparks, explosion rings, wreck markers. Great Temples carry floating health bars (his obeys fog memory), and the screen edge glows red while your temple is under fire. Island bases tint with allegiance — gold yours, teal his, pale stone neutral.
+Combat is drawn: gold ballast tracers falling from your guns, teal jets rising from his, impact sparks, explosion rings, wreck markers. Great Temples carry floating health bars (his obeys fog memory), and the screen edge glows red while your temple is under fire. Island bases tint with allegiance — gold yours, teal his, pale stone neutral. Tapping anything names it, with hit points, ore remaining, and allegiance.
+
+### 8. Reach is everything *(done — player-directed rules)*
+
+Three rules landed from live playtesting. **Roads are reach**: route pieces and the towers on their endpoints aren't influence-gated — drive a corridor into Poseidon's waters to lift the fog and put guns on his infrastructure. **Paths are invulnerable along their length**: only raw open ends and structures can be attacked, so towers are the joints of the network and losing one blows the road open. **His craft need his lanes**: Poseidon's ships operate only in waters his network reaches — he must build toward you to strike you, and cutting his lanes physically pushes his reach back. Ore islands carry visible quarries with headframes; loaded haulers sling a gold ore crate; the sea is bump-lit and swells with the wind.
+
+<img src="screenshots/logistics_view.png" width="300"> <img src="screenshots/watery.png" width="300">
 
