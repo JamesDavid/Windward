@@ -119,7 +119,7 @@ function spawnCraft(state, kind, origin, script) {
   const def = kind === 'transport' ? CONFIG.Craft.TRANSPORT : kind === 'siphon' ? CONFIG.Craft.SIPHON : CONFIG.Craft.HEAVY;
   const c = {
     id: eid(), kind, owner: 'P',
-    pos: nearestWater(state, origin.cell).map(v => v + 0),
+    pos: origin.cell.slice(),      // spawns on his network (lane-bound)
     hull: def.HP, maxHull: def.HP,
     dps: def.DPS, range: Math.max(def.RANGE, 1.1), speed: def.SPEED,
     path: null, legIndex: 0, legT: 0,
@@ -261,8 +261,25 @@ function craftPickTarget(state, c) {
   return best;
 }
 
+// His craft are lane-bound (player-directed rule): they travel his network
+// exactly as his haulers do, halt on the lane within weapon range, and fire
+// from there. Cut the lane beneath one and it goes adrift like anything else.
+function shelveTarget(state, c) {
+  if (!c.avoidTargets) c.avoidTargets = new Map();
+  if (c.target) c.avoidTargets.set(targetKey(c.target), state.time + 12);
+  c.target = null;
+  c.path = null;
+  c.retargetAt = state.time + 1.5;
+}
+
 function updateCraft(state, c, dt) {
   if (c.dead) return;
+  if (c.state === 'adrift') {
+    const r = adriftTick(state, c, dt);
+    if (r === 'lost') { c.dead = true; Events.emit('craftDestroyed', { craft: c }); }
+    else if (r === 'rebound') { c.state = 'hunt'; c.path = null; }
+    return;
+  }
   if (!c.target || state.time >= c.retargetAt ||
       (c.target.kind === 'structure' && c.target.ref.hp <= 0) ||
       (c.target.kind === 'segment' && !state.segments.has('A:' + c.target.ref.key))) {
@@ -273,7 +290,7 @@ function updateCraft(state, c, dt) {
   if (!c.target) return;
   const d = dist2d(c.target.pos[0], c.target.pos[1], c.pos[0], c.pos[1]);
   if (d <= c.range) {
-    // fire (vision is implicit: it is adjacent)
+    // a stationary attacker while engaged, moored on his own lane
     applyDamage(state, c.target, c.dps * dt, c.pos);
     if (!c.nextFxAt || state.time >= c.nextFxAt) {
       c.nextFxAt = state.time + 0.35;
@@ -282,28 +299,25 @@ function updateCraft(state, c, dt) {
     return;
   }
   if (!c.path) {
-    c.path = waterPath(state, c.pos, c.target.pos, 'P');
-    c.legIndex = 0; c.legT = 0;
-    if (!c.path || c.path.length < 2) {
-      // target beyond his network's reach: he masses at the edge of his
-      // waters until his lanes are built further
-      if (!c.avoidTargets) c.avoidTargets = new Map();
-      c.avoidTargets.set(targetKey(c.target), state.time + 12);
-      c.path = null;
-      c.target = null;
-      c.retargetAt = state.time + 1.5;
-      return;
+    // find the network cell nearest the target that his lanes reach and
+    // that lies inside this craft's weapon range of it
+    const adj = buildNetGraph(state, 'P');
+    let bestCell = null, bd = Infinity;
+    for (const k of adj.keys()) {
+      const [x, z] = keyCell(k);
+      const dd = dist2d(x, z, c.target.pos[0], c.target.pos[1]);
+      if (dd <= c.range - 0.05 && dd < bd) { bd = dd; bestCell = [x, z]; }
     }
+    if (!bestCell) { shelveTarget(state, c); return; }
+    const path = findNetPath(state, 'P', [Math.round(c.pos[0]), Math.round(c.pos[1])], [bestCell]);
+    if (!path || path.length < 1) { shelveTarget(state, c); return; }
+    c.path = path;
+    c.legIndex = 0;
+    c.legT = 0;
   }
-  // advance along water path with slight sea wind effect
-  const a = c.path[c.legIndex], b = c.path[Math.min(c.legIndex + 1, c.path.length - 1)];
-  const dx = b[0] - a[0], dz = b[1] - a[1];
-  const len = Math.hypot(dx, dz) || 1;
-  const mult = state.wind.multiplier(c.pos[0], c.pos[1], dx / len, dz / len, false);
-  c.legT += c.speed * mult * dt;
-  while (c.legT >= 1 && c.legIndex < c.path.length - 2) { c.legT -= 1; c.legIndex++; }
-  const na = c.path[c.legIndex], nb = c.path[Math.min(c.legIndex + 1, c.path.length - 1)];
-  c.pos = [lerp(na[0], nb[0], Math.min(c.legT, 1)), lerp(na[1], nb[1], Math.min(c.legT, 1))];
+  const r = advanceOnPath(state, c, dt);
+  if (r === 'adrift') { enterAdrift(state, c); c.state = 'adrift'; }
+  else if (r === 'arrived') c.path = null;
 }
 
 // ---- the schedule ----

@@ -115,6 +115,17 @@ function audioPlay(name) {
       tone(523, 0.16, 'triangle', 0.18, 0.12);
       tone(659, 0.3, 'triangle', 0.18, 0.24);
       break;
+    case 'shotA':       // ballast jar away: deep plop + whistle down
+      tone(220, 0.08, 'triangle', 0.07, 0, 90);
+      noiseBurst(0.05, 0.06, 1200);
+      break;
+    case 'shotP':       // siphon jet: watery hiss upward
+      noiseBurst(0.12, 0.08, 2400);
+      tone(140, 0.1, 'sine', 0.05, 0, 260);
+      break;
+    case 'impact':
+      noiseBurst(0.06, 0.1, 800);
+      break;
     case 'telegraph':   // rising water horn
       tone(98, 1.1, 'sawtooth', 0.14, 0, 147);
       noiseBurst(0.9, 0.12, 300, 0.1);
@@ -133,6 +144,17 @@ function audioPlay(name) {
 }
 
 function wireAudio() {
+  // combat noise, throttled so massed fire hisses rather than roars
+  let lastShot = 0;
+  const shot = (name) => {
+    if (!Audio2.ready || !Audio2.ctx) return;
+    const now = Audio2.ctx.currentTime;
+    if (now - lastShot < 0.09) return;
+    lastShot = now;
+    audioPlay(name);
+  };
+  Events.on('gunFired', ({ side }) => shot(side === 'A' ? 'shotA' : 'shotP'));
+  Events.on('craftFired', () => shot('shotP'));
   Events.on('piecePlaced', ({ side }) => { if (side === 'A') { audioPlay('thunk'); audioPlay('activate'); } });
   Events.on('structureBuilt', ({ st }) => { if (st.owner === 'A') audioPlay('thunk'); });
   Events.on('networkSevered', ({ side }) => { if (side === 'A') { audioPlay('sever'); audioPlay('warn'); } });

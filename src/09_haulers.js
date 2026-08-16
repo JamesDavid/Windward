@@ -64,7 +64,7 @@ function legSpeed(state, ent, a, b) {
   const dx = b[0] - a[0], dz = b[1] - a[1];
   const len = Math.hypot(dx, dz) || 1;
   let mult = state.wind.multiplier((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, dx / len, dz / len, isAir);
-  const base = ent.kind === 'priest' ? CONFIG.Priest.SPEED : CONFIG.Hauler.SPEED;
+  const base = ent.kind === 'priest' ? CONFIG.Priest.SPEED : (ent.speed || CONFIG.Hauler.SPEED);
   if (ent.owner === 'A' && state.time < state.powers.tailwindUntil) mult *= CONFIG.Powers.TAILWIND.SPEED_MULT;
   return base * mult;
 }

@@ -8,15 +8,39 @@
 R.fx = [];
 R.islandBars = new Map();
 
-function makeChassis(side, onLand) {
+// Every structure type gets its own silhouette and envelope colour, so
+// nothing on the board is "another white balloon":
+//   Chain Vane   — rust-red drum envelope, spinning vane arms
+//   Bolt Battery — long navy zeppelin, gold barrel
+//   Aegis Screen — no balloon at all: a bronze pylon bearing the arc
+//   Siphon Mast  — his: barge with a tall teal pipe
+const CHASSIS_STYLE = {
+  vane: { color: 0xb4573f, sx: 1.0, sy: 1.05, r: 0.24 },
+  bolt: { color: 0x39506e, sx: 1.9, sy: 0.8, r: 0.24 },
+  default: { color: 0xd2bd91, sx: 1.25, sy: 1.0, r: 0.26 }
+};
+
+function makeChassis(side, onLand, type) {
   const grp = new THREE.Group();
   if (side === 'A') {
-    // tethered balloon: khaki envelope (haulers fly bright ivory — the
-    // static tethered chassis reads differently at a glance)
+    if (type === 'shield') {
+      // a grounded bronze pylon — the shield does not fly
+      const pylon = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.12, 0.9, 7),
+        new THREE.MeshLambertMaterial({ color: Palette.bronze }));
+      pylon.position.y = 0.45;
+      const crown = new THREE.Mesh(
+        new THREE.SphereGeometry(0.09, 7, 6),
+        new THREE.MeshLambertMaterial({ color: Palette.gold }));
+      crown.position.y = 0.95;
+      grp.add(pylon, crown);
+      return grp;
+    }
+    const style = CHASSIS_STYLE[type] || CHASSIS_STYLE.default;
     const env = new THREE.Mesh(
-      new THREE.SphereGeometry(0.26, 10, 8),
-      new THREE.MeshLambertMaterial({ color: 0xd2bd91 }));
-    env.scale.set(1.25, 1, 1);
+      new THREE.SphereGeometry(style.r, 10, 8),
+      new THREE.MeshLambertMaterial({ color: style.color }));
+    env.scale.set(style.sx, style.sy, 1);
     env.position.y = 0.95;
     const gond = new THREE.Mesh(
       new THREE.BoxGeometry(0.22, 0.09, 0.12),
@@ -127,7 +151,7 @@ function syncStructures(state) {
     if (!rec) {
       const onLand = st.site === 'plot' || state.map.land.has(cellKey(st.cell[0], st.cell[1]));
       const grp = new THREE.Group();
-      const chassis = st.type === 'temple' || st.type === 'yard' ? new THREE.Group() : makeChassis(st.owner, onLand);
+      const chassis = st.type === 'temple' || st.type === 'yard' ? new THREE.Group() : makeChassis(st.owner, onLand, st.type);
       const payload = makePayload(st.owner, st.type, st);
       grp.add(chassis, payload);
       const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (st.owner === 'A' ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
@@ -154,6 +178,42 @@ function syncStructures(state) {
       }
     });
     if (rec.payload.userData.rotates) rec.payload.rotation.y = -st.facing;
+    // vane arms spin — lazily when idle, furiously while firing
+    if (st.type === 'vane') {
+      const firing = state.time - (st.lastFired || -99) < 0.6;
+      rec.payload.rotation.y = state.time * (firing ? 7 : 1.1);
+    }
+    // burning: a wounded structure smokes and burns until it dies
+    const hurt = st.buildProgress >= 1 && st.hp < st.maxHp * 0.45;
+    if (hurt && !rec.flames) {
+      const flames = new THREE.Group();
+      for (let i = 0; i < 2; i++) {
+        const f = new THREE.Mesh(
+          new THREE.ConeGeometry(0.07, 0.2, 5),
+          new THREE.MeshBasicMaterial({ color: i ? 0xff7a2f : 0xffc16e, transparent: true, opacity: 0.9 }));
+        f.position.set((i - 0.5) * 0.16, 0.45 + i * 0.12, 0);
+        flames.add(f);
+      }
+      const smoke = new THREE.Mesh(
+        new THREE.SphereGeometry(0.09, 6, 5),
+        new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.5 }));
+      smoke.position.y = 0.85;
+      flames.add(smoke);
+      flames.userData.smoke = smoke;
+      rec.grp.add(flames);
+      rec.flames = flames;
+    }
+    if (rec.flames) {
+      rec.flames.visible = hurt;
+      if (hurt) {
+        rec.flames.children.forEach((f, i) => {
+          f.scale.setScalar(0.8 + 0.35 * Math.sin(state.time * (9 + i * 3) + st.id));
+        });
+        const smoke = rec.flames.userData.smoke;
+        smoke.position.y = 0.85 + ((state.time * 0.4 + st.id) % 1) * 0.5;
+        smoke.material.opacity = 0.5 * (1 - ((state.time * 0.4 + st.id) % 1));
+      }
+    }
     // building: ring shows progress; bob balloons in the wind
     rec.ring.visible = st.buildProgress < 1;
     if (st.buildProgress < 1) rec.ring.scale.setScalar(0.4 + st.buildProgress * 0.8);
@@ -433,7 +493,17 @@ function initFxEvents(state) {
   };
   Events.on('gunFired', (p) => tracer(p, p.side === 'P'));
   Events.on('craftFired', (p) => tracer(p, true));
-  Events.on('structureDestroyed', ({ st }) => fxSpawn(state, 'boom', st.cell));
+  Events.on('structureDestroyed', ({ st }) => {
+    fxSpawn(state, 'boom', st.cell);
+    // burning debris flung outward
+    const rng = mulberry32(st.id);
+    for (let i = 0; i < 5; i++) {
+      const a = rng() * Math.PI * 2;
+      fxSpawn(state, 'ember', st.cell, {
+        vx: Math.cos(a) * (0.8 + rng()), vy: 1.6 + rng() * 1.4, vz: Math.sin(a) * (0.8 + rng())
+      });
+    }
+  });
   Events.on('segmentDestroyed', ({ seg, cause }) => {
     fxSpawn(state, cause === 'collapse' ? 'unravel' : 'boom', segMid(seg), { air: seg.owner === 'A' });
   });
@@ -484,13 +554,20 @@ function fxTick(state, dt) {
         mesh.quaternion.setFromUnitVectors(
           new THREE.Vector3(0, 1, 0),
           new THREE.Vector3(dx / len, dy / len, dz / len));
-        // impact spark
-        const spark = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5),
-          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }));
+        // impact spark and muzzle flare
+        const spark = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 5),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 }));
         spark.position.set(bx, d.yb, bz);
-        mesh.add(new THREE.Group());   // keep child indices stable
-        R.scene.add(spark);
+        const flare = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 5),
+          new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.95 }));
+        flare.position.set(ax, d.ya, az);
+        R.scene.add(spark, flare);
         f.spark = spark;
+        f.flare = flare;
+      } else if (f.kind === 'ember') {
+        mesh = new THREE.Mesh(new THREE.SphereGeometry(0.05, 5, 4),
+          new THREE.MeshBasicMaterial({ color: 0xff8c3f, transparent: true, opacity: 1 }));
+        mesh.position.set(worldX(f.pos[0]), 0.6, worldZ(f.pos[1]));
       }
       const y = f.kind === 'wreck' || f.kind === 'surge' ? 0.04 : (f.data.air ? CONFIG.Render.AIR_ALTITUDE : 0.3);
       mesh.position.set(worldX(f.pos[0]), y, worldZ(f.pos[1]));
@@ -499,16 +576,30 @@ function fxTick(state, dt) {
     }
     const life = f.kind === 'wreck' ? 20 : f.kind === 'fogbank' ? CONFIG.Powers.FOG_BANK.DURATION
       : f.kind === 'windwall' ? CONFIG.Powers.WIND_WALL.DURATION : f.kind === 'surge' ? 1.4
-      : f.kind === 'tracer' ? 0.2 : 0.8;
+      : f.kind === 'tracer' ? 0.2 : f.kind === 'ember' ? 0.9 : 0.8;
     if (age > life) {
       R.scene.remove(f.mesh);
       if (f.spark) R.scene.remove(f.spark);
+      if (f.flare) R.scene.remove(f.flare);
       f.dead = true;
       continue;
     }
     if (f.kind === 'tracer') {
       f.mesh.material.opacity = 0.85 * (1 - age / life);
       if (f.spark) f.spark.material.opacity = 0.9 * (1 - age / life);
+      if (f.flare) {
+        f.flare.material.opacity = 0.95 * (1 - age / life);
+        f.flare.scale.setScalar(1 + age * 8);
+      }
+      continue;
+    }
+    if (f.kind === 'ember') {
+      const d = f.data;
+      f.mesh.position.x += d.vx * dt;
+      f.mesh.position.z += d.vz * dt;
+      d.vy -= 6 * dt;
+      f.mesh.position.y = Math.max(0.05, f.mesh.position.y + d.vy * dt);
+      f.mesh.material.opacity = 1 - age / life;
       continue;
     }
     if (f.kind === 'boom' || f.kind === 'unravel') {
@@ -530,7 +621,7 @@ function showStructPreview(state, side, type, cell) {
   R.previewGroup.clear();
   const onLand = !!islandAt(state, cell[0], cell[1]);
   const grp = new THREE.Group();
-  const chassis = type === 'temple' || type === 'yard' ? new THREE.Group() : makeChassis(side, onLand);
+  const chassis = type === 'temple' || type === 'yard' ? new THREE.Group() : makeChassis(side, onLand, type);
   const payload = makePayload(side, type, null);
   grp.add(chassis, payload);
   grp.traverse(o => {

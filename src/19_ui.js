@@ -304,9 +304,18 @@ function onTap(state, e) {
 // ---- build menu / island actions ----
 function hideBuildMenu() { UI.els.buildmenu.classList.add('hidden'); }
 
-function menuButton(label, cost, fn, disabledReason) {
+// what each thing IS, right on the button — menus must be self-explanatory
+const MENU_DESC = {
+  vane: 'short range, hits all around', bolt: 'long range, one target',
+  shield: 'absorbs hits for allies behind', temple: 'claims isle, spreads influence',
+  yard: 'lets you build 2 more haulers', priest: 'must stand here to found temples',
+  hauler: 'carries mined ore home'
+};
+
+function menuButton(label, cost, fn, disabledReason, descKey) {
   const btn = document.createElement('button');
-  btn.innerHTML = label + (cost ? '<b>' + cost + ' ⚇</b>' : '');
+  const desc = MENU_DESC[descKey] ? '<span style="font-size:9px; opacity:0.75; line-height:1.1; display:block; max-width:70px">' + MENU_DESC[descKey] + '</span>' : '';
+  btn.innerHTML = label + desc + (cost ? '<b>' + cost + ' ⚇</b>' : '');
   if (disabledReason) {
     // still tappable: a tap explains WHY it is refused (mobile has no tooltips)
     btn.style.opacity = 0.4;
@@ -375,18 +384,17 @@ function openContextMenu(state, cell) {
     const at = { site: 'endpoint', cell };
     for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN']]) {
       const why = whyNotBuild(state, 'A', type, at);
-      options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why));
+      options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why, type));
     }
   } else if (isl && plotIdx >= 0) {
     const at = { site: 'plot', islandId: isl.id, plotIdx, cell };
     if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
-      options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at),
-        whyNotBuild(state, 'A', 'temple', at)));
+      options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple'));
     }
     if (isl.owner === 'A') {
       for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
         const why = whyNotBuild(state, 'A', type, at);
-        options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why));
+        options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why, type));
       }
     }
   } else if (isl) {
@@ -396,13 +404,12 @@ function openContextMenu(state, cell) {
     if (freeIdx >= 0) {
       const at = { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
       if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
-        options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at),
-          whyNotBuild(state, 'A', 'temple', at)));
+        options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple'));
       }
       if (isl.owner === 'A') {
         for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
           const why = whyNotBuild(state, 'A', type, at);
-          options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why));
+          options.push(menuButton(label, structureStats('A', type).cost, tryBuild(type, at), why, type));
         }
       }
     }
@@ -411,7 +418,7 @@ function openContextMenu(state, cell) {
     const reachable = p && findNetPath(state, 'A', [Math.round(p.pos[0]), Math.round(p.pos[1])], isl.cells);
     options.push(menuButton('SEND<br>PRIEST', 0, () => {
       if (!sendPriest(state, 'A', isl)) flashTicker('NO SUPPORTED ROUTE REACHES IT');
-    }, reachable ? null : 'NO SUPPORTED ROUTE REACHES IT'));
+    }, reachable ? null : 'NO SUPPORTED ROUTE REACHES IT', 'priest'));
     const hasYard = isl.role === 'greatTempleA' ||
       state.structures.some(st => st.owner === 'A' && st.type === 'yard' && st.islandId === isl.id && st.hp > 0 && st.buildProgress >= 1);
     if (hasYard) {
@@ -419,7 +426,7 @@ function openContextMenu(state, cell) {
       const capped = fleet >= fleetCap(state, 'A');
       options.push(menuButton('BUILD<br>HAULER', CONFIG.Hauler.COST, () => {
         if (!buyHauler(state, 'A')) flashTicker('FLEET AT CAPACITY');
-      }, capped ? 'FLEET AT CAPACITY' : (state.res.A.supply < CONFIG.Hauler.COST ? 'NOT ENOUGH SUPPLY' : null)));
+      }, capped ? 'FLEET AT CAPACITY' : (state.res.A.supply < CONFIG.Hauler.COST ? 'NOT ENOUGH SUPPLY' : null), 'hauler'));
     }
   }
 
