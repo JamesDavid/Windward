@@ -114,7 +114,11 @@
     font-family: inherit; font-size: 11px; padding: 6px 8px;
   }
   .sidebtn:disabled { opacity: 0.35; }
-  #confirmrow { display: flex; gap: 10px; justify-content: center; min-height: 40px; }
+  #confirmrow {
+    display: flex; gap: 10px; justify-content: center; min-height: 40px;
+    position: absolute; z-index: 6; pointer-events: none;
+  }
+  #confirmrow button { pointer-events: auto; }
   #confirmrow button {
     pointer-events: auto; font-family: inherit; font-size: 15px; letter-spacing: 1px;
     border-radius: 12px; padding: 8px 22px; border: none;

@@ -260,12 +260,29 @@ function discardPiece(state) {
   cancelPlacement();
 }
 
-function setConfirmVisible(v) {
+function setConfirmVisible(v, anchorCell) {
   UI.els.confirm.classList.toggle('hidden', !v);
   UI.els.cancel.classList.toggle('hidden', !v);
   // TURN only shows when the piece has more than one legal orientation here
   UI.els.rotate.classList.toggle('hidden', !v || !UI.placements || UI.placements.length < 2);
   if (v) UI.els.confirm.textContent = 'CONFIRM';
+  if (v) placeConfirmRow(anchorCell);
+}
+
+// float the CONFIRM / TURN / CANCEL row just below its ghost, by the thumb
+function placeConfirmRow(anchorCell) {
+  const row = document.getElementById('confirmrow');
+  const cell = anchorCell || (UI.structMode && UI.structMode.at.cell) ||
+    (UI.socket && UI.socket.cell);
+  if (!cell) return;
+  const v = new THREE.Vector3(worldX(cell[0]), 1.0, worldZ(cell[1])).project(R.camera);
+  const x = (v.x + 1) / 2 * window.innerWidth;
+  const y = (-v.y + 1) / 2 * window.innerHeight;
+  requestAnimationFrame(() => {
+    const w = row.offsetWidth || 240, h = row.offsetHeight || 44;
+    row.style.left = clamp(x - w / 2, 6, window.innerWidth - w - 6) + 'px';
+    row.style.top = clamp(y + 58, 60, window.innerHeight - h - 6) + 'px';
+  });
 }
 
 // ---- taps on the world ----
@@ -444,7 +461,9 @@ function openContextMenu(state, cell, tapX, tapY) {
   const ident = identifyCell(state, cell);
   if (ident) flashTicker(ident);
 
-  // pieces from the hand that can be laid from this spot come first
+  // pieces from the hand that can be laid from this spot — appended LAST,
+  // so with the menu anchored above the tap they sit closest to the thumb
+  const pieceOptions = [];
   const socketHere = getSockets(state, 'A').find(s => s.cell[0] === x && s.cell[1] === z);
   if (socketHere) {
     const offered = new Set();
@@ -452,7 +471,7 @@ function openContextMenu(state, cell, tapX, tapY) {
       if (offered.has(type)) return;   // one chip per shape
       if (legalPlacements(state, 'A', type, socketHere).length) {
         offered.add(type);
-        options.push(pieceMenuButton(state, i, socketHere));
+        pieceOptions.push(pieceMenuButton(state, i, socketHere));
       }
     });
   }
@@ -520,8 +539,16 @@ function openContextMenu(state, cell, tapX, tapY) {
     }
   }
 
-  if (!options.length) return;
+  if (!options.length && !pieceOptions.length) return;
+  // buildings on the upper rows, route pieces on the bottom row by the thumb
   for (const o of options) menu.appendChild(o);
+  if (options.length && pieceOptions.length) {
+    const brk = document.createElement('div');
+    brk.style.flexBasis = '100%';
+    brk.style.height = '0';
+    menu.appendChild(brk);
+  }
+  for (const o of pieceOptions) menu.appendChild(o);
   menu.classList.remove('hidden');
 
   // anchor the menu just above the thumb, clamped to the screen
@@ -554,6 +581,8 @@ function refreshHUD(state) {
     const remain = Math.max(0, w.nextAt - state.time);
     UI.els.waveinfo.textContent = 'WAVE ' + (w.index + 1) + ' IN ' + Math.ceil(remain) + 's';
   }
+  // keep the floating confirm row glued to its ghost through pans/zooms
+  if (!UI.els.confirm.classList.contains('hidden')) placeConfirmRow();
   // priest chip (§14.8.6)
   const p = state.priests.A;
   if (p) {
