@@ -203,24 +203,20 @@
     <div id="codex" class="hidden"></div>
     <div id="buildmenu" class="hidden"></div>
     <div id="bottombar">
+      <!-- one clean row: the two petitions and the fleet upgrade. The
+           hand chips and prongs note are gone (player-directed) — pieces
+           live in the thumb menu, discard/reroll live there too. -->
       <div id="powers">
         <button class="powbtn" id="pow-tailwind">TAILWIND · 3 &#10022;<span class="powdesc">whole fleet flies twice as fast, 15s</span></button>
         <button class="powbtn" id="pow-windwall">WIND WALL · 4 &#10022;<span class="powdesc">tap a spot: damage there &minus;75%, 12s</span></button>
+        <button class="powbtn" id="btn-tech">HYDROGEN · 25&#9099; 6&#10022;<span class="powdesc">ships carry 2&times; ore, but are bigger targets</span></button>
       </div>
       <div id="confirmrow">
         <button id="btn-confirm" class="hidden">CONFIRM</button>
         <button id="btn-rotate" class="hidden">&#8635; TURN</button>
         <button id="btn-cancel" class="hidden">CANCEL</button>
       </div>
-      <div style="display:flex; gap:10px; justify-content:center; align-items:center;">
-        <div>
-          <div id="hand"></div>
-          <div id="handlabel">1 &middot; 2 &middot; 3 PRONGS &middot; TAP MAP TO BUILD &middot; TAP TWICE TO DISCARD (1 &#10022;)</div>
-        </div>
-        <div id="handside">
-          <button class="sidebtn" id="btn-tech">HYDROGEN · 25&#9099; 6&#10022;<span class="powdesc">ships carry 2&times; ore, but are bigger targets</span></button>
-        </div>
-      </div>
+      <div id="hand" class="hidden"></div>
     </div>
   </div>
   <button id="skipbtn" class="hidden">SKIP &#9656;</button>
@@ -5359,9 +5355,27 @@ function syncMovers(state) {
     const dx = m.pos[0] - rec.lastPos[0], dz = m.pos[1] - rec.lastPos[1];
     if (Math.abs(dx) + Math.abs(dz) > 0.001) {
       rec.grp.rotation.y = -Math.atan2(dz, dx);
+      const dl = Math.hypot(dx, dz);
+      rec.dir = [dx / dl, dz / dl];
       rec.lastPos = m.pos.slice();
     }
     rec.grp.position.set(worldX(m.pos[0]), moverY(m), worldZ(m.pos[1]));
+    // ships pass AROUND each other, not through: every ship keeps a hair
+    // to its own side of the road and leans out wider while another ship
+    // is close, easing back once the road is clear
+    if (m.state !== 'adrift') {
+      let crowd = 0;
+      for (const o of movers) {
+        if (o === m) continue;
+        if (Math.hypot(o.pos[0] - m.pos[0], o.pos[1] - m.pos[1]) < 0.6) { crowd = 1; break; }
+      }
+      rec.dodge = (rec.dodge || 0) + (crowd - (rec.dodge || 0)) * 0.08;
+      if (rec.dir) {
+        const side = (m.id % 2 ? 1 : -1) * (0.05 + 0.22 * rec.dodge);
+        rec.grp.position.x += -rec.dir[1] * side;
+        rec.grp.position.z += rec.dir[0] * side;
+      }
+    }
     if (m.state === 'adrift') {
       rec.grp.rotation.y += Math.sin(state.time * 3 + m.id) * 0.15;
       rec.grp.rotation.z = Math.sin(state.time * 2.2 + m.id) * 0.3;

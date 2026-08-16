@@ -203,24 +203,20 @@
     <div id="codex" class="hidden"></div>
     <div id="buildmenu" class="hidden"></div>
     <div id="bottombar">
+      <!-- one clean row: the two petitions and the fleet upgrade. The
+           hand chips and prongs note are gone (player-directed) — pieces
+           live in the thumb menu, discard/reroll live there too. -->
       <div id="powers">
         <button class="powbtn" id="pow-tailwind">TAILWIND · 3 &#10022;<span class="powdesc">whole fleet flies twice as fast, 15s</span></button>
         <button class="powbtn" id="pow-windwall">WIND WALL · 4 &#10022;<span class="powdesc">tap a spot: damage there &minus;75%, 12s</span></button>
+        <button class="powbtn" id="btn-tech">HYDROGEN · 25&#9099; 6&#10022;<span class="powdesc">ships carry 2&times; ore, but are bigger targets</span></button>
       </div>
       <div id="confirmrow">
         <button id="btn-confirm" class="hidden">CONFIRM</button>
         <button id="btn-rotate" class="hidden">&#8635; TURN</button>
         <button id="btn-cancel" class="hidden">CANCEL</button>
       </div>
-      <div style="display:flex; gap:10px; justify-content:center; align-items:center;">
-        <div>
-          <div id="hand"></div>
-          <div id="handlabel">1 &middot; 2 &middot; 3 PRONGS &middot; TAP MAP TO BUILD &middot; TAP TWICE TO DISCARD (1 &#10022;)</div>
-        </div>
-        <div id="handside">
-          <button class="sidebtn" id="btn-tech">HYDROGEN · 25&#9099; 6&#10022;<span class="powdesc">ships carry 2&times; ore, but are bigger targets</span></button>
-        </div>
-      </div>
+      <div id="hand" class="hidden"></div>
     </div>
   </div>
   <button id="skipbtn" class="hidden">SKIP &#9656;</button>

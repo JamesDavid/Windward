@@ -588,9 +588,27 @@ function syncMovers(state) {
     const dx = m.pos[0] - rec.lastPos[0], dz = m.pos[1] - rec.lastPos[1];
     if (Math.abs(dx) + Math.abs(dz) > 0.001) {
       rec.grp.rotation.y = -Math.atan2(dz, dx);
+      const dl = Math.hypot(dx, dz);
+      rec.dir = [dx / dl, dz / dl];
       rec.lastPos = m.pos.slice();
     }
     rec.grp.position.set(worldX(m.pos[0]), moverY(m), worldZ(m.pos[1]));
+    // ships pass AROUND each other, not through: every ship keeps a hair
+    // to its own side of the road and leans out wider while another ship
+    // is close, easing back once the road is clear
+    if (m.state !== 'adrift') {
+      let crowd = 0;
+      for (const o of movers) {
+        if (o === m) continue;
+        if (Math.hypot(o.pos[0] - m.pos[0], o.pos[1] - m.pos[1]) < 0.6) { crowd = 1; break; }
+      }
+      rec.dodge = (rec.dodge || 0) + (crowd - (rec.dodge || 0)) * 0.08;
+      if (rec.dir) {
+        const side = (m.id % 2 ? 1 : -1) * (0.05 + 0.22 * rec.dodge);
+        rec.grp.position.x += -rec.dir[1] * side;
+        rec.grp.position.z += rec.dir[0] * side;
+      }
+    }
     if (m.state === 'adrift') {
       rec.grp.rotation.y += Math.sin(state.time * 3 + m.id) * 0.15;
       rec.grp.rotation.z = Math.sin(state.time * 2.2 + m.id) * 0.3;
