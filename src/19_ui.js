@@ -18,7 +18,7 @@ function initUI(state) {
   UI.els = {
     supply: $('supply'), favor: $('favor'), seedchip: $('seedchip'), waveinfo: $('waveinfo'),
     hand: $('hand'), confirm: $('btn-confirm'), cancel: $('btn-cancel'), rotate: $('btn-rotate'),
-    discard: $('btn-discard'), tech: $('btn-tech'),
+    tech: $('btn-tech'),
     banner: $('banner'), tutorial: $('tutorial'), ticker: $('ticker'),
     powTailwind: $('pow-tailwind'), powWindwall: $('pow-windwall'),
     priestchip: $('priestchip'), buildmenu: $('buildmenu'), codex: $('codex')
@@ -30,7 +30,6 @@ function initUI(state) {
   UI.els.confirm.addEventListener('click', () => confirmPlacement(state));
   UI.els.rotate.addEventListener('click', () => cyclePlacement(state));
   UI.els.cancel.addEventListener('click', () => cancelPlacement());
-  UI.els.discard.addEventListener('click', () => discardPiece(state));
   UI.els.tech.addEventListener('click', () => {
     if (buyHydrogen(state, 'A')) {
       showBanner('THE LIGHT AIR', 'Iron filings and sour wine. The fleet is reborn.');
@@ -128,6 +127,8 @@ function drawPieceIcon(canvas, type) {
   ctx.stroke();
 }
 
+// The hand is a compact read-out; building happens by tapping the map.
+// Tapping a chip once arms a discard, tapping it again pays 1 Favor.
 function buildHand(state) {
   UI.els.hand.innerHTML = '';
   state.hand.forEach((type, i) => {
@@ -141,22 +142,35 @@ function buildHand(state) {
     cost.textContent = pieceCost(type) + ' ⚇';
     btn.appendChild(cv);
     btn.appendChild(cost);
-    btn.addEventListener('click', () => selectPiece(state, i));
+    btn.addEventListener('click', () => {
+      if (UI.discardArm === i) {
+        UI.discardArm = -1;
+        if (state.res.A.favor < CONFIG.Economy.REROLL_FAVOR) { flashTicker('NOT ENOUGH FAVOR'); refreshHand(state); return; }
+        state.res.A.favor -= CONFIG.Economy.REROLL_FAVOR;
+        state.hand[i] = drawPiece();
+        buildHand(state);
+        flashTicker('THE WIND TAKES IT BACK');
+      } else {
+        UI.discardArm = i;
+        flashTicker('TAP AGAIN TO DISCARD FOR 1 ✦');
+        refreshHand(state);
+      }
+    });
     UI.els.hand.appendChild(btn);
   });
+  UI.discardArm = -1;
   refreshHand(state);
 }
 
 function refreshHand(state) {
   [...UI.els.hand.children].forEach((btn, i) => {
-    btn.classList.toggle('selected', UI.mode === 'placing' && UI.pieceIdx === i);
+    btn.classList.toggle('selected', UI.discardArm === i);
     btn.classList.toggle('unaffordable', state.res.A.supply < pieceCost(state.hand[i]));
   });
-  UI.els.discard.disabled = !(UI.mode === 'placing' && state.res.A.favor >= CONFIG.Economy.REROLL_FAVOR);
 }
 
-// ---- placement flow ----
-function selectPiece(state, i) {
+// ---- placement flow (entered from the map's context menu) ----
+function beginPiecePlacement(state, i, socket) {
   if (state.over) return;
   if (state.res.A.supply < pieceCost(state.hand[i])) { flashTicker('NOT ENOUGH SUPPLY'); return; }
   UI.mode = 'placing';
@@ -164,20 +178,8 @@ function selectPiece(state, i) {
   UI.socket = null;
   UI.placements = [];
   clearPreview();
-  const sockets = getSockets(state, 'A').filter(s => legalPlacements(state, 'A', state.hand[i], s).length);
-  showSockets(state, sockets);
-  setConfirmVisible(false);
-  refreshHand(state);
-  if (!sockets.length) {
-    flashTicker('NOWHERE TO BUILD FROM — EXTEND ANOTHER WAY');
-  } else if (sockets.length === 1) {
-    // only one place it can go (the opening move): step straight to preview
-    selectSocket(state, sockets[0]);
-    flashTicker('TAP THE GHOST TO TURN IT · CONFIRM TO BIND');
-  } else {
-    flashTicker('TAP A GLOWING SOCKET');
-  }
-  Events.emit('uiSelectPiece', {});
+  clearSockets();
+  selectSocket(state, socket);
 }
 
 function selectSocket(state, socket) {
@@ -322,7 +324,14 @@ function onTap(state, e) {
     castWindWall(state, cell);
     return;
   }
-  openContextMenu(state, cell);
+  // snap the tap to the nearest actionable spot: a socket of the network,
+  // any island cell, or a structure — then open the menu at the thumb
+  let snapped = cell, sd = SNAP;
+  for (const s of getSockets(state, 'A')) {
+    const d = dist2d(s.cell[0], s.cell[1], fx, fz);
+    if (d < sd) { sd = d; snapped = s.cell.slice(); }
+  }
+  openContextMenu(state, snapped, e.clientX, e.clientY);
 }
 
 // every legal site for a structure type, endpoints and plots alike
@@ -400,7 +409,31 @@ function identifyCell(state, cell) {
   return null;
 }
 
-function openContextMenu(state, cell) {
+// a chip in the context menu for a piece the player holds, placeable here
+function pieceMenuButton(state, i, socket) {
+  const type = state.hand[i];
+  const btn = document.createElement('button');
+  btn.className = 'piecechip';
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 44;
+  drawPieceIcon(cv, type);
+  btn.appendChild(cv);
+  const b = document.createElement('b');
+  b.textContent = pieceCost(type) + ' ⚇';
+  btn.appendChild(b);
+  if (state.res.A.supply < pieceCost(type)) {
+    btn.style.opacity = 0.4;
+    btn.addEventListener('click', () => flashTicker('NOT ENOUGH SUPPLY'));
+  } else {
+    btn.addEventListener('click', () => {
+      hideBuildMenu();
+      beginPiecePlacement(state, i, socket);
+    });
+  }
+  return btn;
+}
+
+function openContextMenu(state, cell, tapX, tapY) {
   const [x, z] = cell;
   const menu = UI.els.buildmenu;
   menu.innerHTML = '';
@@ -410,6 +443,19 @@ function openContextMenu(state, cell) {
   const deg = nodeDegrees(state, 'A').get(cellKey(x, z)) || 0;
   const ident = identifyCell(state, cell);
   if (ident) flashTicker(ident);
+
+  // pieces from the hand that can be laid from this spot come first
+  const socketHere = getSockets(state, 'A').find(s => s.cell[0] === x && s.cell[1] === z);
+  if (socketHere) {
+    const offered = new Set();
+    state.hand.forEach((type, i) => {
+      if (offered.has(type)) return;   // one chip per shape
+      if (legalPlacements(state, 'A', type, socketHere).length) {
+        offered.add(type);
+        options.push(pieceMenuButton(state, i, socketHere));
+      }
+    });
+  }
 
   // arming a build shows a ghost with its range, plus EVERY other legal
   // site lit up — tap any of them to move the ghost there. CONFIRM raises.
@@ -477,6 +523,24 @@ function openContextMenu(state, cell) {
   if (!options.length) return;
   for (const o of options) menu.appendChild(o);
   menu.classList.remove('hidden');
+
+  // anchor the menu just above the thumb, clamped to the screen
+  if (tapX !== undefined) {
+    menu.classList.add('attap');
+    menu.style.visibility = 'hidden';
+    requestAnimationFrame(() => {
+      const w = menu.offsetWidth, h = menu.offsetHeight;
+      const left = clamp(tapX - w / 2, 6, window.innerWidth - w - 6);
+      const top = clamp(tapY - h - 34, 6, window.innerHeight - h - 6);
+      menu.style.left = left + 'px';
+      menu.style.top = top + 'px';
+      menu.style.visibility = 'visible';
+    });
+  } else {
+    menu.classList.remove('attap');
+    menu.style.left = '';
+    menu.style.top = '';
+  }
 }
 
 // ---- HUD refresh ----

@@ -105,7 +105,8 @@ function initRenderer() {
   R.previewGroup = new THREE.Group();
   R.influenceGroup = new THREE.Group();
   R.islandGroup = new THREE.Group();
-  R.scene.add(R.socketGroup, R.previewGroup, R.influenceGroup, R.islandGroup);
+  R.actionGroup = new THREE.Group();
+  R.scene.add(R.socketGroup, R.previewGroup, R.influenceGroup, R.islandGroup, R.actionGroup);
 
   onResize();
   window.addEventListener('resize', onResize);
@@ -437,6 +438,29 @@ function showSockets(state, sockets) {
 function islandAtCells(state, cell) { return islandAt(state, cell[0], cell[1]); }
 function clearSockets() { R.socketGroup.clear(); }
 
+// Always-on markers for every spot the player can act at: tap one and the
+// context menu of pieces and buildings opens right there. Hidden while a
+// ghost is being placed (the socket beacons take over).
+let nextActionRefresh = 0;
+function refreshActionMarkers(state) {
+  if (state.time < nextActionRefresh) return;
+  nextActionRefresh = state.time + 0.8;
+  R.actionGroup.clear();
+  const busy = typeof UI !== 'undefined' && (UI.mode === 'placing' || UI.structMode);
+  if (busy || state.over) return;
+  const geo = new THREE.OctahedronGeometry(0.1);
+  const matAir = new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.55 });
+  const matLand = new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.4 });
+  for (const s of getSockets(state, 'A')) {
+    const onLand = !!islandAt(state, s.cell[0], s.cell[1]);
+    const m = new THREE.Mesh(geo, onLand ? matLand : matAir);
+    m.position.set(worldX(s.cell[0]),
+      onLand ? CONFIG.Render.ISLAND_HEIGHT + 0.42 : CONFIG.Render.AIR_ALTITUDE + 0.22,
+      worldZ(s.cell[1]));
+    R.actionGroup.add(m);
+  }
+}
+
 function showPreview(state, segs, ok) {
   R.previewGroup.clear();
   const y = CONFIG.Render.AIR_ALTITUDE;
@@ -578,6 +602,10 @@ function renderTick(state, dt) {
   const pulse = 1 + 0.13 * Math.sin(state.time * 5);
   for (const g of R.socketGroup.children) {
     if (g.userData.ring) g.userData.ring.scale.setScalar(pulse);
+  }
+  for (const m of R.actionGroup.children) {
+    m.rotation.y += dt * 1.6;
+    m.scale.setScalar(0.9 + 0.15 * Math.sin(state.time * 3 + m.position.x));
   }
   for (const m of R.previewGroup.children) {
     if (m.userData && m.userData.spin) m.rotation.y += dt * 2.5;

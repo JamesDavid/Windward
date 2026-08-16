@@ -95,6 +95,7 @@ function frame(t) {
     flowTick(state);
   }
   refreshHUD(state);
+  refreshActionMarkers(state);
   syncStructures(state);
   syncMovers(state);
   syncIslandBars(state);

@@ -90,17 +90,23 @@
     display: block; font-size: 9px; font-style: italic; opacity: 0.75;
     letter-spacing: 0; margin-top: 2px; max-width: 150px;
   }
-  #hand { display: flex; gap: 8px; justify-content: center; align-items: stretch; }
+  /* the hand is a compact read-out: build by tapping the MAP, not this.
+     Tapping a chip twice discards it for 1 favor. */
+  #hand { display: flex; gap: 5px; justify-content: center; align-items: stretch; }
   .piece {
-    pointer-events: auto; width: 74px; height: 84px; border-radius: 12px;
+    pointer-events: auto; width: 46px; height: 56px; border-radius: 9px;
     background: rgba(16,21,26,0.82); border: 1.5px solid rgba(242,232,207,0.4);
     color: var(--ivory); font-family: inherit; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 4px;
+    align-items: center; justify-content: center; gap: 2px;
   }
-  .piece.selected { border-color: var(--gold); background: rgba(64,50,20,0.9); box-shadow: 0 0 12px rgba(217,164,65,0.5); }
+  .piece.selected { border-color: var(--danger); box-shadow: 0 0 10px rgba(217,83,79,0.6); }
   .piece.unaffordable { opacity: 0.4; }
-  .piece canvas { width: 44px; height: 44px; }
-  .piece .cost { font-size: 12px; color: var(--gold); }
+  .piece canvas { width: 30px; height: 30px; }
+  .piece .cost { font-size: 10px; color: var(--gold); }
+  #handlabel {
+    text-align: center; font-size: 9px; letter-spacing: 1px; color: rgba(242,232,207,0.55);
+    margin-top: 2px;
+  }
   #handside { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
   .sidebtn {
     pointer-events: auto; background: rgba(16,21,26,0.8); color: var(--ivory);
@@ -121,10 +127,13 @@
   /* ---------- build menu ---------- */
   #buildmenu {
     position: absolute; left: 50%; transform: translateX(-50%); bottom: 210px;
-    display: flex; gap: 6px; pointer-events: auto;
-    background: rgba(16,21,26,0.88); border: 1px solid rgba(242,232,207,0.35);
+    display: flex; gap: 6px; pointer-events: auto; flex-wrap: wrap;
+    justify-content: center; max-width: 92vw;
+    background: rgba(16,21,26,0.92); border: 1px solid rgba(242,232,207,0.35);
     border-radius: 14px; padding: 8px;
   }
+  #buildmenu.attap { transform: none; bottom: auto; }
+  #buildmenu .piecechip canvas { width: 34px; height: 34px; display: block; margin: 0 auto; }
   #buildmenu button {
     font-family: inherit; background: none; border: 1px solid rgba(242,232,207,0.3);
     color: var(--ivory); border-radius: 10px; padding: 6px 8px; font-size: 11px;
@@ -193,10 +202,12 @@
         <button id="btn-rotate" class="hidden">&#8635; TURN</button>
         <button id="btn-cancel" class="hidden">CANCEL</button>
       </div>
-      <div style="display:flex; gap:8px; justify-content:center;">
-        <div id="hand"></div>
+      <div style="display:flex; gap:10px; justify-content:center; align-items:center;">
+        <div>
+          <div id="hand"></div>
+          <div id="handlabel">YOUR PIECES &middot; TAP MAP TO BUILD &middot; TAP TWICE TO DISCARD (1 &#10022;)</div>
+        </div>
         <div id="handside">
-          <button class="sidebtn" id="btn-discard">DISCARD · 1 &#10022;<span class="powdesc">swap the selected piece</span></button>
           <button class="sidebtn" id="btn-tech">HYDROGEN · 25&#9099; 6&#10022;<span class="powdesc">ships carry 2&times; ore, but are bigger targets</span></button>
         </div>
       </div>

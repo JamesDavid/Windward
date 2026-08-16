@@ -82,3 +82,9 @@ Poseidon's assault craft are **lane-bound**: they ride his network like his haul
 
 <img src="screenshots/unitart.png" width="300">
 
+### 10. Build where you're looking *(done — player-directed)*
+
+The interaction is location-first: gold markers glow on every spot you can act — coasts of your islands, route ends, structure ports. Tap one (taps snap generously at this perspective) and a context menu opens **at your thumb**: the route pieces you hold that fit there, and every building valid at that spot, each with its one-line explanation. Your hand of three shrinks to a read-out strip at the bottom — tap a chip twice to discard it for a Favor.
+
+<img src="screenshots/ctxmenu.png" width="300">
+
