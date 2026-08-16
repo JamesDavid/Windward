@@ -314,7 +314,7 @@ const CONFIG = Object.freeze({
 
   Hauler: {
     DWELL_SECONDS: 4.0, UNLOAD_SECONDS: 2.0,
-    HOTAIR_CAPACITY: 24, HYDROGEN_CAPACITY: 48,
+    HOTAIR_CAPACITY: 12, HYDROGEN_CAPACITY: 24,   // sweep-optimized (test/opt_capacity.js): 24+ floods supply with 500-1500 reserves
     COST: 8, BUILD_SECONDS: 6,
     START_COUNT: 1,
     SPEED: 1.0                    // cells per second, base, x wind multiplier
