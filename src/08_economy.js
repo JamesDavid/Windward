@@ -38,12 +38,15 @@ function economyTick(state, dt) {
     }
   }
 
-  // mining into local stockpiles (§33D.1) — only while controlled, connected
-  // or not (stockpiles pile up at severed islands; that is the visual)
+  // mining into local stockpiles (§33D.1). Connection works the quarry:
+  // an island mines while any side's supported network touches it and it
+  // is open to that side (neutral, or their own claim). Claiming an
+  // island is how its ore is SECURED — a rival's claim shuts you out.
   for (const isl of state.map.islands) {
     if (isl.role.startsWith('greatTemple')) continue;
-    if (!isl.owner || isl.minedOut) continue;
-    if (!(isl.temple && isl.temple.owner === isl.owner && isl.temple.hp > 0 && isl.temple.buildProgress >= 1)) continue;
+    if (isl.minedOut) continue;
+    const worked = ['A', 'P'].some(side => miningRights(state, isl, side));
+    if (!worked) continue;
     const mined = Math.min(CONFIG.Mining.RATE_PER_SECOND * dt, isl.reserve);
     isl.reserve -= mined;
     isl.stockpile += mined;
@@ -53,6 +56,14 @@ function economyTick(state, dt) {
       Events.emit('islandDepleted', { island: isl });
     }
   }
+}
+
+// May this side work / collect from this island's quarry?
+function miningRights(state, isl, side) {
+  if (isl.role.startsWith('greatTemple')) return false;
+  if (isl.owner && isl.owner !== side) return false;      // claimed against them
+  if (islandClosedTo(state, isl, side)) return false;
+  return islandSupported(state, isl, side);               // their network touches it
 }
 
 // Hydrogen unlock (§33E): fleet-wide, instant, one purchase.

@@ -176,12 +176,13 @@ function buyHauler(state, side) {
   return true;
 }
 
-// island worth collecting from, favouring big stockpiles
+// island worth collecting from, favouring big stockpiles. Haulers work
+// ANY island the network connects to that is open to their side — neutral
+// quarries included; a rival's claim shuts the pile away.
 function pickCollectionTarget(state, side) {
   let best = null, bs = 1;   // require at least 1 in the pile
   for (const isl of state.map.islands) {
-    if (isl.owner !== side || isl.role.startsWith('greatTemple')) continue;
-    if (!islandConducts(state, isl, side) || !islandSupported(state, isl, side)) continue;
+    if (!miningRights(state, isl, side)) continue;
     const claimed = state.haulers.filter(h => h.owner === side && h.targetIsland === isl.id &&
       (h.state === 'toIsland' || h.state === 'dwelling')).length;
     const score = isl.stockpile - claimed * haulerCapacity(state, side);

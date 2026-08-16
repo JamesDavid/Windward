@@ -558,6 +558,12 @@ function openContextMenu(state, cell, tapX, tapY) {
   }
 
   if (!options.length && !pieceOptions.length) return;
+  // what you can afford, right where you are choosing
+  const bal = document.createElement('div');
+  bal.style.cssText = 'flex-basis:100%; text-align:center; font-size:12px; letter-spacing:1px; padding-bottom:2px;';
+  bal.innerHTML = '<span style="color:var(--gold)">⚇ ' + Math.floor(state.res.A.supply) +
+    '</span> &nbsp;·&nbsp; <span style="color:#d5ecff">✦ ' + Math.floor(state.res.A.favor) + '</span>';
+  menu.appendChild(bal);
   // buildings on the upper rows, route pieces on the bottom row by the thumb
   for (const o of options) menu.appendChild(o);
   if (options.length && pieceOptions.length) {

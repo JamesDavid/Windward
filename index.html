@@ -1937,12 +1937,15 @@ function economyTick(state, dt) {
     }
   }
 
-  // mining into local stockpiles (§33D.1) — only while controlled, connected
-  // or not (stockpiles pile up at severed islands; that is the visual)
+  // mining into local stockpiles (§33D.1). Connection works the quarry:
+  // an island mines while any side's supported network touches it and it
+  // is open to that side (neutral, or their own claim). Claiming an
+  // island is how its ore is SECURED — a rival's claim shuts you out.
   for (const isl of state.map.islands) {
     if (isl.role.startsWith('greatTemple')) continue;
-    if (!isl.owner || isl.minedOut) continue;
-    if (!(isl.temple && isl.temple.owner === isl.owner && isl.temple.hp > 0 && isl.temple.buildProgress >= 1)) continue;
+    if (isl.minedOut) continue;
+    const worked = ['A', 'P'].some(side => miningRights(state, isl, side));
+    if (!worked) continue;
     const mined = Math.min(CONFIG.Mining.RATE_PER_SECOND * dt, isl.reserve);
     isl.reserve -= mined;
     isl.stockpile += mined;
@@ -1952,6 +1955,14 @@ function economyTick(state, dt) {
       Events.emit('islandDepleted', { island: isl });
     }
   }
+}
+
+// May this side work / collect from this island's quarry?
+function miningRights(state, isl, side) {
+  if (isl.role.startsWith('greatTemple')) return false;
+  if (isl.owner && isl.owner !== side) return false;      // claimed against them
+  if (islandClosedTo(state, isl, side)) return false;
+  return islandSupported(state, isl, side);               // their network touches it
 }
 
 // Hydrogen unlock (§33E): fleet-wide, instant, one purchase.
@@ -2165,12 +2176,13 @@ function buyHauler(state, side) {
   return true;
 }
 
-// island worth collecting from, favouring big stockpiles
+// island worth collecting from, favouring big stockpiles. Haulers work
+// ANY island the network connects to that is open to their side — neutral
+// quarries included; a rival's claim shuts the pile away.
 function pickCollectionTarget(state, side) {
   let best = null, bs = 1;   // require at least 1 in the pile
   for (const isl of state.map.islands) {
-    if (isl.owner !== side || isl.role.startsWith('greatTemple')) continue;
-    if (!islandConducts(state, isl, side) || !islandSupported(state, isl, side)) continue;
+    if (!miningRights(state, isl, side)) continue;
     const claimed = state.haulers.filter(h => h.owner === side && h.targetIsland === isl.id &&
       (h.state === 'toIsland' || h.state === 'dwelling')).length;
     const score = isl.stockpile - claimed * haulerCapacity(state, side);
@@ -5808,6 +5820,12 @@ function openContextMenu(state, cell, tapX, tapY) {
   }
 
   if (!options.length && !pieceOptions.length) return;
+  // what you can afford, right where you are choosing
+  const bal = document.createElement('div');
+  bal.style.cssText = 'flex-basis:100%; text-align:center; font-size:12px; letter-spacing:1px; padding-bottom:2px;';
+  bal.innerHTML = '<span style="color:var(--gold)">⚇ ' + Math.floor(state.res.A.supply) +
+    '</span> &nbsp;·&nbsp; <span style="color:#d5ecff">✦ ' + Math.floor(state.res.A.favor) + '</span>';
+  menu.appendChild(bal);
   // buildings on the upper rows, route pieces on the bottom row by the thumb
   for (const o of options) menu.appendChild(o);
   if (options.length && pieceOptions.length) {
