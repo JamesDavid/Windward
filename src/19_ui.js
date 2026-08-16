@@ -476,7 +476,7 @@ function showBanner(title, sub, poseidon) {
   b.classList.toggle('poseidon', !!poseidon);
   b.classList.add('show');
   clearTimeout(bannerTimeout);
-  bannerTimeout = setTimeout(() => b.classList.remove('show'), 4200);
+  bannerTimeout = setTimeout(() => b.classList.remove('show'), 2800);
 }
 
 let tutorialTimeout = null;

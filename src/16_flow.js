@@ -47,11 +47,12 @@ function initFlow(state) {
     skipBtn.classList.add('hidden');
   }
 
+  // In-game telegraphs are compact and high: the wave title and where it
+  // comes from — no theatre. Poseidon's grievance lives on the intro screen.
   Events.on('waveTelegraph', ({ index, origin }) => {
-    const [title, line] = POSEIDON_BANNERS[index];
-    showBanner(title, line, true);
+    const [title] = POSEIDON_BANNERS[index];
     const name = ORIGIN_NAMES[origin.island.role] || 'THE DEEP';
-    flashTicker('TIDE RISING — FROM ' + name);
+    showBanner('WAVE ' + (index + 1) + ' · ' + title, 'from ' + name.toLowerCase(), true);
     audioPlay('telegraph');
   });
   Events.on('templeFallen', ({ island, side }) => {
@@ -60,7 +61,7 @@ function initFlow(state) {
   Events.on('islandClaimed', ({ island, side }) => {
     showBanner('ISLAND CLAIMED', side === 'A' ? 'The wind holds this ground now.' : 'The sea has taken ground.', side === 'P');
   });
-  Events.on('ageOfWrath', () => showBanner('THE AGE OF WRATH', '“Three generations I have waited to be needed again.”', true));
+  Events.on('ageOfWrath', () => showBanner('THE AGE OF WRATH', 'everything hits harder now', true));
   Events.on('convoyLost', ({ ent }) => { if (ent.owner === 'A') flashTicker('CONVOY LOST'); });
   Events.on('priestDead', ({ side }) => {
     if (side === 'A') showBanner('THE PRIEST IS LOST', 'A successor is invested at the Temple.');

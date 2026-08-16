@@ -115,7 +115,9 @@ const INTRO_LORE = [
   'For generations the escaped winds have tangled around these islands, snagging on headlands, rushing the straits. The sea stayed the only road — and every crossing paid Poseidon its honour.',
   'Then the shipwrights found the light air: iron filings and sour wine, sealed in a bronze retort, give off an air that will not stay down. Lift was worked out in a foundry. No god was consulted.',
   'But lift is not travel. A full envelope rises, then goes wherever the sky is going. To steer, a crew must bind a wind — and the only winds loose here are Aeolus’ own.',
-  'So the guild took a patron. They keep his rites; he grants the currents. And Poseidon watches cargo cross without asking him for calm water. He is not insulted. He is being forgotten.'
+  'So the guild took a patron. They keep his rites; he grants the currents. And Poseidon watches cargo cross without asking him for calm water. He is not insulted. He is being forgotten.',
+  '“They no longer sail. They no longer pay. They no longer ask.” — Poseidon does not address you. He speaks to the sea, and you overhear. “Then break the road, not the ships.”',
+  '“Three generations I have waited to be needed again.” His waves come nine times, each further, each harder. The last one only says: “Come down.”'
 ];
 let loreIdx = 0, loreTimer = null;
 function cycleLore() {
