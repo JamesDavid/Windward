@@ -69,7 +69,7 @@ const segTouches = (pl) => [...state.segments.values()].some(s => s.owner === 'A
     if (p.state === 'idle' && !supply.temple && p.islandId !== supply.id) G.sendPriest(state, 'A', supply);
     else if (p.state === 'idle' && p.islandId === supply.id && !supply.temple &&
       state.res.A.supply >= G.CONFIG.Structures.TEMPLE.COST) {
-      const pi = supply.plots.findIndex(pl => !pl.structure && !segTouches(pl));
+      const pi = supply.plots.findIndex(pl => !pl.structure && !segTouches(pl) && !G.plotBlockedByQuarry(supply, pl));
       if (pi >= 0) G.buildStructure(state, 'A', 'temple', { site: 'plot', islandId: supply.id, plotIdx: pi, cell: [supply.plots[pi].x, supply.plots[pi].z] });
     }
     const target = supply.temple && supply.temple.buildProgress >= 1 ? choke.center : supply.center;

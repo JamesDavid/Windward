@@ -219,7 +219,7 @@
       <div id="hand" class="hidden"></div>
     </div>
   </div>
-  <button id="skipbtn" class="hidden">SKIP &#9656;</button>
+  <button id="skipbtn" class="hidden">SKIP TUTORIAL &#9656;</button>
   <div id="startscreen" class="screen">
     <h1>WINDWARD</h1>
     <h2>THE WINDS INHERIT THE WAVES</h2>
@@ -2477,6 +2477,13 @@ function structureSupported(state, st) {
   return segmentSupportedAtCell(state, st.owner, st.cell[0], st.cell[1]);
 }
 
+// A working quarry occupies its ground: no building on the mine cell
+// until the island is depleted and the pit is blasted into a pad.
+function plotBlockedByQuarry(isl, pl) {
+  return !!(isl && !isl.minedOut && isl.reserve > 0 &&
+    pl.x === isl.cells[0][0] && pl.z === isl.cells[0][1]);
+}
+
 // May `side` place `type` at this endpoint cell / plot? Returns a reason
 // string when refused, or null when allowed.
 function whyNotBuild(state, side, type, at) {
@@ -2496,6 +2503,7 @@ function whyNotBuild(state, side, type, at) {
     const isl = state.map.islands[at.islandId];
     const plot = isl.plots[at.plotIdx];
     if (plot.structure) return 'PLOT OCCUPIED';
+    if (plotBlockedByQuarry(isl, plot)) return 'THE QUARRY WORKS THIS GROUND';
     if (type === 'temple') {
       if (isl.role.startsWith('greatTemple')) return 'HOLY GROUND';
       if (isl.temple && isl.temple.hp > 0) return 'A TEMPLE STANDS';
@@ -3468,7 +3476,7 @@ function aiTick(state, dt) {
     if (isl && !isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0) &&
         res.supply >= CONFIG.Structures.TEMPLE.COST &&
         res.favor >= (CONFIG.Structures.TEMPLE.FAVOR || 0)) {
-      const plotIdx = isl.plots.findIndex(pl => !pl.structure);
+      const plotIdx = isl.plots.findIndex(pl => !pl.structure && !plotBlockedByQuarry(isl, pl));
       if (plotIdx >= 0) {
         buildStructure(state, 'P', 'temple', { site: 'plot', islandId: isl.id, plotIdx, cell: [isl.plots[plotIdx].x, isl.plots[plotIdx].z] });
       }
@@ -3536,7 +3544,7 @@ function aiTick(state, dt) {
     // a yard on a safe owned island plot
     for (const isl of state.map.islands) {
       if (isl.owner !== 'P' || isl.role.startsWith('greatTemple')) continue;
-      const plotIdx = isl.plots.findIndex(pl => !pl.structure);
+      const plotIdx = isl.plots.findIndex(pl => !pl.structure && !plotBlockedByQuarry(isl, pl));
       if (plotIdx >= 0 && islandSupported(state, isl, 'P')) {
         buildStructure(state, 'P', 'yard', { site: 'plot', islandId: isl.id, plotIdx, cell: [isl.plots[plotIdx].x, isl.plots[plotIdx].z] });
         break;
@@ -6778,7 +6786,7 @@ function openContextMenu(state, cell, tapX, tapY) {
   } else if (isl) {
     // island body: offer builds on the first free plot too, so the player
     // doesn't have to hit the small bronze disc exactly
-    const freeIdx = isl.plots.findIndex(pl => !pl.structure);
+    const freeIdx = isl.plots.findIndex(pl => !pl.structure && !plotBlockedByQuarry(isl, pl));
     if (freeIdx >= 0) {
       const at = { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
       if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {

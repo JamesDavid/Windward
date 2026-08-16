@@ -661,7 +661,7 @@ function openContextMenu(state, cell, tapX, tapY) {
   } else if (isl) {
     // island body: offer builds on the first free plot too, so the player
     // doesn't have to hit the small bronze disc exactly
-    const freeIdx = isl.plots.findIndex(pl => !pl.structure);
+    const freeIdx = isl.plots.findIndex(pl => !pl.structure && !plotBlockedByQuarry(isl, pl));
     if (freeIdx >= 0) {
       const at = { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
       if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {

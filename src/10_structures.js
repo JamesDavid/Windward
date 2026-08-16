@@ -46,6 +46,13 @@ function structureSupported(state, st) {
   return segmentSupportedAtCell(state, st.owner, st.cell[0], st.cell[1]);
 }
 
+// A working quarry occupies its ground: no building on the mine cell
+// until the island is depleted and the pit is blasted into a pad.
+function plotBlockedByQuarry(isl, pl) {
+  return !!(isl && !isl.minedOut && isl.reserve > 0 &&
+    pl.x === isl.cells[0][0] && pl.z === isl.cells[0][1]);
+}
+
 // May `side` place `type` at this endpoint cell / plot? Returns a reason
 // string when refused, or null when allowed.
 function whyNotBuild(state, side, type, at) {
@@ -65,6 +72,7 @@ function whyNotBuild(state, side, type, at) {
     const isl = state.map.islands[at.islandId];
     const plot = isl.plots[at.plotIdx];
     if (plot.structure) return 'PLOT OCCUPIED';
+    if (plotBlockedByQuarry(isl, plot)) return 'THE QUARRY WORKS THIS GROUND';
     if (type === 'temple') {
       if (isl.role.startsWith('greatTemple')) return 'HOLY GROUND';
       if (isl.temple && isl.temple.hp > 0) return 'A TEMPLE STANDS';

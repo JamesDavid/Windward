@@ -37,7 +37,7 @@ const claim = (isl) => {
   p.state = 'idle';
   p.pos = [isl.cells[0][0], isl.cells[0][1]];
   p.islandId = isl.id;
-  const plotIdx = isl.plots.findIndex(pl => !pl.structure);
+  const plotIdx = isl.plots.findIndex(pl => !pl.structure && !G.plotBlockedByQuarry(isl, pl));
   const st = G.buildStructure(state, 'A', 'temple', {
     site: 'plot', islandId: isl.id, plotIdx, cell: [isl.plots[plotIdx].x, isl.plots[plotIdx].z]
   });
@@ -73,7 +73,7 @@ while (progress) {
   G.refreshInfluence(state);
   for (const isl of state.map.islands) {
     if (isl.role.startsWith('greatTemple') || isl.owner) continue;
-    const plotIdx = isl.plots.findIndex(pl => !pl.structure);
+    const plotIdx = isl.plots.findIndex(pl => !pl.structure && !G.plotBlockedByQuarry(isl, pl));
     if (plotIdx < 0) continue;
     const cell = [isl.plots[plotIdx].x, isl.plots[plotIdx].z];
     if (!state.influence.A.has(G.cellKey(cell[0], cell[1]))) continue;

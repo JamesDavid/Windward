@@ -182,7 +182,7 @@ function aiTick(state, dt) {
     if (isl && !isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0) &&
         res.supply >= CONFIG.Structures.TEMPLE.COST &&
         res.favor >= (CONFIG.Structures.TEMPLE.FAVOR || 0)) {
-      const plotIdx = isl.plots.findIndex(pl => !pl.structure);
+      const plotIdx = isl.plots.findIndex(pl => !pl.structure && !plotBlockedByQuarry(isl, pl));
       if (plotIdx >= 0) {
         buildStructure(state, 'P', 'temple', { site: 'plot', islandId: isl.id, plotIdx, cell: [isl.plots[plotIdx].x, isl.plots[plotIdx].z] });
       }
@@ -250,7 +250,7 @@ function aiTick(state, dt) {
     // a yard on a safe owned island plot
     for (const isl of state.map.islands) {
       if (isl.owner !== 'P' || isl.role.startsWith('greatTemple')) continue;
-      const plotIdx = isl.plots.findIndex(pl => !pl.structure);
+      const plotIdx = isl.plots.findIndex(pl => !pl.structure && !plotBlockedByQuarry(isl, pl));
       if (plotIdx >= 0 && islandSupported(state, isl, 'P')) {
         buildStructure(state, 'P', 'yard', { site: 'plot', islandId: isl.id, plotIdx, cell: [isl.plots[plotIdx].x, isl.plots[plotIdx].z] });
         break;
