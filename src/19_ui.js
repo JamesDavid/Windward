@@ -218,6 +218,14 @@ function selectSocket(state, socket) {
 }
 
 function cyclePlacement(state) {
+  // aiming a bolt at placement: TURN traverses the wedge in 45° steps
+  if (UI.structMode) {
+    if (UI.structMode.type !== 'bolt') return;
+    UI.structMode.facing += Math.PI / 4;
+    showStructPreview(state, 'A', 'bolt', UI.structMode.at.cell, UI.structMode.facing);
+    Events.emit('uiCycle', {});
+    return;
+  }
   if (!UI.placements.length) return;
   UI.orient = (UI.orient + 1) % UI.placements.length;
   showPreview(state, UI.placements[UI.orient].segs, true);
@@ -244,7 +252,7 @@ function confirmPlacement(state) {
     const { type, at } = UI.structMode;
     const why = whyNotBuild(state, 'A', type, at);
     if (why) { flashTicker(why); cancelPlacement(); return; }
-    buildStructure(state, 'A', type, at);
+    buildStructure(state, 'A', type, at, UI.structMode.facing);
     cancelPlacement();
     return;
   }
@@ -281,8 +289,11 @@ function discardPiece(state) {
 function setConfirmVisible(v, anchorCell) {
   UI.els.confirm.classList.toggle('hidden', !v);
   UI.els.cancel.classList.toggle('hidden', !v);
-  // TURN only shows when the piece has more than one legal orientation here
-  UI.els.rotate.classList.toggle('hidden', !v || !UI.placements || UI.placements.length < 2);
+  // TURN shows when a piece has multiple orientations — or a bolt is
+  // being aimed (45° traverse steps at placement, player-directed)
+  const canTurn = UI.structMode ? UI.structMode.type === 'bolt'
+    : (UI.placements && UI.placements.length >= 2);
+  UI.els.rotate.classList.toggle('hidden', !v || !canTurn);
   if (v) UI.els.confirm.textContent = 'CONFIRM';
   if (v) placeConfirmRow(anchorCell);
 }
@@ -344,7 +355,8 @@ function onTap(state, e) {
     }
     if (site) {
       UI.structMode.at = site;
-      showStructPreview(state, 'A', UI.structMode.type, site.cell);
+      UI.structMode.facing = defaultFacing(state, 'A', site.cell);
+      showStructPreview(state, 'A', UI.structMode.type, site.cell, UI.structMode.facing);
       return;
     }
     cancelPlacement();
@@ -565,10 +577,10 @@ function openContextMenu(state, cell, tapX, tapY) {
       Math.hypot(es.cell[0] - at.cell[0], es.cell[1] - at.cell[1]) <= (es.range || es.radius || 0) + 0.5 &&
       (state.vision.A.has(cellKey(es.cell[0], es.cell[1])) || state.memory.A.has('st:' + es.id)));
     if (threatened) showTutorialLine('His guns will tear a half-built frame apart. Arm the WIND WALL and tap this site first — the wall now shelters everything within two cells for 15 breaths.', 6200, 'siegeHint');
-    UI.structMode = { type, at };
+    UI.structMode = { type, at, facing: defaultFacing(state, 'A', at.cell) };
     UI.structSites = validStructSites(state, type);
     showSockets(state, UI.structSites.map(s => ({ cell: s.cell, kind: 'site' })));
-    showStructPreview(state, 'A', type, at.cell);
+    showStructPreview(state, 'A', type, at.cell, UI.structMode.facing);
     setConfirmVisible(true);
     const ss = structureStats('A', type);
     UI.els.confirm.textContent = 'RAISE  ' + ss.cost + ' ⚇' + (ss.favor ? ' + ' + ss.favor + ' ✦' : '');

@@ -166,7 +166,7 @@ function makePayload(side, type, stats) {
 function structVisibleToPlayer(state, st) {
   if (st.owner === 'A') return 'full';
   const k = cellKey(st.cell[0], st.cell[1]);
-  if (state.vision.A.has(k)) return 'full';
+  if (state.vision.A.has(k) || groundLifted(state, st.cell[0], st.cell[1])) return 'full';
   if (state.memory.A.has('st:' + st.id)) return 'dim';
   return 'hidden';
 }
@@ -780,12 +780,14 @@ function fxTick(state, dt) {
 
 // ghost of a structure while the player decides (RAISE / cancel), with the
 // weapon's range drawn from that exact spot
-function showStructPreview(state, side, type, cell) {
+function showStructPreview(state, side, type, cell, facing) {
   R.previewGroup.clear();
+  if (facing === undefined) facing = defaultFacing(state, side, cell);
   const onLand = !!islandAt(state, cell[0], cell[1]);
   const grp = new THREE.Group();
   const chassis = type === 'temple' || type === 'yard' ? new THREE.Group() : makeChassis(side, onLand, type);
   const payload = makePayload(side, type, null);
+  if (type === 'bolt') payload.rotation.y = -facing;   // the turret shows its aim
   grp.add(chassis, payload);
   {
     const stats = structureStats(side, type);
@@ -811,7 +813,6 @@ function showStructPreview(state, side, type, cell) {
       // (it traverses slowly). Show the wedge, not just the ring — the
       // vane's full circle and the bolt's slice must read differently.
       if (type === 'bolt' && stats.arc) {
-        const facing = defaultFacing(state, side, cell);
         const wedge = new THREE.Mesh(
           new THREE.RingGeometry(0.35, r, 24, 1, -facing - stats.arc / 2, stats.arc),
           new THREE.MeshBasicMaterial({ color: 0xffd977, transparent: true, opacity: 0.22, side: THREE.DoubleSide }));
@@ -875,14 +876,22 @@ function syncShroud(state) {
   for (const k of state.influence.A) lift(k);
 }
 
-// enemy segment fog handling is layered onto syncSegments via this hook.
-// A lane whose neighbour is in live vision ghosts one step into the murk,
-// so his paths visibly CONTINUE somewhere instead of materialising
-// parentless at the fog edge — every lane of his traces home to a temple.
+// Enemy STATIC infrastructure obeys the same boundary as the ground
+// (player-directed): wherever the shroud is lifted — explored ground or
+// your influence — his lanes are drawn live. No weird ring of clear
+// water hiding lanes that only pop in at close range. A lane whose
+// neighbour is visible still ghosts one step into true murk, so his
+// paths visibly continue somewhere. Moving craft still need live eyes.
+function groundLifted(state, x, z) {
+  const k = cellKey(x, z);
+  return (state.explored && state.explored.has(k)) || state.influence.A.has(k);
+}
+
 function segmentVisibility(state, s) {
   if (s.owner === 'A') return 'full';
   const m = segMid(s);
-  if (state.vision.A.has(cellKey(Math.round(m[0]), Math.round(m[1])))) return 'full';
+  const mx = Math.round(m[0]), mz = Math.round(m[1]);
+  if (state.vision.A.has(cellKey(mx, mz)) || groundLifted(state, mx, mz)) return 'full';
   if (state.memory.A.has('seg:' + s.key)) return 'dim';
   const touch = visibleLaneCells(state);
   if (touch.has(cellKey(s.a[0], s.a[1])) || touch.has(cellKey(s.b[0], s.b[1]))) return 'dim';
@@ -897,7 +906,8 @@ function visibleLaneCells(state) {
   for (const s of state.segments.values()) {
     if (s.owner !== 'P') continue;
     const m = segMid(s);
-    if (!state.vision.A.has(cellKey(Math.round(m[0]), Math.round(m[1])))) continue;
+    const mx = Math.round(m[0]), mz = Math.round(m[1]);
+    if (!state.vision.A.has(cellKey(mx, mz)) && !groundLifted(state, mx, mz)) continue;
     set.add(cellKey(s.a[0], s.a[1]));
     set.add(cellKey(s.b[0], s.b[1]));
   }

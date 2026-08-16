@@ -4112,6 +4112,14 @@ function initRenderer() {
     R.seaMesh = sea;
     R.seaTex = null;
     R.waterShader = true;
+    // upgrade to the canonical three.js wave normals, MIRRORED LOCALLY in
+    // /vendor (never fetched from a CDN at runtime). If the browser
+    // refuses file:// images as WebGL textures, the generated map above
+    // simply stays — the sea never depends on the network or the file.
+    new THREE.TextureLoader().load('vendor/waternormals.jpg', (tex) => {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      sea.material.uniforms.waterNormals.value = tex;
+    }, undefined, () => { });
   } else {
     const seaTex = makeSeaTexture();
     seaTex.wrapS = seaTex.wrapT = THREE.RepeatWrapping;
@@ -4556,7 +4564,7 @@ function renderTick(state, dt) {
   if (R.waterShader) {
     const [cgx, cgz] = gridFromWorld(R.camTarget ? R.camTarget.x : 0, R.camTarget ? R.camTarget.z : 0);
     const w = state.wind.at(clamp(cgx, 0, CONFIG.Grid.WIDTH - 1), clamp(cgz, 0, CONFIG.Grid.HEIGHT - 1));
-    const speed = 0.35 + Math.hypot(w.x, w.z) * 0.5;
+    const speed = (0.35 + Math.hypot(w.x, w.z) * 0.5) * (R.seaSurge || 1);
     R.seaMesh.material.uniforms.time.value += dt * speed;
   }
   // the sea itself streams with the wind under the camera
@@ -4849,7 +4857,7 @@ function makePayload(side, type, stats) {
 function structVisibleToPlayer(state, st) {
   if (st.owner === 'A') return 'full';
   const k = cellKey(st.cell[0], st.cell[1]);
-  if (state.vision.A.has(k)) return 'full';
+  if (state.vision.A.has(k) || groundLifted(state, st.cell[0], st.cell[1])) return 'full';
   if (state.memory.A.has('st:' + st.id)) return 'dim';
   return 'hidden';
 }
@@ -5463,12 +5471,14 @@ function fxTick(state, dt) {
 
 // ghost of a structure while the player decides (RAISE / cancel), with the
 // weapon's range drawn from that exact spot
-function showStructPreview(state, side, type, cell) {
+function showStructPreview(state, side, type, cell, facing) {
   R.previewGroup.clear();
+  if (facing === undefined) facing = defaultFacing(state, side, cell);
   const onLand = !!islandAt(state, cell[0], cell[1]);
   const grp = new THREE.Group();
   const chassis = type === 'temple' || type === 'yard' ? new THREE.Group() : makeChassis(side, onLand, type);
   const payload = makePayload(side, type, null);
+  if (type === 'bolt') payload.rotation.y = -facing;   // the turret shows its aim
   grp.add(chassis, payload);
   {
     const stats = structureStats(side, type);
@@ -5494,7 +5504,6 @@ function showStructPreview(state, side, type, cell) {
       // (it traverses slowly). Show the wedge, not just the ring — the
       // vane's full circle and the bolt's slice must read differently.
       if (type === 'bolt' && stats.arc) {
-        const facing = defaultFacing(state, side, cell);
         const wedge = new THREE.Mesh(
           new THREE.RingGeometry(0.35, r, 24, 1, -facing - stats.arc / 2, stats.arc),
           new THREE.MeshBasicMaterial({ color: 0xffd977, transparent: true, opacity: 0.22, side: THREE.DoubleSide }));
@@ -5558,14 +5567,22 @@ function syncShroud(state) {
   for (const k of state.influence.A) lift(k);
 }
 
-// enemy segment fog handling is layered onto syncSegments via this hook.
-// A lane whose neighbour is in live vision ghosts one step into the murk,
-// so his paths visibly CONTINUE somewhere instead of materialising
-// parentless at the fog edge — every lane of his traces home to a temple.
+// Enemy STATIC infrastructure obeys the same boundary as the ground
+// (player-directed): wherever the shroud is lifted — explored ground or
+// your influence — his lanes are drawn live. No weird ring of clear
+// water hiding lanes that only pop in at close range. A lane whose
+// neighbour is visible still ghosts one step into true murk, so his
+// paths visibly continue somewhere. Moving craft still need live eyes.
+function groundLifted(state, x, z) {
+  const k = cellKey(x, z);
+  return (state.explored && state.explored.has(k)) || state.influence.A.has(k);
+}
+
 function segmentVisibility(state, s) {
   if (s.owner === 'A') return 'full';
   const m = segMid(s);
-  if (state.vision.A.has(cellKey(Math.round(m[0]), Math.round(m[1])))) return 'full';
+  const mx = Math.round(m[0]), mz = Math.round(m[1]);
+  if (state.vision.A.has(cellKey(mx, mz)) || groundLifted(state, mx, mz)) return 'full';
   if (state.memory.A.has('seg:' + s.key)) return 'dim';
   const touch = visibleLaneCells(state);
   if (touch.has(cellKey(s.a[0], s.a[1])) || touch.has(cellKey(s.b[0], s.b[1]))) return 'dim';
@@ -5580,7 +5597,8 @@ function visibleLaneCells(state) {
   for (const s of state.segments.values()) {
     if (s.owner !== 'P') continue;
     const m = segMid(s);
-    if (!state.vision.A.has(cellKey(Math.round(m[0]), Math.round(m[1])))) continue;
+    const mx = Math.round(m[0]), mz = Math.round(m[1]);
+    if (!state.vision.A.has(cellKey(mx, mz)) && !groundLifted(state, mx, mz)) continue;
     set.add(cellKey(s.a[0], s.a[1]));
     set.add(cellKey(s.b[0], s.b[1]));
   }
@@ -5594,45 +5612,15 @@ function visibleLaneCells(state) {
 
 // ================================================================
 // CINEMATICS (player-directed) — atmosphere that never takes control
-// away: Poseidon's breakers crashing against the rim of the arena, and
-// a slow zoom-out breath while a wave is telegraphed. All original
-// geometry; nothing blocks input.
+// away. When Poseidon telegraphs a wave, the WHOLE SEA rises: shader
+// distortion and wave speed surge through the telegraph and assault,
+// then ease back to calm. (Rim-breaker blobs tried and removed — the
+// sea itself is the actor now.) Plus the slow zoom-out breath.
 // ================================================================
 
 function initCinematics(state) {
-  // (clouds tried and removed by player direction — they sat between the
-  // camera and the board and cost more readability than they earned)
-  const cine = { breakers: [], pulseT0: -99 };
-  R.cine = cine;
-  const W = CONFIG.Grid.WIDTH, H = CONFIG.Grid.HEIGHT;
-
-  // ---- breakers: swells that rise and burst white against the outside
-  // of the arena, all four rims — the sea besieging the sky's ground ----
-  const swellMat = new THREE.MeshLambertMaterial({ color: 0x8fc9d2, transparent: true, opacity: 0.8 });
-  const foamMat = new THREE.MeshBasicMaterial({ color: 0xeef7f5, transparent: true, opacity: 0 });
-  const addBreaker = (gx, gz, nx, nz) => {
-    // a mostly-submerged crest: only its rounded back breaks the surface
-    const swell = new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 6), swellMat);
-    swell.scale.set(2.2, 0.55, 0.9);
-    // foam is a flat sheet flung across the water at the crash
-    const foam = new THREE.Mesh(new THREE.CircleGeometry(0.85, 10), foamMat.clone());
-    foam.rotation.x = -Math.PI / 2;
-    // align the long axis with the rim it strikes
-    swell.rotation.y = Math.atan2(nx, nz);
-    R.scene.add(swell, foam);
-    cine.breakers.push({ swell, foam, gx, gz, nx, nz, phase: (gx * 7 + gz * 13) % (Math.PI * 2), speed: 0.55 + ((gx + gz) % 5) * 0.07 });
-  };
-  const M = 2.2;   // how far outside the rim the sea breaks
-  for (let x = 0; x < W; x += 2.4) {
-    addBreaker(x, -M, 0, 1);
-    addBreaker(x, H - 1 + M, 0, -1);
-  }
-  for (let z = 0; z < H; z += 2.4) {
-    addBreaker(-M, z, 1, 0);
-    addBreaker(W - 1 + M, z, -1, 0);
-  }
-
-  Events.on('waveTelegraph', () => { cine.pulseT0 = cine.now || 0; });
+  R.cine = { pulseT0: -99 };
+  Events.on('waveTelegraph', () => { R.cine.pulseT0 = R.cine.now || 0; });
 }
 
 function cinematicTick(state, dt) {
@@ -5641,23 +5629,25 @@ function cinematicTick(state, dt) {
   const cine = R.cine;
   cine.now = state.time;
 
-  // breakers: rise, lunge at the rim, burst to foam, slide back
-  for (const b of cine.breakers) {
-    const t = (state.time * b.speed + b.phase) % (Math.PI * 2);
-    const surge = Math.max(0, Math.sin(t));            // 0..1 rise and fall
-    const crash = Math.pow(Math.max(0, Math.sin(t - 0.5)), 6);   // sharp burst after the peak
-    const lunge = surge * 0.7;
-    const x = b.gx + b.nx * lunge, z = b.gz + b.nz * lunge;
-    b.swell.position.set(worldX(x), -0.62 + surge * 0.42, worldZ(z));
-    b.foam.position.set(worldX(x + b.nx * 0.5), 0.075, worldZ(z + b.nz * 0.5));
-    b.foam.material.opacity = crash * 0.8;
-    b.foam.scale.setScalar(0.55 + crash * 0.6);
+  // storm envelope: swell up through the 8s telegraph, rage while the
+  // wave is landing, then die down
+  const T = CONFIG.Waves.TELEGRAPH;
+  const t = state.time - cine.pulseT0;
+  let env = 0;
+  if (t >= 0) {
+    if (t < T) env = t / T;
+    else if (t < T + 20) env = 1;
+    else if (t < T + 28) env = 1 - (t - (T + 20)) / 8;
+  }
+  R.seaSurge = 1 + env * 1.6;                       // wave speed multiplier
+  if (R.waterShader && R.seaMesh.material.uniforms.distortionScale) {
+    R.seaMesh.material.uniforms.distortionScale.value = 3.2 * (1 + env * 1.2);
   }
 
-  // telegraph breath: ease out ~15% and back over the 8s warning. The
+  // telegraph breath: ease out ~15% and back over the warning. The
   // player's own pinch always wins — the pulse is a multiplier applied
   // at camera time, never a change to their chosen zoom.
-  const p = (state.time - cine.pulseT0) / CONFIG.Waves.TELEGRAPH;
+  const p = t / T;
   R.zoomPulse = (p >= 0 && p <= 1) ? 1 + 0.15 * Math.sin(Math.PI * p) : 1;
   if (R.zoomPulse !== R.lastZoomPulse) {
     R.lastZoomPulse = R.zoomPulse;
@@ -5889,6 +5879,14 @@ function selectSocket(state, socket) {
 }
 
 function cyclePlacement(state) {
+  // aiming a bolt at placement: TURN traverses the wedge in 45° steps
+  if (UI.structMode) {
+    if (UI.structMode.type !== 'bolt') return;
+    UI.structMode.facing += Math.PI / 4;
+    showStructPreview(state, 'A', 'bolt', UI.structMode.at.cell, UI.structMode.facing);
+    Events.emit('uiCycle', {});
+    return;
+  }
   if (!UI.placements.length) return;
   UI.orient = (UI.orient + 1) % UI.placements.length;
   showPreview(state, UI.placements[UI.orient].segs, true);
@@ -5915,7 +5913,7 @@ function confirmPlacement(state) {
     const { type, at } = UI.structMode;
     const why = whyNotBuild(state, 'A', type, at);
     if (why) { flashTicker(why); cancelPlacement(); return; }
-    buildStructure(state, 'A', type, at);
+    buildStructure(state, 'A', type, at, UI.structMode.facing);
     cancelPlacement();
     return;
   }
@@ -5952,8 +5950,11 @@ function discardPiece(state) {
 function setConfirmVisible(v, anchorCell) {
   UI.els.confirm.classList.toggle('hidden', !v);
   UI.els.cancel.classList.toggle('hidden', !v);
-  // TURN only shows when the piece has more than one legal orientation here
-  UI.els.rotate.classList.toggle('hidden', !v || !UI.placements || UI.placements.length < 2);
+  // TURN shows when a piece has multiple orientations — or a bolt is
+  // being aimed (45° traverse steps at placement, player-directed)
+  const canTurn = UI.structMode ? UI.structMode.type === 'bolt'
+    : (UI.placements && UI.placements.length >= 2);
+  UI.els.rotate.classList.toggle('hidden', !v || !canTurn);
   if (v) UI.els.confirm.textContent = 'CONFIRM';
   if (v) placeConfirmRow(anchorCell);
 }
@@ -6015,7 +6016,8 @@ function onTap(state, e) {
     }
     if (site) {
       UI.structMode.at = site;
-      showStructPreview(state, 'A', UI.structMode.type, site.cell);
+      UI.structMode.facing = defaultFacing(state, 'A', site.cell);
+      showStructPreview(state, 'A', UI.structMode.type, site.cell, UI.structMode.facing);
       return;
     }
     cancelPlacement();
@@ -6236,10 +6238,10 @@ function openContextMenu(state, cell, tapX, tapY) {
       Math.hypot(es.cell[0] - at.cell[0], es.cell[1] - at.cell[1]) <= (es.range || es.radius || 0) + 0.5 &&
       (state.vision.A.has(cellKey(es.cell[0], es.cell[1])) || state.memory.A.has('st:' + es.id)));
     if (threatened) showTutorialLine('His guns will tear a half-built frame apart. Arm the WIND WALL and tap this site first — the wall now shelters everything within two cells for 15 breaths.', 6200, 'siegeHint');
-    UI.structMode = { type, at };
+    UI.structMode = { type, at, facing: defaultFacing(state, 'A', at.cell) };
     UI.structSites = validStructSites(state, type);
     showSockets(state, UI.structSites.map(s => ({ cell: s.cell, kind: 'site' })));
-    showStructPreview(state, 'A', type, at.cell);
+    showStructPreview(state, 'A', type, at.cell, UI.structMode.facing);
     setConfirmVisible(true);
     const ss = structureStats('A', type);
     UI.els.confirm.textContent = 'RAISE  ' + ss.cost + ' ⚇' + (ss.favor ? ' + ' + ss.favor + ' ✦' : '');

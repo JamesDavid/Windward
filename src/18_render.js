@@ -142,6 +142,14 @@ function initRenderer() {
     R.seaMesh = sea;
     R.seaTex = null;
     R.waterShader = true;
+    // upgrade to the canonical three.js wave normals, MIRRORED LOCALLY in
+    // /vendor (never fetched from a CDN at runtime). If the browser
+    // refuses file:// images as WebGL textures, the generated map above
+    // simply stays — the sea never depends on the network or the file.
+    new THREE.TextureLoader().load('vendor/waternormals.jpg', (tex) => {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      sea.material.uniforms.waterNormals.value = tex;
+    }, undefined, () => { });
   } else {
     const seaTex = makeSeaTexture();
     seaTex.wrapS = seaTex.wrapT = THREE.RepeatWrapping;
@@ -586,7 +594,7 @@ function renderTick(state, dt) {
   if (R.waterShader) {
     const [cgx, cgz] = gridFromWorld(R.camTarget ? R.camTarget.x : 0, R.camTarget ? R.camTarget.z : 0);
     const w = state.wind.at(clamp(cgx, 0, CONFIG.Grid.WIDTH - 1), clamp(cgz, 0, CONFIG.Grid.HEIGHT - 1));
-    const speed = 0.35 + Math.hypot(w.x, w.z) * 0.5;
+    const speed = (0.35 + Math.hypot(w.x, w.z) * 0.5) * (R.seaSurge || 1);
     R.seaMesh.material.uniforms.time.value += dt * speed;
   }
   // the sea itself streams with the wind under the camera
