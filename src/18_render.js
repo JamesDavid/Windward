@@ -142,6 +142,24 @@ function initRenderer() {
     R.seaMesh = sea;
     R.seaTex = null;
     R.waterShader = true;
+    // the water FLOWS WITH THE WIND (player-directed): patch the Water
+    // shader's four hardcoded noise-scroll vectors to ride a wind-driven
+    // flow direction (with a slight cross-drift for texture variety).
+    // The shader samples by worldPosition.xz, so this is true world flow.
+    {
+      const mat = sea.material;
+      mat.uniforms.flowDir = { value: new THREE.Vector2(0.7, 0.7) };
+      mat.fragmentShader = 'uniform vec2 flowDir;\n' + mat.fragmentShader
+        .replace('vec2 uv0 = ( uv / 103.0 ) + vec2(time / 17.0, time / 29.0);',
+          'vec2 cross = vec2( -flowDir.y, flowDir.x ); vec2 uv0 = ( uv / 103.0 ) - flowDir * ( time / 17.0 );')
+        .replace('vec2 uv1 = uv / 107.0-vec2( time / -19.0, time / 31.0 );',
+          'vec2 uv1 = uv / 107.0 - flowDir * ( time / 24.0 ) + cross * ( time / 89.0 );')
+        .replace('vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) + vec2( time / 101.0, time / 97.0 );',
+          'vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) - flowDir * ( time / 101.0 );')
+        .replace('vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - vec2( time / 109.0, time / -113.0 );',
+          'vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - flowDir * ( time / 109.0 ) - cross * ( time / 127.0 );');
+      mat.needsUpdate = true;
+    }
     // upgrade to the canonical three.js wave normals, MIRRORED LOCALLY in
     // /vendor (never fetched from a CDN at runtime). If the browser
     // refuses file:// images as WebGL textures, the generated map above
@@ -599,6 +617,14 @@ function renderTick(state, dt) {
     const w = state.wind.at(clamp(cgx, 0, CONFIG.Grid.WIDTH - 1), clamp(cgz, 0, CONFIG.Grid.HEIGHT - 1));
     const speed = (0.35 + Math.hypot(w.x, w.z) * 0.5) * (R.seaSurge || 1);
     R.seaMesh.material.uniforms.time.value += dt * speed;
+    // steer the flow with the wind under the camera, smoothed so panning
+    // across sheared wind never snaps the whole sea
+    const fd = R.seaMesh.material.uniforms.flowDir;
+    if (fd) {
+      const len = Math.hypot(w.x, w.z) || 1;
+      fd.value.x += (w.x / len - fd.value.x) * Math.min(1, dt * 0.8);
+      fd.value.y += (w.z / len - fd.value.y) * Math.min(1, dt * 0.8);
+    }
   }
   // the sea itself streams with the wind under the camera
   if (R.seaTex) {

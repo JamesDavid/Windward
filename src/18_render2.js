@@ -649,9 +649,21 @@ function initFxEvents(state) {
   Events.on('tidalSurge', ({ center }) => fxSpawn(state, 'surge', center));
   Events.on('fogBank', ({ center }) => fxSpawn(state, 'fogbank', center));
   Events.on('windwall', ({ cell }) => fxSpawn(state, 'windwall', cell));
+  // temple bombardment: rhythmic flashes and flung debris, paced with
+  // the throttled boom instead of a dice roll
   Events.on('greatTempleHit', ({ side }) => {
     const gt = state.greatTemple[side];
-    if (Math.random() < 0.05) fxSpawn(state, 'boom', gt.cell);
+    if (!state.fxGtHitAt) state.fxGtHitAt = {};
+    if (state.time - (state.fxGtHitAt[side] || -9) < 0.6) return;
+    state.fxGtHitAt[side] = state.time;
+    fxSpawn(state, 'boom', gt.cell);
+    const rng = mulberry32(Math.floor(state.time * 7));
+    for (let i = 0; i < 3; i++) {
+      const a = rng() * Math.PI * 2;
+      fxSpawn(state, 'ember', gt.cell, {
+        vx: Math.cos(a) * (0.9 + rng()), vy: 1.8 + rng() * 1.6, vz: Math.sin(a) * (0.9 + rng())
+      });
+    }
   });
   // money made visible: coins burst where a bounty is earned and where
   // cargo is credited at the Great Temple

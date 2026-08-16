@@ -67,7 +67,21 @@ function initUI(state) {
       ang: Math.atan2(b.y - a.y, b.x - a.x)
     };
   };
+  // desktop mouse: wheel zooms; right-drag orbits (horizontal) and
+  // tilts (vertical); left button taps and pans as always
+  let rdrag = null;
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    R.camZoom = clamp((R.camZoom || 1) * Math.exp(e.deltaY * 0.0012), 0.75, 2.6);
+    updateCamera();
+  }, { passive: false });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
   canvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button === 2) {
+      rdrag = { x: e.clientX, y: e.clientY, az0: R.camAz || 0, tilt0: R.camTilt || 1 };
+      return;
+    }
     // ghost-pointer defense: a missed pointerup (finger slid off-screen,
     // palm touch, browser stole the gesture) used to leave a dead entry
     // here forever — every later touch then read as a multi-finger
@@ -101,6 +115,12 @@ function initUI(state) {
     pan.ground = pickGround(e.clientX, e.clientY);
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (rdrag && (e.buttons & 2)) {
+      R.camAz = rdrag.az0 + (e.clientX - rdrag.x) * 0.006;
+      R.camTilt = clamp(rdrag.tilt0 - (e.clientY - rdrag.y) / 280, 0.65, 1.35);
+      updateCamera();
+      return;
+    }
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (tilt3 && pointers.size === 3) {
       // swipe up = higher eye (more top-down); swipe down = lower and
@@ -130,10 +150,11 @@ function initUI(state) {
     pan.ground = pickGround(e.clientX, e.clientY);
   });
   const release = (e) => {
+    if (e.pointerType === 'mouse' && e.button === 2) { rdrag = null; return; }
     pointers.delete(e.pointerId);
     if (pointers.size < 3) tilt3 = null;
     if (pointers.size < 2) pinch = null;
-    const wasTap = pan.active && !pan.panned && e.type === 'pointerup';
+    const wasTap = pan.active && !pan.panned && e.type === 'pointerup' && e.button === 0;
     pan.active = false;
     if (wasTap) onTap(state, e);
   };

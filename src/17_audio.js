@@ -123,8 +123,14 @@ function audioPlay(name) {
       noiseBurst(0.12, 0.08, 2400);
       tone(140, 0.1, 'sine', 0.05, 0, 260);
       break;
-    case 'impact':
-      noiseBurst(0.06, 0.1, 800);
+    case 'impact':      // a real hit: dull crack + low thud
+      noiseBurst(0.12, 0.22, 500);
+      tone(110, 0.12, 'sine', 0.15, 0, 70);
+      break;
+    case 'templeHit':   // masonry under bombardment: deep boom, no bells
+      noiseBurst(0.35, 0.45, 320);
+      tone(58, 0.5, 'sine', 0.4, 0, 34);
+      noiseBurst(0.1, 0.12, 1200, 0.02);   // stone chips
       break;
     case 'ching':       // ore banked at the temple
       tone(1318, 0.08, 'triangle', 0.1);
@@ -159,7 +165,17 @@ function wireAudio() {
     audioPlay(name);
   };
   Events.on('gunFired', ({ side }) => shot(side === 'A' ? 'shotA' : 'shotP'));
-  Events.on('craftFired', () => shot('shotP'));
+  // shots land: a separately-throttled impact crack shortly after
+  let lastImpact = 0;
+  const impact = () => {
+    if (!Audio2.ready || !Audio2.ctx) return;
+    const now = Audio2.ctx.currentTime;
+    if (now - lastImpact < 0.28) return;
+    lastImpact = now;
+    audioPlay('impact');
+  };
+  Events.on('gunFired', () => impact());
+  Events.on('craftFired', () => { shot('shotP'); impact(); });
   Events.on('piecePlaced', ({ side }) => { if (side === 'A') { audioPlay('thunk'); audioPlay('activate'); } });
   Events.on('delivery', ({ side }) => { if (side === 'A') audioPlay('ching'); });
   Events.on('structureBuilt', ({ st }) => { if (st.owner === 'A') audioPlay('thunk'); });
@@ -170,5 +186,15 @@ function wireAudio() {
   Events.on('islandClaimed', () => audioPlay('capture'));
   Events.on('consecrationStarted', () => audioPlay('chant'));
   Events.on('tidalSurge', () => { noiseBurst(1.2, 0.5, 250); });
-  Events.on('greatTempleHit', () => audioPlay('warn'));
+  // the Great Temple under fire sounds like BOMBARDMENT, not a slot
+  // machine: the hit event streams at damage-tick rate, so one heavy
+  // boom lands at most every 1.2s (visual vignette carries the rest)
+  let lastTempleHit = 0;
+  Events.on('greatTempleHit', () => {
+    if (!Audio2.ready || !Audio2.ctx) return;
+    const now = Audio2.ctx.currentTime;
+    if (now - lastTempleHit < 1.2) return;
+    lastTempleHit = now;
+    audioPlay('templeHit');
+  });
 }

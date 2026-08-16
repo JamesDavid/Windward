@@ -30,6 +30,7 @@ Open `index.html` in a browser (portrait phone, or a narrow browser window). No 
 - **Tap an island** to send your priest; ten seconds of his presence consecrates a Temple and claims the island.
 - **Any island your supported network touches mines automatically** — claiming it *secures* the ore against Poseidon's counter-claim.
 - Win by felling Poseidon's Great Temple. Lose if he fells yours. One-tap reset.
+- **Touch:** drag pans, pinch zooms, two fingers rotate, three-finger vertical swipe tilts. **Mouse:** click and drag as above, wheel zooms, right-drag orbits and tilts.
 
 ## Development
 
