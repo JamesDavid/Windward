@@ -91,12 +91,15 @@ function enemyMovers(state, side) {
   return out;
 }
 
-function enemySegments(state, side) {
+// Guns (towers, both sides) can cut any unsheltered enemy segment in range;
+// CRAFT are restricted to raw open ends. Waves cannot melt a road along its
+// length, but emplaced artillery keeps the lane-cutting verb — symmetric.
+function enemySegments(state, side, gunSource) {
   const foe = side === 'A' ? 'P' : 'A';
   const out = [];
   for (const s of state.segments.values()) {
     if (s.owner !== foe) continue;
-    if (!s.rawEnd) continue;                          // paths are attackable only at raw open ends
+    if (!gunSource && !s.rawEnd) continue;            // craft: raw open ends only
     if (foe === 'A' && !s.overWater) continue;       // island crossings untouchable (§33B.1)
     if (foe === 'P' && s.sheltered) continue;         // lee shore (§33B.2a)
     out.push(s);
@@ -149,7 +152,7 @@ function gunTick(state, st, dt) {
   }).map(m => ({ kind: 'mover', ref: m, side: m.owner, pos: m.pos }));
 
   const structTargets = enemyStructureTargets(state, side).filter(t => inRange(t.pos) && canSee(state, side, t.pos));
-  const segTargets = enemySegments(state, side)
+  const segTargets = enemySegments(state, side, true)
     .filter(s => inRange(segMid(s)) && canSee(state, side, segMid(s)))
     .map(s => ({ kind: 'segment', ref: s, side: s.owner, pos: segMid(s) }));
 

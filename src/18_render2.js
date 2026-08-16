@@ -616,7 +616,8 @@ function fxTick(state, dt) {
   R.fx = R.fx.filter(f => !f.dead);
 }
 
-// ghost of a structure while the player decides (RAISE / cancel)
+// ghost of a structure while the player decides (RAISE / cancel), with the
+// weapon's range drawn from that exact spot
 function showStructPreview(state, side, type, cell) {
   R.previewGroup.clear();
   const onLand = !!islandAt(state, cell[0], cell[1]);
@@ -624,6 +625,28 @@ function showStructPreview(state, side, type, cell) {
   const chassis = type === 'temple' || type === 'yard' ? new THREE.Group() : makeChassis(side, onLand, type);
   const payload = makePayload(side, type, null);
   grp.add(chassis, payload);
+  {
+    const stats = structureStats(side, type);
+    const r = type === 'temple' ? influenceRadius('temple')
+      : type === 'shield' ? CONFIG.Structures.SHIELD_COVER_RADIUS
+      : (stats.range || stats.radius || 0);
+    if (r > 0) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(r - 0.06, r, 48),
+        new THREE.MeshBasicMaterial({
+          color: type === 'temple' ? Palette.gold : 0xffd977,
+          transparent: true, opacity: 0.5, side: THREE.DoubleSide
+        }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.07;
+      const fill = new THREE.Mesh(
+        new THREE.CircleGeometry(r, 48),
+        new THREE.MeshBasicMaterial({ color: 0xffd977, transparent: true, opacity: 0.07, side: THREE.DoubleSide }));
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.y = 0.065;
+      grp.add(ring, fill);
+    }
+  }
   grp.traverse(o => {
     if (o.material) {
       o.material = o.material.clone();

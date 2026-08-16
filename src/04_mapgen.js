@@ -210,22 +210,22 @@ function generateOnce(rng) {
     const chainRoles = ['greatTempleA', 'supplyA', 'neutralA', 'sacredP', 'chokepoint'];
     const chainIslands = chainRoles.map(r => byRole[r]);
     for (let i = 0; i < chainIslands.length - 1; i++) {
-      let guard = 4;
+      let guard = 9;
       while (minCellDist(chainIslands[i], chainIslands[i + 1]) > MG.FILLER_GAP_MAX && guard-- > 0) {
         const A = chainIslands[i], B = chainIslands[i + 1];
         const mid = [Math.round((A.center ? A.center[0] : blobCenter(A.cells)[0]) + (blobCenter(B.cells)[0] - blobCenter(A.cells)[0]) / 2),
                      Math.round((blobCenter(A.cells)[1] + blobCenter(B.cells)[1]) / 2)];
         let placed = null;
-        for (let attempt = 0; attempt < 10 && !placed; attempt++) {
-          const jx = mid[0] + Math.round((rng() * 2 - 1) * 2);
-          const jz = mid[1] + Math.round((rng() * 2 - 1) * 2);
+        for (let attempt = 0; attempt < 30 && !placed; attempt++) {
+          const jx = mid[0] + Math.round((rng() * 2 - 1) * 3);
+          const jz = mid[1] + Math.round((rng() * 2 - 1) * 3);
           if (!inBounds(jx, jz) || forbidden.has(cellKey(jx, jz))) continue;
           const size = MG.FILLER_SIZE_LO + Math.floor(rng() * (MG.FILLER_SIZE_HI - MG.FILLER_SIZE_LO + 1));
           const cells = growBlob(rng, [[jx, jz]], size, forbidden,
             [blobCenter(A.cells).map(Math.round), blobCenter(B.cells).map(Math.round)]);
           if (cells.length >= MG.FILLER_SIZE_LO) placed = cells;
         }
-        if (!placed) break;
+        if (!placed) { MAPGEN_STATS.fillerFail = (MAPGEN_STATS.fillerFail || 0) + 1; break; }
         const filler = { role: 'filler', side: 'N', cells: placed };
         islands.push(filler);
         forbidden = new Set([...forbidden, ...forbiddenAround(placed, SEP)]);
@@ -263,39 +263,48 @@ function generateOnce(rng) {
       }
       return false;
     };
+    // alignment deficit: 0 when some cell pair sits straight-3 apart (a
+    // legal two-water hop); grows with diagonal offset and distance error
+    const deficit = (A, B) => {
+      let best = Infinity;
+      for (const [ax, az] of A) for (const [bx, bz] of B) {
+        const dx = Math.abs(ax - bx), dz = Math.abs(az - bz);
+        const straightness = Math.min(dx, dz);
+        const distErr = Math.abs(Math.max(dx, dz) - 3);
+        best = Math.min(best, straightness * 2 + distErr);
+      }
+      return best;
+    };
     for (let ci = 0; ci < chainIslands.length - 1; ci++) {
       const I = chainIslands[ci], J = chainIslands[ci + 1];
-      let guard = 3;
-      while (!hopAligned(I.cells, J.cells) && guard-- > 0) {
-        // candidate: a cell adjacent to I (or J), exactly 3 straight from a
-        // cell of the partner, at least 3 (Chebyshev) from every other island
-        let added = false;
-        for (const [grown, partner] of [[I, J], [J, I]]) {
+      let guard = 8;
+      // grow an arm cell by cell, always picking the candidate that most
+      // reduces the pair's alignment deficit, until a clean hop exists
+      while (deficit(I.cells, J.cells) > 0 && guard-- > 0) {
+        let bestPick = null, bestScore = deficit(I.cells, J.cells);
+        for (const grown of [I, J]) {
+          const partner = grown === I ? J : I;
           const inGrown = new Set(grown.cells.map(([x, z]) => cellKey(x, z)));
-          outer:
-          for (const [px, pz] of partner.cells) {
-            for (const [dx, dz] of [[3, 0], [-3, 0], [0, 3], [0, -3]]) {
-              const cx = px + dx, cz = pz + dz;
-              if (!inBounds(cx, cz) || inGrown.has(cellKey(cx, cz))) continue;
-              const touches = DIRS4.some(([ex, ez]) => inGrown.has(cellKey(cx + ex, cz + ez)));
-              if (!touches) continue;
+          for (const [gx, gz] of grown.cells) {
+            for (const [ex, ez] of DIRS4) {
+              const cx = gx + ex, cz = gz + ez;
+              const k = cellKey(cx, cz);
+              if (!inBounds(cx, cz) || inGrown.has(k)) continue;
               let clear = true;
               for (const c of allCells()) {
                 if (c.isl === grown) continue;
-                const cheb = Math.max(Math.abs(c.x - cx), Math.abs(c.z - cz));
-                if (cheb < MG.MIN_ISLAND_SEPARATION) { clear = false; break; }
+                if (Math.max(Math.abs(c.x - cx), Math.abs(c.z - cz)) < MG.MIN_ISLAND_SEPARATION) { clear = false; break; }
               }
               if (!clear) continue;
-              grown.cells.push([cx, cz]);
-              added = true;
-              break outer;
+              const score = deficit([...grown.cells, [cx, cz]], partner.cells);
+              if (score < bestScore) { bestScore = score; bestPick = { grown, cell: [cx, cz] }; }
             }
           }
-          if (added) break;
         }
-        if (!added) break;
+        if (!bestPick) break;
+        bestPick.grown.cells.push(bestPick.cell);
       }
-      if (!hopAligned(I.cells, J.cells)) return null;   // chain unfixable; reroll
+      if (deficit(I.cells, J.cells) > 0) { MAPGEN_STATS.chainFail = (MAPGEN_STATS.chainFail || 0) + 1; return null; }   // chain unfixable; reroll
     }
   }
 

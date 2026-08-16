@@ -86,6 +86,10 @@
   }
   .powbtn:disabled { opacity: 0.35; }
   .powbtn.armed { background: var(--gold); color: var(--ink); }
+  .powdesc {
+    display: block; font-size: 9px; font-style: italic; opacity: 0.75;
+    letter-spacing: 0; margin-top: 2px; max-width: 150px;
+  }
   #hand { display: flex; gap: 8px; justify-content: center; align-items: stretch; }
   .piece {
     pointer-events: auto; width: 74px; height: 84px; border-radius: 12px;
@@ -181,8 +185,8 @@
     <div id="buildmenu" class="hidden"></div>
     <div id="bottombar">
       <div id="powers">
-        <button class="powbtn" id="pow-tailwind">TAILWIND<br>3 &#10022;</button>
-        <button class="powbtn" id="pow-windwall">WIND WALL<br>4 &#10022;</button>
+        <button class="powbtn" id="pow-tailwind">TAILWIND · 3 &#10022;<span class="powdesc">whole fleet flies twice as fast, 15s</span></button>
+        <button class="powbtn" id="pow-windwall">WIND WALL · 4 &#10022;<span class="powdesc">tap a spot: damage there &minus;75%, 12s</span></button>
       </div>
       <div id="confirmrow">
         <button id="btn-confirm" class="hidden">CONFIRM</button>
@@ -192,8 +196,8 @@
       <div style="display:flex; gap:8px; justify-content:center;">
         <div id="hand"></div>
         <div id="handside">
-          <button class="sidebtn" id="btn-discard">DISCARD<br>1 &#10022;</button>
-          <button class="sidebtn" id="btn-tech">HYDROGEN<br>25&#9099; 6&#10022;</button>
+          <button class="sidebtn" id="btn-discard">DISCARD · 1 &#10022;<span class="powdesc">swap the selected piece</span></button>
+          <button class="sidebtn" id="btn-tech">HYDROGEN · 25&#9099; 6&#10022;<span class="powdesc">ships carry 2&times; ore, but are bigger targets</span></button>
         </div>
       </div>
     </div>

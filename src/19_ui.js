@@ -270,17 +270,27 @@ function setConfirmVisible(v) {
 function onTap(state, e) {
   if (state.over) return;
   const cell = pickCell(e.clientX, e.clientY);
+  // float grid coords, for forgiving snap at this oblique perspective
+  const pt = pickGround(e.clientX, e.clientY);
+  const fx = pt ? pt.x + (CONFIG.Grid.WIDTH - 1) / 2 : -99;
+  const fz = pt ? pt.z + (CONFIG.Grid.HEIGHT - 1) / 2 : -99;
+  const SNAP = CONFIG.Render.TAP_SNAP_CELLS;
+
   if (UI.mode === 'placing') {
     if (!cell) { cancelPlacement(); refreshHand(state); return; }
-    // tapping the previewed piece cycles orientation
+    // tapping near the previewed piece cycles orientation
     if (UI.placements.length && UI.placements[UI.orient].segs.some(([a, b]) =>
-      (a[0] === cell[0] && a[1] === cell[1]) || (b[0] === cell[0] && b[1] === cell[1]))) {
+      dist2d(a[0], a[1], fx, fz) < 0.75 || dist2d(b[0], b[1], fx, fz) < 0.75)) {
       cyclePlacement(state);
       return;
     }
-    // tapping a lit socket
+    // snap to the nearest lit socket within reach
     const sockets = getSockets(state, 'A');
-    const hit = sockets.find(s => s.cell[0] === cell[0] && s.cell[1] === cell[1]);
+    let hit = null, hd = SNAP;
+    for (const s of sockets) {
+      const d = dist2d(s.cell[0], s.cell[1], fx, fz);
+      if (d < hd) { hd = d; hit = s; }
+    }
     if (hit && selectSocket(state, hit)) return;
     // elsewhere: cancel
     cancelPlacement();
@@ -288,7 +298,21 @@ function onTap(state, e) {
     return;
   }
   hideBuildMenu();
-  if (UI.structMode) { cancelPlacement(); return; }
+  if (UI.structMode) {
+    // tap another lit site to move the ghost there; elsewhere cancels
+    let site = null, sd = SNAP;
+    for (const s of (UI.structSites || [])) {
+      const d = dist2d(s.cell[0], s.cell[1], fx, fz);
+      if (d < sd) { sd = d; site = s; }
+    }
+    if (site) {
+      UI.structMode.at = site;
+      showStructPreview(state, 'A', UI.structMode.type, site.cell);
+      return;
+    }
+    cancelPlacement();
+    return;
+  }
   if (!cell) return;
 
   // armed Wind Wall aims at the tapped endpoint (§19.1)
@@ -299,6 +323,23 @@ function onTap(state, e) {
     return;
   }
   openContextMenu(state, cell);
+}
+
+// every legal site for a structure type, endpoints and plots alike
+function validStructSites(state, type) {
+  const sites = [];
+  for (const sock of getSockets(state, 'A')) {
+    if (sock.kind !== 'end') continue;
+    const at = { site: 'endpoint', cell: sock.cell.slice() };
+    if (!whyNotBuild(state, 'A', type, at)) sites.push(at);
+  }
+  for (const isl of state.map.islands) {
+    isl.plots.forEach((pl, i) => {
+      const at = { site: 'plot', islandId: isl.id, plotIdx: i, cell: [pl.x, pl.z] };
+      if (!whyNotBuild(state, 'A', type, at)) sites.push(at);
+    });
+  }
+  return sites;
 }
 
 // ---- build menu / island actions ----
@@ -370,11 +411,14 @@ function openContextMenu(state, cell) {
   const ident = identifyCell(state, cell);
   if (ident) flashTicker(ident);
 
-  // arming a build shows a ghost at the site; CONFIRM raises it (§8.1 rhythm)
+  // arming a build shows a ghost with its range, plus EVERY other legal
+  // site lit up — tap any of them to move the ghost there. CONFIRM raises.
   const tryBuild = (type, at) => () => {
     const why = whyNotBuild(state, 'A', type, at);
     if (why) { flashTicker(why); return; }
     UI.structMode = { type, at };
+    UI.structSites = validStructSites(state, type);
+    showSockets(state, UI.structSites.map(s => ({ cell: s.cell, kind: 'site' })));
     showStructPreview(state, 'A', type, at.cell);
     setConfirmVisible(true);
     UI.els.confirm.textContent = 'RAISE  ' + structureStats('A', type).cost + ' ⚇';

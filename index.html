@@ -86,6 +86,10 @@
   }
   .powbtn:disabled { opacity: 0.35; }
   .powbtn.armed { background: var(--gold); color: var(--ink); }
+  .powdesc {
+    display: block; font-size: 9px; font-style: italic; opacity: 0.75;
+    letter-spacing: 0; margin-top: 2px; max-width: 150px;
+  }
   #hand { display: flex; gap: 8px; justify-content: center; align-items: stretch; }
   .piece {
     pointer-events: auto; width: 74px; height: 84px; border-radius: 12px;
@@ -181,8 +185,8 @@
     <div id="buildmenu" class="hidden"></div>
     <div id="bottombar">
       <div id="powers">
-        <button class="powbtn" id="pow-tailwind">TAILWIND<br>3 &#10022;</button>
-        <button class="powbtn" id="pow-windwall">WIND WALL<br>4 &#10022;</button>
+        <button class="powbtn" id="pow-tailwind">TAILWIND · 3 &#10022;<span class="powdesc">whole fleet flies twice as fast, 15s</span></button>
+        <button class="powbtn" id="pow-windwall">WIND WALL · 4 &#10022;<span class="powdesc">tap a spot: damage there &minus;75%, 12s</span></button>
       </div>
       <div id="confirmrow">
         <button id="btn-confirm" class="hidden">CONFIRM</button>
@@ -192,8 +196,8 @@
       <div style="display:flex; gap:8px; justify-content:center;">
         <div id="hand"></div>
         <div id="handside">
-          <button class="sidebtn" id="btn-discard">DISCARD<br>1 &#10022;</button>
-          <button class="sidebtn" id="btn-tech">HYDROGEN<br>25&#9099; 6&#10022;</button>
+          <button class="sidebtn" id="btn-discard">DISCARD · 1 &#10022;<span class="powdesc">swap the selected piece</span></button>
+          <button class="sidebtn" id="btn-tech">HYDROGEN · 25&#9099; 6&#10022;<span class="powdesc">ships carry 2&times; ore, but are bigger targets</span></button>
         </div>
       </div>
     </div>
@@ -228,8 +232,8 @@
 
 // The world is sized in portrait screens: COLS x ROWS tiles of roughly
 // CELLS_X x CELLS_Z grid cells each. Bigger maps generate extra neutral
-// stepping-stone islands automatically. (2x3 by default; try 3x5.)
-const MAP_SIZE = { SCREEN_COLS: 2, SCREEN_ROWS: 3, CELLS_X: 6, CELLS_Z: 10 };
+// stepping-stone islands automatically.
+const MAP_SIZE = { SCREEN_COLS: 3, SCREEN_ROWS: 3, CELLS_X: 6, CELLS_Z: 10 };
 
 const CONFIG = Object.freeze({
 
@@ -317,7 +321,7 @@ const CONFIG = Object.freeze({
 
   Pieces: {
     HAND_SIZE: 3,
-    COST_SHORT: 2, COST_LONG: 3, COST_L: 3, COST_S: 3, COST_T: 5
+    COST_SHORT: 2, COST_LONG: 3, COST_L: 3, COST_S: 3, COST_T: 5, COST_X: 7
   },
 
   Structures: {
@@ -355,6 +359,7 @@ const CONFIG = Object.freeze({
   Adrift: {
     SPEED: 0.4, SEA_BEARING_MULT: 0.35,
     ATTRITION_PER_SECOND: 3, REBOUND_RADIUS: 1.0,
+    STRAND_GRACE: 4.0,           // idle on a dark island this long -> the mooring slips
     FALLBACK_TIMER: 20.0
   },
 
@@ -431,8 +436,11 @@ const CONFIG = Object.freeze({
     CAM_HEIGHT: 13.8, CAM_BACK: 6.1, CAM_FOV: 46,
     PAN_MARGIN: 1.0,
     TAP_DRAG_THRESHOLD_PX: 10,
+    TAP_SNAP_CELLS: 1.35,        // taps snap to the nearest socket/site within this
     SHROUD_OPACITY: 1.0,
-    WHITECAP_COUNT: 90, RIBBON_PARTICLES: 4,
+    WHITECAP_PER_CELLS: 1.6,   // one wind streak per this many water cells
+    RIBBON_PARTICLES: 4,
+    FOAM_OPACITY: 0.5,
     FRAYED_DESAT: 0.45
   }
 
@@ -827,22 +835,22 @@ function generateOnce(rng) {
     const chainRoles = ['greatTempleA', 'supplyA', 'neutralA', 'sacredP', 'chokepoint'];
     const chainIslands = chainRoles.map(r => byRole[r]);
     for (let i = 0; i < chainIslands.length - 1; i++) {
-      let guard = 4;
+      let guard = 9;
       while (minCellDist(chainIslands[i], chainIslands[i + 1]) > MG.FILLER_GAP_MAX && guard-- > 0) {
         const A = chainIslands[i], B = chainIslands[i + 1];
         const mid = [Math.round((A.center ? A.center[0] : blobCenter(A.cells)[0]) + (blobCenter(B.cells)[0] - blobCenter(A.cells)[0]) / 2),
                      Math.round((blobCenter(A.cells)[1] + blobCenter(B.cells)[1]) / 2)];
         let placed = null;
-        for (let attempt = 0; attempt < 10 && !placed; attempt++) {
-          const jx = mid[0] + Math.round((rng() * 2 - 1) * 2);
-          const jz = mid[1] + Math.round((rng() * 2 - 1) * 2);
+        for (let attempt = 0; attempt < 30 && !placed; attempt++) {
+          const jx = mid[0] + Math.round((rng() * 2 - 1) * 3);
+          const jz = mid[1] + Math.round((rng() * 2 - 1) * 3);
           if (!inBounds(jx, jz) || forbidden.has(cellKey(jx, jz))) continue;
           const size = MG.FILLER_SIZE_LO + Math.floor(rng() * (MG.FILLER_SIZE_HI - MG.FILLER_SIZE_LO + 1));
           const cells = growBlob(rng, [[jx, jz]], size, forbidden,
             [blobCenter(A.cells).map(Math.round), blobCenter(B.cells).map(Math.round)]);
           if (cells.length >= MG.FILLER_SIZE_LO) placed = cells;
         }
-        if (!placed) break;
+        if (!placed) { MAPGEN_STATS.fillerFail = (MAPGEN_STATS.fillerFail || 0) + 1; break; }
         const filler = { role: 'filler', side: 'N', cells: placed };
         islands.push(filler);
         forbidden = new Set([...forbidden, ...forbiddenAround(placed, SEP)]);
@@ -880,39 +888,48 @@ function generateOnce(rng) {
       }
       return false;
     };
+    // alignment deficit: 0 when some cell pair sits straight-3 apart (a
+    // legal two-water hop); grows with diagonal offset and distance error
+    const deficit = (A, B) => {
+      let best = Infinity;
+      for (const [ax, az] of A) for (const [bx, bz] of B) {
+        const dx = Math.abs(ax - bx), dz = Math.abs(az - bz);
+        const straightness = Math.min(dx, dz);
+        const distErr = Math.abs(Math.max(dx, dz) - 3);
+        best = Math.min(best, straightness * 2 + distErr);
+      }
+      return best;
+    };
     for (let ci = 0; ci < chainIslands.length - 1; ci++) {
       const I = chainIslands[ci], J = chainIslands[ci + 1];
-      let guard = 3;
-      while (!hopAligned(I.cells, J.cells) && guard-- > 0) {
-        // candidate: a cell adjacent to I (or J), exactly 3 straight from a
-        // cell of the partner, at least 3 (Chebyshev) from every other island
-        let added = false;
-        for (const [grown, partner] of [[I, J], [J, I]]) {
+      let guard = 8;
+      // grow an arm cell by cell, always picking the candidate that most
+      // reduces the pair's alignment deficit, until a clean hop exists
+      while (deficit(I.cells, J.cells) > 0 && guard-- > 0) {
+        let bestPick = null, bestScore = deficit(I.cells, J.cells);
+        for (const grown of [I, J]) {
+          const partner = grown === I ? J : I;
           const inGrown = new Set(grown.cells.map(([x, z]) => cellKey(x, z)));
-          outer:
-          for (const [px, pz] of partner.cells) {
-            for (const [dx, dz] of [[3, 0], [-3, 0], [0, 3], [0, -3]]) {
-              const cx = px + dx, cz = pz + dz;
-              if (!inBounds(cx, cz) || inGrown.has(cellKey(cx, cz))) continue;
-              const touches = DIRS4.some(([ex, ez]) => inGrown.has(cellKey(cx + ex, cz + ez)));
-              if (!touches) continue;
+          for (const [gx, gz] of grown.cells) {
+            for (const [ex, ez] of DIRS4) {
+              const cx = gx + ex, cz = gz + ez;
+              const k = cellKey(cx, cz);
+              if (!inBounds(cx, cz) || inGrown.has(k)) continue;
               let clear = true;
               for (const c of allCells()) {
                 if (c.isl === grown) continue;
-                const cheb = Math.max(Math.abs(c.x - cx), Math.abs(c.z - cz));
-                if (cheb < MG.MIN_ISLAND_SEPARATION) { clear = false; break; }
+                if (Math.max(Math.abs(c.x - cx), Math.abs(c.z - cz)) < MG.MIN_ISLAND_SEPARATION) { clear = false; break; }
               }
               if (!clear) continue;
-              grown.cells.push([cx, cz]);
-              added = true;
-              break outer;
+              const score = deficit([...grown.cells, [cx, cz]], partner.cells);
+              if (score < bestScore) { bestScore = score; bestPick = { grown, cell: [cx, cz] }; }
             }
           }
-          if (added) break;
         }
-        if (!added) break;
+        if (!bestPick) break;
+        bestPick.grown.cells.push(bestPick.cell);
       }
-      if (!hopAligned(I.cells, J.cells)) return null;   // chain unfixable; reroll
+      if (deficit(I.cells, J.cells) > 0) { MAPGEN_STATS.chainFail = (MAPGEN_STATS.chainFail || 0) + 1; return null; }   // chain unfixable; reroll
     }
   }
 
@@ -1371,7 +1388,7 @@ function newGameState(seedStr) {
 }
 
 // Piece deck: uniform draw over the five prototype shapes.
-const PIECE_TYPES = ['SHORT', 'LONG', 'L', 'S', 'T'];
+const PIECE_TYPES = ['SHORT', 'LONG', 'L', 'S', 'T', 'X'];
 let pieceRng = mulberry32(1);
 function resetPieceDeck(seed) { pieceRng = mulberry32(hashString(seed + ':pieces')); }
 function drawPiece() {
@@ -1380,7 +1397,7 @@ function drawPiece() {
 
 function pieceCost(type) {
   const P = CONFIG.Pieces;
-  return { SHORT: P.COST_SHORT, LONG: P.COST_LONG, L: P.COST_L, S: P.COST_S, T: P.COST_T }[type];
+  return { SHORT: P.COST_SHORT, LONG: P.COST_LONG, L: P.COST_L, S: P.COST_S, T: P.COST_T, X: P.COST_X }[type];
 }
 
 // Which island (if any) owns this cell.
@@ -1422,7 +1439,9 @@ const PIECE_TEMPLATES = {
   LONG:  [[[0, 0], [0, -1]], [[0, -1], [0, -2]], [[0, -2], [0, -3]]],
   L:     [[[0, 0], [0, -1]], [[0, -1], [0, -2]], [[0, -2], [-1, -2]]],
   S:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[-1, -1], [-1, -2]]],
-  T:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[0, -1], [1, -1]]]
+  T:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[0, -1], [1, -1]]],
+  // the Cross: a full four-way junction — three fresh nubs from one bind
+  X:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[0, -1], [1, -1]], [[0, -1], [0, -2]]]
 };
 
 // All distinct orientations (4 rotations x mirror) of a template.
@@ -1446,7 +1465,7 @@ function pieceOrientations(type) {
   return variants;
 }
 const PIECE_ORIENTATIONS = {};
-for (const t of ['SHORT', 'LONG', 'L', 'S', 'T']) PIECE_ORIENTATIONS[t] = pieceOrientations(t);
+for (const t of ['SHORT', 'LONG', 'L', 'S', 'T', 'X']) PIECE_ORIENTATIONS[t] = pieceOrientations(t);
 
 // ---- segment factory ----
 function makeSegment(state, side, a, b) {
@@ -2037,6 +2056,20 @@ function advanceOnPath(state, ent, dt) {
   return 'moving';
 }
 
+// Is this entity's mooring gone? True when it sits on an island the side's
+// network no longer conducts/supports, or floats with no supported segment
+// nearby. The Great Temple island is always home.
+function strandedHere(state, ent) {
+  const isl = islandAt(state, Math.round(ent.pos[0]), Math.round(ent.pos[1]));
+  if (isl) {
+    if (isl.role === (ent.owner === 'A' ? 'greatTempleA' : 'greatTempleP')) return false;
+    // an island is a safe mooring while ANY supported friendly route
+    // touches it (a neutral island being consecrated qualifies)
+    return !islandSupported(state, isl, ent.owner);
+  }
+  return !nearestSupportedCell(state, ent.owner, ent.pos[0], ent.pos[1], CONFIG.Adrift.REBOUND_RADIUS);
+}
+
 // nearest supported friendly segment within radius (for adrift rebound)
 function nearestSupportedCell(state, side, fx, fz, radius) {
   let best = null, bd = radius;
@@ -2126,6 +2159,14 @@ function updateHauler(state, h, dt) {
 
   switch (h.state) {
     case 'idle': {
+      // a balloon cannot hold its mooring where the network no longer
+      // reaches: stranded on a dark island, it slips loose and drifts
+      if (strandedHere(state, h)) {
+        h.strandedSince = h.strandedSince || state.time;
+        if (state.time - h.strandedSince > CONFIG.Adrift.STRAND_GRACE) enterAdrift(state, h);
+        break;
+      }
+      h.strandedSince = null;
       const target = pickCollectionTarget(state, side);
       if (target) {
         const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], target.cells);
@@ -2232,6 +2273,13 @@ function priestOnIsland(state, side, isl) {
 function updatePriest(state, side, dt) {
   const p = state.priests[side];
   if (!p) return;
+  // the priest's mooring slips too if he idles where the network is dark
+  if (p.state === 'idle' && strandedHere(state, p)) {
+    p.strandedSince = p.strandedSince || state.time;
+    if (state.time - p.strandedSince > CONFIG.Adrift.STRAND_GRACE) enterAdrift(state, p);
+  } else if (p.state === 'idle') {
+    p.strandedSince = null;
+  }
   switch (p.state) {
     case 'transit': {
       const r = advanceOnPath(state, p, dt);
@@ -2606,12 +2654,15 @@ function enemyMovers(state, side) {
   return out;
 }
 
-function enemySegments(state, side) {
+// Guns (towers, both sides) can cut any unsheltered enemy segment in range;
+// CRAFT are restricted to raw open ends. Waves cannot melt a road along its
+// length, but emplaced artillery keeps the lane-cutting verb — symmetric.
+function enemySegments(state, side, gunSource) {
   const foe = side === 'A' ? 'P' : 'A';
   const out = [];
   for (const s of state.segments.values()) {
     if (s.owner !== foe) continue;
-    if (!s.rawEnd) continue;                          // paths are attackable only at raw open ends
+    if (!gunSource && !s.rawEnd) continue;            // craft: raw open ends only
     if (foe === 'A' && !s.overWater) continue;       // island crossings untouchable (§33B.1)
     if (foe === 'P' && s.sheltered) continue;         // lee shore (§33B.2a)
     out.push(s);
@@ -2664,7 +2715,7 @@ function gunTick(state, st, dt) {
   }).map(m => ({ kind: 'mover', ref: m, side: m.owner, pos: m.pos }));
 
   const structTargets = enemyStructureTargets(state, side).filter(t => inRange(t.pos) && canSee(state, side, t.pos));
-  const segTargets = enemySegments(state, side)
+  const segTargets = enemySegments(state, side, true)
     .filter(s => inRange(segMid(s)) && canSee(state, side, segMid(s)))
     .map(s => ({ kind: 'segment', ref: s, side: s.owner, pos: segMid(s) }));
 
@@ -3906,6 +3957,54 @@ function buildMapMeshes(state) {
   R.whitecaps = [];
   R.trees = [];
   R.smoke = [];
+  R.foam = [];
+
+  // depth tint: bright turquoise shallows near every coast, darkening to
+  // deep water offshore — painted into the sea mesh's vertex colours
+  {
+    const dl = distToLandGrid(state.map);
+    const geo = R.seaMesh.geometry;
+    const pos = geo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const deep = new THREE.Color(0x6e9aa4);
+    const shallow = new THREE.Color(0xd8fff0);
+    const tmp = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const wx = pos.getX(i);
+      const wz = -pos.getY(i);            // plane is rotated -90deg about X
+      const gx = Math.round(wx + (CONFIG.Grid.WIDTH - 1) / 2);
+      const gz = Math.round(wz + (CONFIG.Grid.HEIGHT - 1) / 2);
+      let d = 5;
+      if (gx >= 0 && gx < CONFIG.Grid.WIDTH && gz >= 0 && gz < CONFIG.Grid.HEIGHT) d = dl[gz][gx];
+      const t = clamp((d - 0.6) / 3.2, 0, 1);
+      tmp.copy(shallow).lerp(deep, t);
+      colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    R.seaMesh.material.vertexColors = true;
+    R.seaMesh.material.needsUpdate = true;
+  }
+
+  // foam laps every coastline edge
+  {
+    const foamGeo = new THREE.PlaneGeometry(0.96, 0.13);
+    const rngFoam = mulberry32(hashString(state.seed + ':foam'));
+    for (const isl of state.map.islands) {
+      for (const [cx, cz] of isl.cells) {
+        for (const [dx, dz] of DIRS4) {
+          const nx = cx + dx, nz = cz + dz;
+          if (!inBounds(nx, nz) || state.map.land.has(cellKey(nx, nz))) continue;
+          const strip = new THREE.Mesh(foamGeo,
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
+          strip.rotation.x = -Math.PI / 2;
+          strip.rotation.z = dx !== 0 ? Math.PI / 2 : 0;
+          strip.position.set(worldX(cx) + dx * 0.56, 0.055, worldZ(cz) + dz * 0.56);
+          R.islandGroup.add(strip);
+          R.foam.push({ mesh: strip, phase: rngFoam() * Math.PI * 2, axis: dx !== 0 ? 'x' : 'z', dir: dx + dz });
+        }
+      }
+    }
+  }
 
   const cellGeo = new THREE.BoxGeometry(1.0, CONFIG.Render.ISLAND_HEIGHT, 1.0);
   const beachGeo = new THREE.BoxGeometry(1.12, CONFIG.Render.ISLAND_HEIGHT * 0.45, 1.12);
@@ -3982,11 +4081,14 @@ function buildMapMeshes(state) {
     }
   }
 
-  // whitecaps: the primary wind readout over water
+  // the wind map: persistent streaks over every stretch of water, always
+  // flowing with the live field — the sea IS the wind instrument
   const capMat = new THREE.MeshBasicMaterial({ color: 0xdff3f2, transparent: true, opacity: 0.0 });
-  const capGeo = new THREE.PlaneGeometry(0.34, 0.07);
+  const capGeo = new THREE.PlaneGeometry(0.6, 0.045);
   const rngCaps = mulberry32(hashString(state.seed + ':caps'));
-  for (let i = 0; i < CONFIG.Render.WHITECAP_COUNT; i++) {
+  const waterCells = CONFIG.Grid.WIDTH * CONFIG.Grid.HEIGHT - state.map.land.size;
+  const capCount = Math.round(waterCells / CONFIG.Render.WHITECAP_PER_CELLS);
+  for (let i = 0; i < capCount; i++) {
     let gx, gz, tries = 20;
     do { gx = rngCaps() * (CONFIG.Grid.WIDTH - 1); gz = rngCaps() * (CONFIG.Grid.HEIGHT - 1); }
     while (state.map.land.has(cellKey(Math.round(gx), Math.round(gz))) && tries-- > 0);
@@ -4227,7 +4329,14 @@ function renderTick(state, dt) {
     c.mesh.rotation.z = -Math.atan2(w.z, w.x);
     const onLand = state.map.land.has(cellKey(Math.round(c.gx), Math.round(c.gz)));
     const fade = Math.min(1, Math.min(c.life, 1.2));
-    c.mesh.material.opacity = onLand ? 0 : (0.16 + 0.16 * Math.sin(c.phase * Math.PI * 2)) * fade;
+    // steady, persistent visibility with only a gentle shimmer
+    c.mesh.material.opacity = onLand ? 0 : (0.22 + 0.07 * Math.sin(c.phase * Math.PI * 2)) * fade;
+  }
+  // foam breathes against the coasts
+  for (const f of R.foam) {
+    const pulse = Math.sin(state.time * 1.8 + f.phase);
+    f.mesh.material.opacity = CONFIG.Render.FOAM_OPACITY * (0.45 + 0.35 * pulse);
+    f.mesh.scale.y = 1 + 0.35 * pulse;
   }
   // trees lean into the wind
   for (const t of R.trees) {
@@ -4916,7 +5025,8 @@ function fxTick(state, dt) {
   R.fx = R.fx.filter(f => !f.dead);
 }
 
-// ghost of a structure while the player decides (RAISE / cancel)
+// ghost of a structure while the player decides (RAISE / cancel), with the
+// weapon's range drawn from that exact spot
 function showStructPreview(state, side, type, cell) {
   R.previewGroup.clear();
   const onLand = !!islandAt(state, cell[0], cell[1]);
@@ -4924,6 +5034,28 @@ function showStructPreview(state, side, type, cell) {
   const chassis = type === 'temple' || type === 'yard' ? new THREE.Group() : makeChassis(side, onLand, type);
   const payload = makePayload(side, type, null);
   grp.add(chassis, payload);
+  {
+    const stats = structureStats(side, type);
+    const r = type === 'temple' ? influenceRadius('temple')
+      : type === 'shield' ? CONFIG.Structures.SHIELD_COVER_RADIUS
+      : (stats.range || stats.radius || 0);
+    if (r > 0) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(r - 0.06, r, 48),
+        new THREE.MeshBasicMaterial({
+          color: type === 'temple' ? Palette.gold : 0xffd977,
+          transparent: true, opacity: 0.5, side: THREE.DoubleSide
+        }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.07;
+      const fill = new THREE.Mesh(
+        new THREE.CircleGeometry(r, 48),
+        new THREE.MeshBasicMaterial({ color: 0xffd977, transparent: true, opacity: 0.07, side: THREE.DoubleSide }));
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.y = 0.065;
+      grp.add(ring, fill);
+    }
+  }
   grp.traverse(o => {
     if (o.material) {
       o.material = o.material.clone();
@@ -5263,17 +5395,27 @@ function setConfirmVisible(v) {
 function onTap(state, e) {
   if (state.over) return;
   const cell = pickCell(e.clientX, e.clientY);
+  // float grid coords, for forgiving snap at this oblique perspective
+  const pt = pickGround(e.clientX, e.clientY);
+  const fx = pt ? pt.x + (CONFIG.Grid.WIDTH - 1) / 2 : -99;
+  const fz = pt ? pt.z + (CONFIG.Grid.HEIGHT - 1) / 2 : -99;
+  const SNAP = CONFIG.Render.TAP_SNAP_CELLS;
+
   if (UI.mode === 'placing') {
     if (!cell) { cancelPlacement(); refreshHand(state); return; }
-    // tapping the previewed piece cycles orientation
+    // tapping near the previewed piece cycles orientation
     if (UI.placements.length && UI.placements[UI.orient].segs.some(([a, b]) =>
-      (a[0] === cell[0] && a[1] === cell[1]) || (b[0] === cell[0] && b[1] === cell[1]))) {
+      dist2d(a[0], a[1], fx, fz) < 0.75 || dist2d(b[0], b[1], fx, fz) < 0.75)) {
       cyclePlacement(state);
       return;
     }
-    // tapping a lit socket
+    // snap to the nearest lit socket within reach
     const sockets = getSockets(state, 'A');
-    const hit = sockets.find(s => s.cell[0] === cell[0] && s.cell[1] === cell[1]);
+    let hit = null, hd = SNAP;
+    for (const s of sockets) {
+      const d = dist2d(s.cell[0], s.cell[1], fx, fz);
+      if (d < hd) { hd = d; hit = s; }
+    }
     if (hit && selectSocket(state, hit)) return;
     // elsewhere: cancel
     cancelPlacement();
@@ -5281,7 +5423,21 @@ function onTap(state, e) {
     return;
   }
   hideBuildMenu();
-  if (UI.structMode) { cancelPlacement(); return; }
+  if (UI.structMode) {
+    // tap another lit site to move the ghost there; elsewhere cancels
+    let site = null, sd = SNAP;
+    for (const s of (UI.structSites || [])) {
+      const d = dist2d(s.cell[0], s.cell[1], fx, fz);
+      if (d < sd) { sd = d; site = s; }
+    }
+    if (site) {
+      UI.structMode.at = site;
+      showStructPreview(state, 'A', UI.structMode.type, site.cell);
+      return;
+    }
+    cancelPlacement();
+    return;
+  }
   if (!cell) return;
 
   // armed Wind Wall aims at the tapped endpoint (§19.1)
@@ -5292,6 +5448,23 @@ function onTap(state, e) {
     return;
   }
   openContextMenu(state, cell);
+}
+
+// every legal site for a structure type, endpoints and plots alike
+function validStructSites(state, type) {
+  const sites = [];
+  for (const sock of getSockets(state, 'A')) {
+    if (sock.kind !== 'end') continue;
+    const at = { site: 'endpoint', cell: sock.cell.slice() };
+    if (!whyNotBuild(state, 'A', type, at)) sites.push(at);
+  }
+  for (const isl of state.map.islands) {
+    isl.plots.forEach((pl, i) => {
+      const at = { site: 'plot', islandId: isl.id, plotIdx: i, cell: [pl.x, pl.z] };
+      if (!whyNotBuild(state, 'A', type, at)) sites.push(at);
+    });
+  }
+  return sites;
 }
 
 // ---- build menu / island actions ----
@@ -5363,11 +5536,14 @@ function openContextMenu(state, cell) {
   const ident = identifyCell(state, cell);
   if (ident) flashTicker(ident);
 
-  // arming a build shows a ghost at the site; CONFIRM raises it (§8.1 rhythm)
+  // arming a build shows a ghost with its range, plus EVERY other legal
+  // site lit up — tap any of them to move the ghost there. CONFIRM raises.
   const tryBuild = (type, at) => () => {
     const why = whyNotBuild(state, 'A', type, at);
     if (why) { flashTicker(why); return; }
     UI.structMode = { type, at };
+    UI.structSites = validStructSites(state, type);
+    showSockets(state, UI.structSites.map(s => ({ cell: s.cell, kind: 'site' })));
     showStructPreview(state, 'A', type, at.cell);
     setConfirmVisible(true);
     UI.els.confirm.textContent = 'RAISE  ' + structureStats('A', type).cost + ' ⚇';

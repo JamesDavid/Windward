@@ -11,7 +11,9 @@ const PIECE_TEMPLATES = {
   LONG:  [[[0, 0], [0, -1]], [[0, -1], [0, -2]], [[0, -2], [0, -3]]],
   L:     [[[0, 0], [0, -1]], [[0, -1], [0, -2]], [[0, -2], [-1, -2]]],
   S:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[-1, -1], [-1, -2]]],
-  T:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[0, -1], [1, -1]]]
+  T:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[0, -1], [1, -1]]],
+  // the Cross: a full four-way junction — three fresh nubs from one bind
+  X:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[0, -1], [1, -1]], [[0, -1], [0, -2]]]
 };
 
 // All distinct orientations (4 rotations x mirror) of a template.
@@ -35,7 +37,7 @@ function pieceOrientations(type) {
   return variants;
 }
 const PIECE_ORIENTATIONS = {};
-for (const t of ['SHORT', 'LONG', 'L', 'S', 'T']) PIECE_ORIENTATIONS[t] = pieceOrientations(t);
+for (const t of ['SHORT', 'LONG', 'L', 'S', 'T', 'X']) PIECE_ORIENTATIONS[t] = pieceOrientations(t);
 
 // ---- segment factory ----
 function makeSegment(state, side, a, b) {

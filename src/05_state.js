@@ -63,7 +63,7 @@ function newGameState(seedStr) {
 }
 
 // Piece deck: uniform draw over the five prototype shapes.
-const PIECE_TYPES = ['SHORT', 'LONG', 'L', 'S', 'T'];
+const PIECE_TYPES = ['SHORT', 'LONG', 'L', 'S', 'T', 'X'];
 let pieceRng = mulberry32(1);
 function resetPieceDeck(seed) { pieceRng = mulberry32(hashString(seed + ':pieces')); }
 function drawPiece() {
@@ -72,7 +72,7 @@ function drawPiece() {
 
 function pieceCost(type) {
   const P = CONFIG.Pieces;
-  return { SHORT: P.COST_SHORT, LONG: P.COST_LONG, L: P.COST_L, S: P.COST_S, T: P.COST_T }[type];
+  return { SHORT: P.COST_SHORT, LONG: P.COST_LONG, L: P.COST_L, S: P.COST_S, T: P.COST_T, X: P.COST_X }[type];
 }
 
 // Which island (if any) owns this cell.

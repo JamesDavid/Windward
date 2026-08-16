@@ -6,8 +6,8 @@
 
 // The world is sized in portrait screens: COLS x ROWS tiles of roughly
 // CELLS_X x CELLS_Z grid cells each. Bigger maps generate extra neutral
-// stepping-stone islands automatically. (2x3 by default; try 3x5.)
-const MAP_SIZE = { SCREEN_COLS: 2, SCREEN_ROWS: 3, CELLS_X: 6, CELLS_Z: 10 };
+// stepping-stone islands automatically.
+const MAP_SIZE = { SCREEN_COLS: 3, SCREEN_ROWS: 3, CELLS_X: 6, CELLS_Z: 10 };
 
 const CONFIG = Object.freeze({
 
@@ -95,7 +95,7 @@ const CONFIG = Object.freeze({
 
   Pieces: {
     HAND_SIZE: 3,
-    COST_SHORT: 2, COST_LONG: 3, COST_L: 3, COST_S: 3, COST_T: 5
+    COST_SHORT: 2, COST_LONG: 3, COST_L: 3, COST_S: 3, COST_T: 5, COST_X: 7
   },
 
   Structures: {
@@ -133,6 +133,7 @@ const CONFIG = Object.freeze({
   Adrift: {
     SPEED: 0.4, SEA_BEARING_MULT: 0.35,
     ATTRITION_PER_SECOND: 3, REBOUND_RADIUS: 1.0,
+    STRAND_GRACE: 4.0,           // idle on a dark island this long -> the mooring slips
     FALLBACK_TIMER: 20.0
   },
 
@@ -209,8 +210,11 @@ const CONFIG = Object.freeze({
     CAM_HEIGHT: 13.8, CAM_BACK: 6.1, CAM_FOV: 46,
     PAN_MARGIN: 1.0,
     TAP_DRAG_THRESHOLD_PX: 10,
+    TAP_SNAP_CELLS: 1.35,        // taps snap to the nearest socket/site within this
     SHROUD_OPACITY: 1.0,
-    WHITECAP_COUNT: 90, RIBBON_PARTICLES: 4,
+    WHITECAP_PER_CELLS: 1.6,   // one wind streak per this many water cells
+    RIBBON_PARTICLES: 4,
+    FOAM_OPACITY: 0.5,
     FRAYED_DESAT: 0.45
   }
 

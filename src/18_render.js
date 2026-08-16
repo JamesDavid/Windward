@@ -161,6 +161,54 @@ function buildMapMeshes(state) {
   R.whitecaps = [];
   R.trees = [];
   R.smoke = [];
+  R.foam = [];
+
+  // depth tint: bright turquoise shallows near every coast, darkening to
+  // deep water offshore — painted into the sea mesh's vertex colours
+  {
+    const dl = distToLandGrid(state.map);
+    const geo = R.seaMesh.geometry;
+    const pos = geo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const deep = new THREE.Color(0x6e9aa4);
+    const shallow = new THREE.Color(0xd8fff0);
+    const tmp = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const wx = pos.getX(i);
+      const wz = -pos.getY(i);            // plane is rotated -90deg about X
+      const gx = Math.round(wx + (CONFIG.Grid.WIDTH - 1) / 2);
+      const gz = Math.round(wz + (CONFIG.Grid.HEIGHT - 1) / 2);
+      let d = 5;
+      if (gx >= 0 && gx < CONFIG.Grid.WIDTH && gz >= 0 && gz < CONFIG.Grid.HEIGHT) d = dl[gz][gx];
+      const t = clamp((d - 0.6) / 3.2, 0, 1);
+      tmp.copy(shallow).lerp(deep, t);
+      colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    R.seaMesh.material.vertexColors = true;
+    R.seaMesh.material.needsUpdate = true;
+  }
+
+  // foam laps every coastline edge
+  {
+    const foamGeo = new THREE.PlaneGeometry(0.96, 0.13);
+    const rngFoam = mulberry32(hashString(state.seed + ':foam'));
+    for (const isl of state.map.islands) {
+      for (const [cx, cz] of isl.cells) {
+        for (const [dx, dz] of DIRS4) {
+          const nx = cx + dx, nz = cz + dz;
+          if (!inBounds(nx, nz) || state.map.land.has(cellKey(nx, nz))) continue;
+          const strip = new THREE.Mesh(foamGeo,
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
+          strip.rotation.x = -Math.PI / 2;
+          strip.rotation.z = dx !== 0 ? Math.PI / 2 : 0;
+          strip.position.set(worldX(cx) + dx * 0.56, 0.055, worldZ(cz) + dz * 0.56);
+          R.islandGroup.add(strip);
+          R.foam.push({ mesh: strip, phase: rngFoam() * Math.PI * 2, axis: dx !== 0 ? 'x' : 'z', dir: dx + dz });
+        }
+      }
+    }
+  }
 
   const cellGeo = new THREE.BoxGeometry(1.0, CONFIG.Render.ISLAND_HEIGHT, 1.0);
   const beachGeo = new THREE.BoxGeometry(1.12, CONFIG.Render.ISLAND_HEIGHT * 0.45, 1.12);
@@ -237,11 +285,14 @@ function buildMapMeshes(state) {
     }
   }
 
-  // whitecaps: the primary wind readout over water
+  // the wind map: persistent streaks over every stretch of water, always
+  // flowing with the live field — the sea IS the wind instrument
   const capMat = new THREE.MeshBasicMaterial({ color: 0xdff3f2, transparent: true, opacity: 0.0 });
-  const capGeo = new THREE.PlaneGeometry(0.34, 0.07);
+  const capGeo = new THREE.PlaneGeometry(0.6, 0.045);
   const rngCaps = mulberry32(hashString(state.seed + ':caps'));
-  for (let i = 0; i < CONFIG.Render.WHITECAP_COUNT; i++) {
+  const waterCells = CONFIG.Grid.WIDTH * CONFIG.Grid.HEIGHT - state.map.land.size;
+  const capCount = Math.round(waterCells / CONFIG.Render.WHITECAP_PER_CELLS);
+  for (let i = 0; i < capCount; i++) {
     let gx, gz, tries = 20;
     do { gx = rngCaps() * (CONFIG.Grid.WIDTH - 1); gz = rngCaps() * (CONFIG.Grid.HEIGHT - 1); }
     while (state.map.land.has(cellKey(Math.round(gx), Math.round(gz))) && tries-- > 0);
@@ -482,7 +533,14 @@ function renderTick(state, dt) {
     c.mesh.rotation.z = -Math.atan2(w.z, w.x);
     const onLand = state.map.land.has(cellKey(Math.round(c.gx), Math.round(c.gz)));
     const fade = Math.min(1, Math.min(c.life, 1.2));
-    c.mesh.material.opacity = onLand ? 0 : (0.16 + 0.16 * Math.sin(c.phase * Math.PI * 2)) * fade;
+    // steady, persistent visibility with only a gentle shimmer
+    c.mesh.material.opacity = onLand ? 0 : (0.22 + 0.07 * Math.sin(c.phase * Math.PI * 2)) * fade;
+  }
+  // foam breathes against the coasts
+  for (const f of R.foam) {
+    const pulse = Math.sin(state.time * 1.8 + f.phase);
+    f.mesh.material.opacity = CONFIG.Render.FOAM_OPACITY * (0.45 + 0.35 * pulse);
+    f.mesh.scale.y = 1 + 0.35 * pulse;
   }
   // trees lean into the wind
   for (const t of R.trees) {

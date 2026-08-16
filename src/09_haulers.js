@@ -98,6 +98,20 @@ function advanceOnPath(state, ent, dt) {
   return 'moving';
 }
 
+// Is this entity's mooring gone? True when it sits on an island the side's
+// network no longer conducts/supports, or floats with no supported segment
+// nearby. The Great Temple island is always home.
+function strandedHere(state, ent) {
+  const isl = islandAt(state, Math.round(ent.pos[0]), Math.round(ent.pos[1]));
+  if (isl) {
+    if (isl.role === (ent.owner === 'A' ? 'greatTempleA' : 'greatTempleP')) return false;
+    // an island is a safe mooring while ANY supported friendly route
+    // touches it (a neutral island being consecrated qualifies)
+    return !islandSupported(state, isl, ent.owner);
+  }
+  return !nearestSupportedCell(state, ent.owner, ent.pos[0], ent.pos[1], CONFIG.Adrift.REBOUND_RADIUS);
+}
+
 // nearest supported friendly segment within radius (for adrift rebound)
 function nearestSupportedCell(state, side, fx, fz, radius) {
   let best = null, bd = radius;
@@ -187,6 +201,14 @@ function updateHauler(state, h, dt) {
 
   switch (h.state) {
     case 'idle': {
+      // a balloon cannot hold its mooring where the network no longer
+      // reaches: stranded on a dark island, it slips loose and drifts
+      if (strandedHere(state, h)) {
+        h.strandedSince = h.strandedSince || state.time;
+        if (state.time - h.strandedSince > CONFIG.Adrift.STRAND_GRACE) enterAdrift(state, h);
+        break;
+      }
+      h.strandedSince = null;
       const target = pickCollectionTarget(state, side);
       if (target) {
         const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], target.cells);
@@ -293,6 +315,13 @@ function priestOnIsland(state, side, isl) {
 function updatePriest(state, side, dt) {
   const p = state.priests[side];
   if (!p) return;
+  // the priest's mooring slips too if he idles where the network is dark
+  if (p.state === 'idle' && strandedHere(state, p)) {
+    p.strandedSince = p.strandedSince || state.time;
+    if (state.time - p.strandedSince > CONFIG.Adrift.STRAND_GRACE) enterAdrift(state, p);
+  } else if (p.state === 'idle') {
+    p.strandedSince = null;
+  }
   switch (p.state) {
     case 'transit': {
       const r = advanceOnPath(state, p, dt);
