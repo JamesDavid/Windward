@@ -379,6 +379,7 @@ const MENU_DESC = {
   yard: 'lets you build 2 more haulers', priest: 'must stand here to found temples',
   hauler: 'carries mined ore home',
   salvage: 'reclaim it: half its cost back',
+  hydrogen: 'whole fleet carries 2×, but burns easier',
   salvageseg: 'unbind one segment; branches beyond may fray'
 };
 
@@ -412,8 +413,13 @@ function identifyCell(state, cell) {
   const st = structureAt(state, cell[0], cell[1]);
   if (st) {
     const who = st.owner === 'A' ? '' : 'HIS ';
+    let extra = '';
+    if (st.type === 'yard' && st.owner === 'A') {
+      const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
+      extra = ' · FLEET ' + fleet + '/' + fleetCap(state, 'A');
+    }
     return who + (STRUCT_NAMES[st.type] || st.type.toUpperCase()) +
-      (st.buildProgress < 1 ? ' — RAISING' : '') + ' · ' + Math.ceil(st.hp) + ' HP';
+      (st.buildProgress < 1 ? ' — RAISING' : '') + ' · ' + Math.ceil(st.hp) + ' HP' + extra;
   }
   const isl = islandAt(state, cell[0], cell[1]);
   if (isl) {
@@ -475,10 +481,31 @@ function openContextMenu(state, cell, tapX, tapY) {
   const ident = identifyCell(state, cell);
   if (ident) flashTicker(ident);
 
+  // a mooring yard gets its own dialog: fleet actions only, no pieces
+  const yardHere = structureAt(state, x, z);
+  const yardMenu = !!(yardHere && yardHere.owner === 'A' && yardHere.type === 'yard' &&
+    yardHere.buildProgress >= 1 && yardHere.hp > 0);
+  if (yardMenu) {
+    const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
+    const cap = fleetCap(state, 'A');
+    options.push(menuButton('BUILD<br>HAULER<br><i style="font-size:9px">' + fleet + ' / ' + cap + ' MOORED</i>',
+      CONFIG.Hauler.COST, () => {
+        if (!buyHauler(state, 'A')) flashTicker('FLEET AT CAPACITY');
+      }, fleet >= cap ? 'FLEET AT CAPACITY — RAISE ANOTHER YARD' :
+        (state.res.A.supply < CONFIG.Hauler.COST ? 'NOT ENOUGH SUPPLY' : null), 'hauler'));
+    if (!state.hydrogen.A) {
+      const T = CONFIG.Tech;
+      const canH = state.res.A.supply >= T.HYDROGEN_COST_SUPPLY && state.res.A.favor >= T.HYDROGEN_COST_FAVOR;
+      options.push(menuButton('UPGRADE<br>HYDROGEN<b>' + T.HYDROGEN_COST_SUPPLY + ' ⚇ + ' + T.HYDROGEN_COST_FAVOR + ' ✦</b>', 0, () => {
+        if (buyHydrogen(state, 'A')) flashTicker('THE FLEET REFITS TO HYDROGEN');
+      }, canH ? null : 'NEEDS ' + T.HYDROGEN_COST_SUPPLY + ' ⚇ AND ' + T.HYDROGEN_COST_FAVOR + ' ✦', 'hydrogen'));
+    }
+  }
+
   // pieces from the hand that can be laid from this spot — appended LAST,
   // so with the menu anchored above the tap they sit closest to the thumb
   const pieceOptions = [];
-  const socketHere = getSockets(state, 'A').find(s => s.cell[0] === x && s.cell[1] === z);
+  const socketHere = yardMenu ? null : getSockets(state, 'A').find(s => s.cell[0] === x && s.cell[1] === z);
   if (socketHere) {
     const offered = new Set();
     state.hand.forEach((type, i) => {
@@ -520,6 +547,7 @@ function openContextMenu(state, cell, tapX, tapY) {
     UI.els.confirm.textContent = 'RAISE  ' + structureStats('A', type).cost + ' ⚇';
   };
 
+  if (!yardMenu)
   if (!isl && deg === 1 && !structureAt(state, x, z)) {
     const at = { site: 'endpoint', cell };
     for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN']]) {

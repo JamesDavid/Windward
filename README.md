@@ -1,4 +1,4 @@
-# WINDWARD — Archipelago of the Gods
+# WINDWARD — The Winds Inherit the Waves
 
 A portrait mobile web prototype for the Meta Horizon Creator Competition (Tower Defense & Strategy).
 
@@ -87,7 +87,17 @@ Poseidon builds his own lanes piece by visible piece from sockets of his own net
 
 <img src="screenshots/endgame.png" width="300">
 
-### 8. Tuned by simulation *(done)*
+### 8. Salvage, bounty, and solid defenses *(done — player-directed, NetStorm-inspired)*
+
+Nothing is forever-spent: **salvage** any of your structures for half its cost back, or unbind route segments tip-first for a Favor each — no explosion, but the support graph recalculates, so reclaiming a load-bearing tower frays everything beyond it. **Death pays**: a downed enemy craft grants Favor by class (adrift losses count — cutting the lane under a ship *is* a kill), and combat-killed structures pay a quarter of their cost. And **defenses are solid**: guns, screens, and masts accept no onward path, and standing on a route they block transit for everyone — including your own ships, which slip loose and drift if a new tower seals the road under them. Towers cap; temples junction; plan accordingly.
+
+### 9. The airfield *(done — player-directed)*
+
+The Mooring Yard is a working airfield: an open hangar, a mooring mast with a fluttering pennant, and **fleet-status dots** above the roof — one per mooring the fleet cap allows, lit while a hauler holds it. Tapping a yard opens its own dialog: build a hauler (with the moored count in the button), upgrade the whole fleet from hot air to hydrogen, or salvage the yard. Hot-air haulers are now true **free balloons** — round envelope, wicker basket slung on cables — and their burners flare on each ship's own rhythm, lighting the envelope from within as fire heats the air.
+
+<img src="screenshots/yard_dialog.png" width="300"> <img src="screenshots/yard_field.png" width="300">
+
+### 10. Tuned by simulation *(done)*
 
 Three parameter-sweep harnesses (`test/opt_favor.js`, `opt_income.js`, `opt_capacity.js`) run scripted full matches across seeds and score match quality — arc length, pressure survived, engagement, economies alive, no degenerate spam. They set the flat Favor price of route pieces, the temple-income baseline and divisor, and hauler capacity (12/24 — larger loads flood the economy now that every connected island mines). The match video above is the reference seed those sweeps optimise.
 

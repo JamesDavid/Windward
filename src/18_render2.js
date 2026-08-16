@@ -120,14 +120,30 @@ function makePayload(side, type, stats) {
       break;
     }
     case 'yard': {
-      for (const dx of [-0.2, 0.2]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 0.06), dark);
-        post.position.set(dx, 0.24, 0);
-        grp.add(post);
+      // a working airfield: open hangar shed + mooring mast with pennant.
+      // Fleet-status dots ride above the roof (synced live elsewhere).
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.36), dark);
+      floor.position.y = 0.05;
+      for (const dz of [-0.16, 0.16]) {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.04), dark);
+        wall.position.set(0, 0.15, dz);
+        grp.add(wall);
       }
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.05, 0.08), trim);
-      beam.position.y = 0.44;
-      grp.add(beam);
+      const roof = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.2, 0.2, 0.5, 10, 1, false, Math.PI, Math.PI), trim);
+      roof.rotation.z = Math.PI / 2;
+      roof.position.y = 0.23;
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.62, 6), dark);
+      mast.position.set(0.36, 0.31, 0);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 5), trim);
+      cap.position.set(0.36, 0.63, 0);
+      const pennant = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.16, 0.07),
+        new THREE.MeshBasicMaterial({ color: side === 'A' ? Palette.gold : Palette.poseidonGlow, side: THREE.DoubleSide }));
+      pennant.position.set(0.46, 0.57, 0);
+      grp.add(floor, roof, mast, cap, pennant);
+      grp.userData.pennant = pennant;
+      grp.scale.setScalar(1.35);   // a working airfield reads at map zoom
       break;
     }
   }
@@ -183,6 +199,32 @@ function syncStructures(state) {
       const firing = state.time - (st.lastFired || -99) < 0.6;
       rec.payload.rotation.y = state.time * (firing ? 7 : 1.1);
     }
+    // mooring yard extras: fluttering pennant + fleet-status dots above
+    // the roof — one dot per mooring the fleet cap allows, lit while a
+    // hauler holds it (player's own yards only; his fleet stays foggy)
+    if (st.type === 'yard' && rec.payload.userData.pennant) {
+      rec.payload.userData.pennant.rotation.y = 0.4 * Math.sin(state.time * 3 + st.id);
+    }
+    if (st.type === 'yard' && st.owner === 'A' && st.buildProgress >= 1) {
+      const cap = fleetCap(state, 'A');
+      const alive = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
+      const key = cap * 100 + alive;
+      if (rec.dotKey !== key) {
+        rec.dotKey = key;
+        if (rec.dots) rec.grp.remove(rec.dots);
+        const dots = new THREE.Group();
+        for (let i = 0; i < cap; i++) {
+          const lit = i < alive;
+          const d = new THREE.Mesh(
+            new THREE.SphereGeometry(0.035, 6, 5),
+            new THREE.MeshBasicMaterial({ color: lit ? Palette.gold : 0x3a4148, transparent: true, opacity: lit ? 1 : 0.55 }));
+          d.position.set((i - (cap - 1) / 2) * 0.1, 0.52, 0);
+          dots.add(d);
+        }
+        rec.grp.add(dots);
+        rec.dots = dots;
+      }
+    }
     // burning: a wounded structure smokes and burns until it dies
     const hurt = st.buildProgress >= 1 && st.hp < st.maxHp * 0.45;
     if (hurt && !rec.flames) {
@@ -236,10 +278,48 @@ function syncStructures(state) {
 }
 
 // ---- movers: haulers, priests, wave craft ----
-function makeMoverMesh(m) {
+function makeMoverMesh(m, hydrogen) {
   const grp = new THREE.Group();
   if (m.owner === 'A') {
     const isPriest = m.kind === 'priest';
+    if (!isPriest && !hydrogen) {
+      // hot-air hauler: a FREE BALLOON — round envelope, wicker basket
+      // slung on cables, and a burner that flares as the air is heated
+      const env = new THREE.Mesh(
+        new THREE.SphereGeometry(0.19, 12, 10),
+        new THREE.MeshLambertMaterial({ color: Palette.ivory }));
+      env.scale.set(1, 1.18, 1);
+      env.position.y = 0.4;
+      const throat = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.05, 0.08, 8),
+        new THREE.MeshLambertMaterial({ color: Palette.gold }));
+      throat.position.y = 0.2;
+      const basket = new THREE.Mesh(
+        new THREE.BoxGeometry(0.11, 0.08, 0.11),
+        new THREE.MeshLambertMaterial({ color: Palette.bronze }));
+      basket.position.y = 0.04;
+      for (const [cx, cz] of [[-0.045, -0.045], [0.045, -0.045], [-0.045, 0.045], [0.045, 0.045]]) {
+        const cable = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.006, 0.006, 0.13, 3),
+          new THREE.MeshBasicMaterial({ color: 0x6b5a3a }));
+        cable.position.set(cx, 0.13, cz);
+        grp.add(cable);
+      }
+      const burner = new THREE.Mesh(
+        new THREE.ConeGeometry(0.045, 0.12, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffa63f, transparent: true, opacity: 0.15 }));
+      burner.position.y = 0.14;
+      const crate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.13, 0.1, 0.13),
+        new THREE.MeshLambertMaterial({ color: Palette.gold }));
+      crate.position.y = -0.09;
+      crate.visible = false;
+      grp.add(env, throat, basket, burner, crate);
+      grp.userData.crate = crate;
+      grp.userData.burner = burner;
+      grp.userData.env = env;
+      return grp;
+    }
     const env = new THREE.Mesh(
       new THREE.SphereGeometry(isPriest ? 0.24 : 0.18, 10, 8),
       new THREE.MeshLambertMaterial({ color: isPriest ? Palette.gold : Palette.ivory }));
@@ -251,7 +331,7 @@ function makeMoverMesh(m) {
     gond.position.y = 0.02;
     grp.add(env, gond);
     if (!isPriest) {
-      // equator band + a slung ore crate, shown while carrying cargo
+      // hydrogen zeppelin: equator band + slung ore crate while carrying
       const band = new THREE.Mesh(
         new THREE.TorusGeometry(0.185, 0.02, 6, 14),
         new THREE.MeshLambertMaterial({ color: Palette.bronze }));
@@ -314,11 +394,19 @@ function syncMovers(state) {
 
   for (const m of movers) {
     seen.add(m.id);
+    const hyd = m.kind === 'hauler' && m.owner === 'A' && !!state.hydrogen.A;
     let rec = R.craftMeshes.get(m.id);
+    if (rec && m.kind === 'hauler' && m.owner === 'A' && rec.hyd !== hyd) {
+      // the hydrogen upgrade refits the whole fleet: rebuild the mesh
+      R.scene.remove(rec.grp);
+      if (rec.driftLine) R.scene.remove(rec.driftLine);
+      R.craftMeshes.delete(m.id);
+      rec = null;
+    }
     if (!rec) {
-      const grp = makeMoverMesh(m);
+      const grp = makeMoverMesh(m, hyd);
       R.scene.add(grp);
-      rec = { grp, lastPos: m.pos.slice() };
+      rec = { grp, lastPos: m.pos.slice(), hyd };
       R.craftMeshes.set(m.id, rec);
     }
     // fog: enemy movers need live vision (§14B.2)
@@ -357,6 +445,14 @@ function syncMovers(state) {
     }
     // ore crate visible while carrying cargo (mining made legible)
     if (rec.grp.userData.crate) rec.grp.userData.crate.visible = (m.cargo || 0) > 0;
+    // hot-air burner: periodic flares light the envelope from within as
+    // fire heats the air — each ship on its own rhythm
+    if (rec.grp.userData.burner) {
+      const f = Math.pow(Math.max(0, Math.sin(state.time * 1.4 + m.id * 2.1)), 8);
+      rec.grp.userData.burner.material.opacity = 0.12 + 0.85 * f;
+      rec.grp.userData.burner.scale.setScalar(0.8 + 0.5 * f);
+      rec.grp.userData.env.material.emissive.setRGB(0.55 * f, 0.3 * f, 0.08 * f);
+    }
     // hydrogen fleets fly visibly larger envelopes (§33E)
     if (m.kind === 'hauler' && m.owner === 'A') {
       const scale = state.hydrogen.A ? 1.3 : 1.0;
