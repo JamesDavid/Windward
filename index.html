@@ -238,6 +238,7 @@
   </div>
 </div>
 <script src="vendor/three.min.js"></script>
+<script src="vendor/Water.js"></script>
 <script>
 
 // ============================================================
@@ -4033,6 +4034,42 @@ function makeSeaTexture() {
   return tex;
 }
 
+// A tileable NORMAL map for the real water shader, generated at boot —
+// layered periodic swells; gradients become per-pixel normals. Zero
+// image assets: the shader is three.js's own (vendor/Water.js), the
+// texture is ours.
+function makeWaterNormals() {
+  const S = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(S, S);
+  const height = (u, v) =>
+    Math.sin(u * 3 + Math.sin(v * 2) * 1.7) * 0.5 +
+    Math.sin(v * 5 + Math.sin(u * 4) * 1.1) * 0.32 +
+    Math.sin((u + v) * 8 + Math.sin(u * 2) * 0.9) * 0.2 +
+    Math.sin((u * 2 - v * 3)) * 0.14;
+  const TAU = Math.PI * 2;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const u = (x / S) * TAU, v = (y / S) * TAU;
+      const e = TAU / S;
+      const hx = height(u + e, v) - height(u - e, v);
+      const hy = height(u, v + e) - height(u, v - e);
+      // pack the gradient as a tangent-space normal
+      const nx = -hx * 2.2, ny = -hy * 2.2, nz = 1;
+      const len = Math.hypot(nx, ny, nz);
+      const i = (y * S + x) * 4;
+      img.data[i] = ((nx / len) * 0.5 + 0.5) * 255;
+      img.data[i + 1] = ((ny / len) * 0.5 + 0.5) * 255;
+      img.data[i + 2] = ((nz / len) * 0.5 + 0.5) * 255;
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(cv);
+}
+
 function initRenderer() {
   const canvas = document.getElementById('gl');
   R.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -4050,25 +4087,50 @@ function initRenderer() {
   R.scene.add(sun);
   R.scene.add(new THREE.HemisphereLight(0xbcdce4, 0x27453a, 0.5));
 
-  // the Aegean — ripple texture doubling as a bump map for sun glints,
-  // and a gently swelling surface, all streaming with the wind
-  const seaTex = makeSeaTexture();
-  seaTex.wrapS = seaTex.wrapT = THREE.RepeatWrapping;
-  seaTex.repeat.set(CONFIG.Grid.WIDTH * 0.7, CONFIG.Grid.HEIGHT * 0.55);
-  const seaGeo = new THREE.PlaneGeometry(CONFIG.Grid.WIDTH * 4, CONFIG.Grid.HEIGHT * 3, 40, 60);
-  const sea = new THREE.Mesh(
-    seaGeo,
-    new THREE.MeshPhongMaterial({
-      color: 0xaad4d8, map: seaTex,
-      bumpMap: seaTex, bumpScale: 0.2,
-      specular: 0x2e5560, shininess: 22
-    })
-  );
-  sea.rotation.x = -Math.PI / 2;
-  sea.position.y = 0;
-  R.scene.add(sea);
-  R.seaTex = seaTex;
-  R.seaMesh = sea;
+  // the Aegean. Preferred: three.js's own Water shader (vendored, MIT —
+  // rules allow rights-cleared libraries) with OUR generated normal map:
+  // live planar reflections, sun glare, per-pixel waves. Fallback if the
+  // vendor file is absent: the original Phong bump sea.
+  if (THREE.Water) {
+    const normals = makeWaterNormals();
+    normals.wrapS = normals.wrapT = THREE.RepeatWrapping;
+    const sea = new THREE.Water(
+      new THREE.PlaneGeometry(CONFIG.Grid.WIDTH * 4, CONFIG.Grid.HEIGHT * 3),
+      {
+        textureWidth: 512, textureHeight: 512,
+        waterNormals: normals,
+        sunDirection: new THREE.Vector3(6, 14, 4).normalize(),
+        sunColor: 0xfff2dd,
+        waterColor: 0x1e7b8a,
+        distortionScale: 3.2,
+        fog: true
+      });
+    sea.rotation.x = -Math.PI / 2;
+    sea.position.y = 0;
+    sea.material.uniforms.size.value = 4;   // wave tiling across the plane
+    R.scene.add(sea);
+    R.seaMesh = sea;
+    R.seaTex = null;
+    R.waterShader = true;
+  } else {
+    const seaTex = makeSeaTexture();
+    seaTex.wrapS = seaTex.wrapT = THREE.RepeatWrapping;
+    seaTex.repeat.set(CONFIG.Grid.WIDTH * 0.7, CONFIG.Grid.HEIGHT * 0.55);
+    const seaGeo = new THREE.PlaneGeometry(CONFIG.Grid.WIDTH * 4, CONFIG.Grid.HEIGHT * 3, 40, 60);
+    const sea = new THREE.Mesh(
+      seaGeo,
+      new THREE.MeshPhongMaterial({
+        color: 0xaad4d8, map: seaTex,
+        bumpMap: seaTex, bumpScale: 0.2,
+        specular: 0x2e5560, shininess: 22
+      })
+    );
+    sea.rotation.x = -Math.PI / 2;
+    sea.position.y = 0;
+    R.scene.add(sea);
+    R.seaTex = seaTex;
+    R.seaMesh = sea;
+  }
 
   R.socketGroup = new THREE.Group();
   R.previewGroup = new THREE.Group();
@@ -4137,8 +4199,9 @@ function buildMapMeshes(state) {
   R.foam = [];
 
   // depth tint: bright turquoise shallows near every coast, darkening to
-  // deep water offshore — painted into the sea mesh's vertex colours
-  {
+  // deep water offshore — painted into the sea mesh's vertex colours.
+  // (The real water shader owns its own colour; skip when active.)
+  if (!R.waterShader) {
     const dl = distToLandGrid(state.map);
     const geo = R.seaMesh.geometry;
     const pos = geo.attributes.position;
@@ -4489,6 +4552,13 @@ function refreshInfluenceView(state) {
 
 // ---------------- per-frame ----------------
 function renderTick(state, dt) {
+  // the real water runs on shader time, paced by the wind under the camera
+  if (R.waterShader) {
+    const [cgx, cgz] = gridFromWorld(R.camTarget ? R.camTarget.x : 0, R.camTarget ? R.camTarget.z : 0);
+    const w = state.wind.at(clamp(cgx, 0, CONFIG.Grid.WIDTH - 1), clamp(cgz, 0, CONFIG.Grid.HEIGHT - 1));
+    const speed = 0.35 + Math.hypot(w.x, w.z) * 0.5;
+    R.seaMesh.material.uniforms.time.value += dt * speed;
+  }
   // the sea itself streams with the wind under the camera
   if (R.seaTex) {
     const [cgx, cgz] = gridFromWorld(R.camTarget ? R.camTarget.x : 0, R.camTarget ? R.camTarget.z : 0);
