@@ -22,7 +22,7 @@ const CHASSIS_STYLE = {
 
 function makeChassis(side, onLand, type) {
   const grp = new THREE.Group();
-  if (side === 'A') {
+  if (airSide(side)) {
     if (type === 'shield') {
       // a grounded bronze pylon — the shield does not fly
       const pylon = new THREE.Mesh(

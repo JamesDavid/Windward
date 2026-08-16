@@ -11,7 +11,7 @@ const TUTORIAL_SCRIPT = [
   { at: 1, key: 'tu1', text: 'Tap a glowing spot on your island and lay path pieces — pathways are how everything moves.' },
   { at: 10, key: 'tu2', text: 'Every island your pathways touch is mined. Haulers carry the ore home — that is your coin ⚇.' },
   { at: 20, key: 'tu3', text: 'Coin builds guns, shields, yards and ships. Send your priest to an island to consecrate a temple and claim it.' },
-  { at: 30, key: 'tu4', text: 'Temples earn Favor ✦ — your god\'s regard. Favor lays pathways and buys divine aid: Tailwind, the Wind Wall.' },
+  { at: 30, key: 'tu4', text: 'Temples earn Favor ✦ — your god\'s regard. Favor lays pathways and buys divine aid: speed for the fleet, a wall against harm.' },
   { at: 40, key: 'tu5', text: 'Cap open path ends with guns: severed paths unbind. The first tide is nearly here.' }
 ];
 

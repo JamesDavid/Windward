@@ -13,6 +13,15 @@ const UI = {
   els: {}
 };
 
+// Poseidon's loadout wears its own names (player-directed): same
+// numbers, different god. Powers, upgrade, and structure labels all
+// follow the chosen side.
+const STRUCT_LABELS = {
+  air: { vane: 'CHAIN<br>VANE', bolt: 'BOLT<br>BATTERY', shield: 'AEGIS<br>SCREEN', yard: 'MOORING<br>YARD' },
+  sea: { vane: 'STORM<br>DRUM', bolt: 'LANCE<br>BATTERY', shield: 'BULWARK<br>WARD', yard: 'SHIP<br>YARD' }
+};
+function structLabel(type) { return STRUCT_LABELS[R.themeSea ? 'sea' : 'air'][type]; }
+
 function initUI(state) {
   const $ = id => document.getElementById(id);
   UI.els = {
@@ -24,6 +33,15 @@ function initUI(state) {
     priestchip: $('priestchip'), buildmenu: $('buildmenu'), codex: $('codex')
   };
   UI.els.seedchip.textContent = state.seed;
+  // the bottom bar speaks for your god
+  if (R.themeSea) {
+    UI.els.powTailwind.innerHTML = 'FOLLOWING SEA · ' + CONFIG.Powers.TAILWIND.FAVOR +
+      ' ✦<span class="powdesc">whole fleet sails twice as fast, 15s</span>';
+    UI.els.powWindwall.innerHTML = 'BREAKWATER · ' + CONFIG.Powers.WIND_WALL.FAVOR +
+      ' ✦<span class="powdesc">tap a spot: damage there −75%, 15s</span>';
+    UI.els.tech.innerHTML = 'DEEP HULLS · ' + CONFIG.Tech.HYDROGEN_COST_SUPPLY + '⚇ ' +
+      CONFIG.Tech.HYDROGEN_COST_FAVOR + '✦<span class="powdesc">ships carry 2× ore, but are bigger targets</span>';
+  }
   wireDismissables();
 
   buildHand(state);
@@ -33,7 +51,7 @@ function initUI(state) {
   UI.els.cancel.addEventListener('click', () => cancelPlacement());
   UI.els.tech.addEventListener('click', () => {
     if (buyHydrogen(state, 'A')) {
-      flashTicker('THE LIGHT AIR — THE FLEET REFITS TO HYDROGEN');
+      flashTicker(R.themeSea ? 'DEEP HULLS — THE FLEET IS REFITTED' : 'THE LIGHT AIR — THE FLEET REFITS TO HYDROGEN');
       UI.els.tech.disabled = true;
     } else flashTicker('NEEDS 25 SUPPLY AND 6 FAVOR');
   });
@@ -496,7 +514,7 @@ const MENU_DESC = {
   yard: 'lets you build 2 more haulers', priest: 'must stand here to found temples',
   hauler: 'carries mined ore home',
   salvage: 'reclaim it: half its cost back',
-  hydrogen: 'whole fleet carries 2×, but burns easier',
+  hydrogen: 'whole fleet carries 2×, but bigger targets',
   salvageseg: 'unbind one segment; branches beyond may fray'
 };
 
@@ -522,6 +540,11 @@ const STRUCT_NAMES = {
   vane: 'CHAIN VANE (radial gun)', bolt: 'BOLT BATTERY (long gun)', shield: 'AEGIS SCREEN (whirlwind ward)',
   temple: 'TEMPLE', yard: 'MOORING YARD (builds haulers)', mast: 'SIPHON MAST (his anti-air)'
 };
+const STRUCT_NAMES_SEA = {
+  vane: 'STORM DRUM (radial gun)', bolt: 'LANCE BATTERY (long gun)', shield: 'BULWARK WARD (whirlpool ward)',
+  temple: 'TEMPLE', yard: 'SHIPYARD (builds haulers)', mast: 'GUILD SIPHON MAST'
+};
+function structName(type) { return (R.themeSea ? STRUCT_NAMES_SEA : STRUCT_NAMES)[type]; }
 const ISLAND_NAMES = {
   greatTempleA: 'YOUR GREAT TEMPLE', greatTempleP: 'HIS GREAT TEMPLE',
   supplyA: 'SUPPLY ISLAND', supplyP: 'HIS SUPPLY ISLAND', chokepoint: 'THE CHOKEPOINT',
@@ -539,7 +562,7 @@ function identifyCell(state, cell) {
       const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
       extra = ' · FLEET ' + fleet + '/' + fleetCap(state, 'A');
     }
-    return who + (STRUCT_NAMES[st.type] || st.type.toUpperCase()) +
+    return who + (structName(st.type) || st.type.toUpperCase()) +
       (st.buildProgress < 1 ? ' — RAISING' : '') + ' · ' + Math.ceil(st.hp) + ' HP' + extra;
   }
   const isl = islandAt(state, cell[0], cell[1]);
@@ -619,8 +642,8 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     if (!state.hydrogen.A) {
       const T = CONFIG.Tech;
       const canH = state.res.A.supply >= T.HYDROGEN_COST_SUPPLY && state.res.A.favor >= T.HYDROGEN_COST_FAVOR;
-      options.push(menuButton('UPGRADE<br>HYDROGEN<b>' + T.HYDROGEN_COST_SUPPLY + ' ⚇ + ' + T.HYDROGEN_COST_FAVOR + ' ✦</b>', 0, () => {
-        if (buyHydrogen(state, 'A')) flashTicker('THE FLEET REFITS TO HYDROGEN');
+      options.push(menuButton((R.themeSea ? 'DEEP<br>HULLS<b>' : 'UPGRADE<br>HYDROGEN<b>') + T.HYDROGEN_COST_SUPPLY + ' ⚇ + ' + T.HYDROGEN_COST_FAVOR + ' ✦</b>', 0, () => {
+        if (buyHydrogen(state, 'A')) flashTicker(R.themeSea ? 'THE FLEET REFITS WITH DEEP HULLS' : 'THE FLEET REFITS TO HYDROGEN');
       }, canH ? null : 'NEEDS ' + T.HYDROGEN_COST_SUPPLY + ' ⚇ AND ' + T.HYDROGEN_COST_FAVOR + ' ✦', 'hydrogen'));
     }
   }
@@ -679,7 +702,8 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
   if (!yardMenu)
   if (!isl && deg === 1 && !structureAt(state, x, z)) {
     const at = { site: 'endpoint', cell };
-    for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN']]) {
+    for (const type of ['vane', 'bolt', 'shield']) {
+      const label = structLabel(type);
       const why = whyNotBuild(state, 'A', type, at);
       const ss = structureStats('A', type);
         options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
@@ -690,7 +714,8 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
       options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
     }
     if (isl.owner === 'A') {
-      for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
+      for (const type of ['vane', 'bolt', 'shield', 'yard']) {
+        const label = structLabel(type);
         const why = whyNotBuild(state, 'A', type, at);
         const ss = structureStats('A', type);
         options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
@@ -710,7 +735,8 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
         options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
       }
       if (isl.owner === 'A') {
-        for (const [type, label] of [['vane', 'CHAIN<br>VANE'], ['bolt', 'BOLT<br>BATTERY'], ['shield', 'AEGIS<br>SCREEN'], ['yard', 'MOORING<br>YARD']]) {
+        for (const type of ['vane', 'bolt', 'shield', 'yard']) {
+        const label = structLabel(type);
           const why = whyNotBuild(state, 'A', type, at);
           const ss = structureStats('A', type);
         options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
