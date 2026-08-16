@@ -68,6 +68,18 @@ function initUI(state) {
     };
   };
   canvas.addEventListener('pointerdown', (e) => {
+    // ghost-pointer defense: a missed pointerup (finger slid off-screen,
+    // palm touch, browser stole the gesture) used to leave a dead entry
+    // here forever — every later touch then read as a multi-finger
+    // gesture and map taps never fired again. A PRIMARY touch means no
+    // other finger is truly down: purge whatever the map still holds.
+    if (e.isPrimary) {
+      pointers.clear();
+      pinch = null;
+      tilt3 = null;
+    }
+    // capture guarantees WE receive the matching up/cancel
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 3) {
       pinch = null;
@@ -127,6 +139,20 @@ function initUI(state) {
   };
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('lostpointercapture', (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 3) tilt3 = null;
+    if (pointers.size < 2) pinch = null;
+  });
+  // app backgrounded mid-gesture: forget everything
+  const forgetAll = () => {
+    pointers.clear();
+    pinch = null;
+    tilt3 = null;
+    pan.active = false;
+  };
+  window.addEventListener('blur', forgetAll);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) forgetAll(); });
 }
 
 // ---- hand ----

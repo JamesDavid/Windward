@@ -148,7 +148,10 @@ function initRenderer() {
     // simply stays — the sea never depends on the network or the file.
     new THREE.TextureLoader().load('vendor/waternormals.jpg', (tex) => {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-      sea.material.uniforms.waterNormals.value = tex;
+      // the Water shader exposes the map as `normalSampler` (the
+      // `waterNormals` name exists only as a constructor option)
+      const u = sea.material.uniforms.normalSampler;
+      if (u) u.value = tex;
     }, undefined, () => { });
   } else {
     const seaTex = makeSeaTexture();
