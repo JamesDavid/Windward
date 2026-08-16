@@ -307,6 +307,16 @@ const CONFIG = Object.freeze({
     REROLL_FAVOR: 1
   },
 
+  // NetStorm-style reclamation and blood money (player-directed)
+  Salvage: {
+    STRUCTURE_REFUND: 0.5,   // fraction of build cost returned, in Supply
+    SEGMENT_FAVOR: 1         // Favor returned per unbuilt route segment
+  },
+  Bounty: {                  // death pleases the gods: paid to the killer's side
+    CRAFT_FAVOR: { transport: 2, siphon: 3, heavy: 5 },
+    STRUCTURE_SUPPLY_FRACTION: 0.25
+  },
+
   Mining: {
     RATE_PER_SECOND: 2,
     RESERVE_MIN: 500, RESERVE_MAX: 1500   // every ore island draws in this band
@@ -352,7 +362,9 @@ const CONFIG = Object.freeze({
     LANCE:    { COST: 10, HP: 70,  DPS: 13, RANGE: 6, ARC_DEG: 90, TURN_DEG_S: 45 },
     AEGIS:    { COST: 12, HP: 130, INTERCEPT: 0.70, ARC_DEG: 120 },
     BULWARK:  { COST: 12, HP: 160, INTERCEPT: 0.70, ARC_DEG: 120 },
-    PORTS_GUN: 1, PORTS_SHIELD: 2, PORTS_ALTAR: 0,
+    // player-directed: defenses are solid — they cap a route dead, accept
+    // no onward attachment, and block transit (ships/priests can't pass)
+    PORTS_GUN: 0, PORTS_SHIELD: 0, PORTS_ALTAR: 0,
     SHIELD_COVER_RADIUS: 2.5,
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
@@ -1647,11 +1659,14 @@ function placementLegal(state, side, segs) {
     const key = segKey(a[0], a[1], b[0], b[1]);
     const existing = state.segments.get(side + ':' + key);
     if (existing) return false;
-    // a structure node accepts no pass-through except via its ports (handled
-    // by socket selection); reject segments that would land mid-structure
+    // a structure node accepts no pass-through except via its ports; with
+    // defense ports at 0 (player-directed) a gun/shield seals its cell —
+    // no further wind path may attach to or cross it, friend or foe
     for (const c of [a, b]) {
       const st = structureAt(state, c[0], c[1]);
-      if (st && st.owner !== side) return false;   // enemy structure cell blocked
+      if (st && st.owner !== side) return false;             // enemy structure cell blocked
+      if (st && st.owner === side &&
+        (st.type === 'vane' || st.type === 'bolt' || st.type === 'shield' || st.type === 'mast')) return false;
     }
   }
   return true;
@@ -2013,9 +2028,20 @@ function fleetCap(state, side) {
 // supported friendly segment or dies.
 // ================================================================
 
+// A standing complete defense ON THE ROAD is solid (player-directed):
+// nothing moors to it and nothing sails through it — not even its own
+// side's ships. On island ground a tower doesn't seal the island; ships
+// pass over open ground freely.
+function blocksTransit(state, x, z) {
+  const st = structureAt(state, x, z);
+  return !!(st && st.hp > 0 && st.buildProgress >= 1 && st.site === 'endpoint' &&
+    (st.type === 'vane' || st.type === 'bolt' || st.type === 'shield' || st.type === 'mast'));
+}
+
 // ---- network graph for transit ----
 // Adjacency over cells: supported segments, plus orthogonal adjacency
 // inside islands that conduct for the side (temples bridge islands).
+// Cells occupied by a standing defense are excluded outright.
 function buildNetGraph(state, side) {
   const adj = new Map();
   const link = (ka, kb) => {
@@ -2026,13 +2052,17 @@ function buildNetGraph(state, side) {
   };
   for (const s of state.segments.values()) {
     if (s.owner !== side || s.supportState !== 'SUPPORTED') continue;
+    if (blocksTransit(state, s.a[0], s.a[1]) || blocksTransit(state, s.b[0], s.b[1])) continue;
     link(cellKey(s.a[0], s.a[1]), cellKey(s.b[0], s.b[1]));
   }
   for (const isl of state.map.islands) {
     if (!islandConducts(state, isl, side) || !islandSupported(state, isl, side)) continue;
     for (const [x, z] of isl.cells) {
+      if (blocksTransit(state, x, z)) continue;
       for (const [dx, dz] of DIRS4) {
-        if (isl.cellSet.has(cellKey(x + dx, z + dz))) link(cellKey(x, z), cellKey(x + dx, z + dz));
+        if (!isl.cellSet.has(cellKey(x + dx, z + dz))) continue;
+        if (blocksTransit(state, x + dx, z + dz)) continue;
+        link(cellKey(x, z), cellKey(x + dx, z + dz));
       }
     }
   }
@@ -2077,9 +2107,11 @@ function legSpeed(state, ent, a, b) {
   return base * mult;
 }
 
-// Does the leg the entity is riding still exist and hold?
+// Does the leg the entity is riding still exist and hold? A defense
+// completed mid-journey seals the road: the ship slips loose and drifts.
 function legIntact(state, ent, a, b) {
   const side = ent.owner;
+  if (blocksTransit(state, a[0], a[1]) || blocksTransit(state, b[0], b[1])) return false;
   const ia = islandAt(state, a[0], a[1]), ib = islandAt(state, b[0], b[1]);
   if (ia && ia === ib) return islandConducts(state, ia, side) && islandSupported(state, ia, side);
   const seg = state.segments.get(side + ':' + segKey(a[0], a[1], b[0], b[1]));
@@ -2126,6 +2158,7 @@ function nearestSupportedCell(state, side, fx, fz, radius) {
   for (const s of state.segments.values()) {
     if (s.owner !== side || s.supportState !== 'SUPPORTED') continue;
     for (const c of [s.a, s.b]) {
+      if (blocksTransit(state, c[0], c[1])) continue;   // nothing moors to a defense
       const d = Math.hypot(c[0] - fx, c[1] - fz);
       if (d <= bd) { bd = d; best = c; }
     }
@@ -2565,8 +2598,60 @@ function damageStructure(state, st, amount, source) {
   }
 }
 
+// ---- salvage (player-directed, NetStorm-style reclamation) ----
+// Unbuild a structure for a fraction of its cost. No explosion — but the
+// support recalc still runs, so salvaging a load-bearing tower frays
+// everything beyond it. Great Temples cannot be salvaged (never in list).
+function salvageStructure(state, side, st) {
+  if (st.owner !== side || st.hp <= 0) return false;
+  const refund = Math.floor(structureStats(side, st.type).cost * CONFIG.Salvage.STRUCTURE_REFUND);
+  if (st.site === 'plot' && st.islandId !== null) {
+    const isl = state.map.islands[st.islandId];
+    if (st.plotIdx !== null) isl.plots[st.plotIdx].structure = null;
+    if (st.type === 'temple') {
+      isl.temple = null;
+      isl.owner = null;
+      Events.emit('templeFallen', { island: isl, side });
+    }
+  }
+  state.structures = state.structures.filter(x => x !== st);
+  state.res[side].supply += refund;
+  recalcSupport(state, 'A');
+  recalcSupport(state, 'P');
+  Events.emit('structureSalvaged', { st, refund });
+  return true;
+}
+
+// Unbuild one route segment at this cell for a little Favor back.
+// Prefers the segment whose far end is loosest — you unbuild from the tip.
+function salvageSegmentAt(state, side, cell) {
+  const [x, z] = cell;
+  const touching = [...state.segments.values()].filter(s => s.owner === side &&
+    ((s.a[0] === x && s.a[1] === z) || (s.b[0] === x && s.b[1] === z)));
+  if (!touching.length) return false;
+  const deg = nodeDegrees(state, side);
+  const farOf = (s) => (s.a[0] === x && s.a[1] === z) ? s.b : s.a;
+  touching.sort((a, b) =>
+    (deg.get(cellKey(farOf(a)[0], farOf(a)[1])) || 0) -
+    (deg.get(cellKey(farOf(b)[0], farOf(b)[1])) || 0));
+  state.res[side].favor += CONFIG.Salvage.SEGMENT_FAVOR;
+  destroySegment(state, touching[0], 'salvage');
+  Events.emit('segmentSalvaged', { seg: touching[0] });
+  return true;
+}
+
 function killStructure(state, st, cause) {
   st.hp = 0;
+  // blood money: a combat kill pays the killer's side a fraction of the
+  // build cost (claim-crumbles and collapses pay nothing)
+  if (cause === 'combat' || cause === 'intercept') {
+    const foe = st.owner === 'A' ? 'P' : 'A';
+    const b = Math.floor(structureStats(st.owner, st.type).cost * CONFIG.Bounty.STRUCTURE_SUPPLY_FRACTION);
+    if (b > 0) {
+      state.res[foe].supply += b;
+      Events.emit('bounty', { side: foe, supply: b });
+    }
+  }
   if (st.site === 'plot' && st.islandId !== null) {
     const isl = state.map.islands[st.islandId];
     if (st.plotIdx !== null) isl.plots[st.plotIdx].structure = null;
@@ -2630,6 +2715,17 @@ function overWaterPos(state, fx, fz) {
   return !state.map.land.has(cellKey(Math.round(fx), Math.round(fz)));
 }
 
+// Death pleases the gods: a downed craft pays Favor to the other side —
+// whether shot from the sky or set adrift by a cut and lost to the sea.
+function awardCraftBounty(state, c) {
+  const foe = c.owner === 'A' ? 'P' : 'A';
+  const b = CONFIG.Bounty.CRAFT_FAVOR[c.kind] || 0;
+  if (b > 0) {
+    state.res[foe].favor += b;
+    Events.emit('bounty', { side: foe, favor: b });
+  }
+}
+
 // ---- damage funnel: every hit passes through here ----
 // target: {kind:'segment'|'structure'|'greatTemple'|'mover', ref, side, pos}
 function applyDamage(state, target, amount, sourcePos) {
@@ -2684,6 +2780,7 @@ function applyDamage(state, target, amount, sourcePos) {
           Events.emit('convoyLost', { ent: m });
         } else {
           m.dead = true;
+          awardCraftBounty(state, m);
           Events.emit('craftDestroyed', { craft: m });
         }
       }
@@ -3101,7 +3198,7 @@ function updateCraft(state, c, dt) {
   if (c.dead) return;
   if (c.state === 'adrift') {
     const r = adriftTick(state, c, dt);
-    if (r === 'lost') { c.dead = true; Events.emit('craftDestroyed', { craft: c }); }
+    if (r === 'lost') { c.dead = true; awardCraftBounty(state, c); Events.emit('craftDestroyed', { craft: c }); }
     else if (r === 'rebound') { c.state = 'hunt'; c.path = null; }
     return;
   }
@@ -5700,7 +5797,9 @@ const MENU_DESC = {
   vane: 'short range, hits all around', bolt: 'long range, one target',
   shield: 'absorbs hits for allies behind', temple: 'claims isle, spreads influence',
   yard: 'lets you build 2 more haulers', priest: 'must stand here to found temples',
-  hauler: 'carries mined ore home'
+  hauler: 'carries mined ore home',
+  salvage: 'reclaim it: half its cost back',
+  salvageseg: 'unbind one segment; branches beyond may fray'
 };
 
 function menuButton(label, cost, fn, disabledReason, descKey) {
@@ -5888,6 +5987,27 @@ function openContextMenu(state, cell, tapX, tapY) {
       options.push(menuButton('BUILD<br>HAULER', CONFIG.Hauler.COST, () => {
         if (!buyHauler(state, 'A')) flashTicker('FLEET AT CAPACITY');
       }, capped ? 'FLEET AT CAPACITY' : (state.res.A.supply < CONFIG.Hauler.COST ? 'NOT ENOUGH SUPPLY' : null), 'hauler'));
+    }
+  }
+
+  // salvage (player-directed, NetStorm-style): reclaim what stands here
+  const stHere = structureAt(state, x, z);
+  if (stHere && stHere.owner === 'A' && stHere.hp > 0) {
+    const refund = Math.floor(structureStats('A', stHere.type).cost * CONFIG.Salvage.STRUCTURE_REFUND);
+    options.push(menuButton('SALVAGE<br>+' + refund + ' ⚇', 0, () => {
+      salvageStructure(state, 'A', stHere);
+      hideBuildMenu();
+      flashTicker('SALVAGED +' + refund + ' ⚇');
+    }, null, 'salvage'));
+  } else if (!stHere) {
+    const touchesOwn = [...state.segments.values()].some(s => s.owner === 'A' &&
+      ((s.a[0] === x && s.a[1] === z) || (s.b[0] === x && s.b[1] === z)));
+    if (touchesOwn) {
+      options.push(menuButton('UNBUILD<br>+' + CONFIG.Salvage.SEGMENT_FAVOR + ' ✦', 0, () => {
+        salvageSegmentAt(state, 'A', cell);
+        hideBuildMenu();
+        flashTicker('SEGMENT UNBOUND +' + CONFIG.Salvage.SEGMENT_FAVOR + ' ✦');
+      }, null, 'salvageseg'));
     }
   }
 

@@ -30,6 +30,7 @@ for (const name of ['waveLaunched', 'islandClaimed', 'convoyLost', 'networkSever
 const gt = state.greatTemple.A.cell;
 const choke = state.map.islands.find(i => i.role === 'chokepoint');
 const supply = state.map.islands.find(i => i.role === 'supplyA');
+const segTouches = (pl) => [...state.segments.values()].some(s => s.owner === 'A' && ((s.a[0] === pl.x && s.a[1] === pl.z) || (s.b[0] === pl.x && s.b[1] === pl.z)));
 let nextAct = 1;
 let lastGun = -99;
 function playerAct(t) {
@@ -38,7 +39,7 @@ function playerAct(t) {
   if (p.state === 'idle' && !supply.temple && p.islandId !== supply.id) {
     G.sendPriest(state, 'A', supply);
   } else if (p.state === 'idle' && p.islandId === supply.id && !supply.temple) {
-    const plotIdx = supply.plots.findIndex(pl => !pl.structure);
+    const plotIdx = supply.plots.findIndex(pl => !pl.structure && !segTouches(pl));
     if (plotIdx >= 0 && state.res.A.supply >= G.CONFIG.Structures.TEMPLE.COST) {
       G.buildStructure(state, 'A', 'temple', { site: 'plot', islandId: supply.id, plotIdx, cell: [supply.plots[plotIdx].x, supply.plots[plotIdx].z] });
     }
@@ -67,12 +68,12 @@ function playerAct(t) {
   const homeIsl = state.gtA;
   const homeVane = state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === homeIsl.id);
   if (!homeVane && t > 12 && state.res.A.supply >= 7) {
-    const pi = homeIsl.plots.findIndex(pl => !pl.structure);
+    const pi = homeIsl.plots.findIndex(pl => !pl.structure && !segTouches(pl));
     if (pi >= 0) G.buildStructure(state, 'A', 'vane', { site: 'plot', islandId: homeIsl.id, plotIdx: pi, cell: [homeIsl.plots[pi].x, homeIsl.plots[pi].z] });
   }
   const homeBolt = state.structures.some(s => s.owner === 'A' && s.type === 'bolt' && s.islandId === homeIsl.id);
   if (!homeBolt && t > 22 && state.res.A.supply >= 10) {
-    const pi = homeIsl.plots.findIndex(pl => !pl.structure);
+    const pi = homeIsl.plots.findIndex(pl => !pl.structure && !segTouches(pl));
     if (pi >= 0) G.buildStructure(state, 'A', 'bolt', { site: 'plot', islandId: homeIsl.id, plotIdx: pi, cell: [homeIsl.plots[pi].x, homeIsl.plots[pi].z] });
   }
   // guard each claimed island with a vane on its spare plot
@@ -80,7 +81,7 @@ function playerAct(t) {
     if (isl.owner !== 'A' || isl.role.startsWith('greatTemple')) continue;
     const guarded = state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === isl.id);
     if (!guarded && state.res.A.supply >= 7 + 4) {
-      const pi = isl.plots.findIndex(pl => !pl.structure);
+      const pi = isl.plots.findIndex(pl => !pl.structure && !segTouches(pl));
       if (pi >= 0) G.buildStructure(state, 'A', 'vane', { site: 'plot', islandId: isl.id, plotIdx: pi, cell: [isl.plots[pi].x, isl.plots[pi].z] });
     }
   }

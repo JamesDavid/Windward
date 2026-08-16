@@ -5,9 +5,20 @@
 // supported friendly segment or dies.
 // ================================================================
 
+// A standing complete defense ON THE ROAD is solid (player-directed):
+// nothing moors to it and nothing sails through it — not even its own
+// side's ships. On island ground a tower doesn't seal the island; ships
+// pass over open ground freely.
+function blocksTransit(state, x, z) {
+  const st = structureAt(state, x, z);
+  return !!(st && st.hp > 0 && st.buildProgress >= 1 && st.site === 'endpoint' &&
+    (st.type === 'vane' || st.type === 'bolt' || st.type === 'shield' || st.type === 'mast'));
+}
+
 // ---- network graph for transit ----
 // Adjacency over cells: supported segments, plus orthogonal adjacency
 // inside islands that conduct for the side (temples bridge islands).
+// Cells occupied by a standing defense are excluded outright.
 function buildNetGraph(state, side) {
   const adj = new Map();
   const link = (ka, kb) => {
@@ -18,13 +29,17 @@ function buildNetGraph(state, side) {
   };
   for (const s of state.segments.values()) {
     if (s.owner !== side || s.supportState !== 'SUPPORTED') continue;
+    if (blocksTransit(state, s.a[0], s.a[1]) || blocksTransit(state, s.b[0], s.b[1])) continue;
     link(cellKey(s.a[0], s.a[1]), cellKey(s.b[0], s.b[1]));
   }
   for (const isl of state.map.islands) {
     if (!islandConducts(state, isl, side) || !islandSupported(state, isl, side)) continue;
     for (const [x, z] of isl.cells) {
+      if (blocksTransit(state, x, z)) continue;
       for (const [dx, dz] of DIRS4) {
-        if (isl.cellSet.has(cellKey(x + dx, z + dz))) link(cellKey(x, z), cellKey(x + dx, z + dz));
+        if (!isl.cellSet.has(cellKey(x + dx, z + dz))) continue;
+        if (blocksTransit(state, x + dx, z + dz)) continue;
+        link(cellKey(x, z), cellKey(x + dx, z + dz));
       }
     }
   }
@@ -69,9 +84,11 @@ function legSpeed(state, ent, a, b) {
   return base * mult;
 }
 
-// Does the leg the entity is riding still exist and hold?
+// Does the leg the entity is riding still exist and hold? A defense
+// completed mid-journey seals the road: the ship slips loose and drifts.
 function legIntact(state, ent, a, b) {
   const side = ent.owner;
+  if (blocksTransit(state, a[0], a[1]) || blocksTransit(state, b[0], b[1])) return false;
   const ia = islandAt(state, a[0], a[1]), ib = islandAt(state, b[0], b[1]);
   if (ia && ia === ib) return islandConducts(state, ia, side) && islandSupported(state, ia, side);
   const seg = state.segments.get(side + ':' + segKey(a[0], a[1], b[0], b[1]));
@@ -118,6 +135,7 @@ function nearestSupportedCell(state, side, fx, fz, radius) {
   for (const s of state.segments.values()) {
     if (s.owner !== side || s.supportState !== 'SUPPORTED') continue;
     for (const c of [s.a, s.b]) {
+      if (blocksTransit(state, c[0], c[1])) continue;   // nothing moors to a defense
       const d = Math.hypot(c[0] - fx, c[1] - fz);
       if (d <= bd) { bd = d; best = c; }
     }

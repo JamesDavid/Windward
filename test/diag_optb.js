@@ -16,6 +16,7 @@ for (const seed of ['simtest1', 'optb']) {
   const gt = state.greatTemple.A.cell;
   const choke = state.map.islands.find(i => i.role === 'chokepoint');
   const supply = state.map.islands.find(i => i.role === 'supplyA');
+const segTouches = (pl) => [...state.segments.values()].some(s => s.owner === 'A' && ((s.a[0] === pl.x && s.a[1] === pl.z) || (s.b[0] === pl.x && s.b[1] === pl.z)));
   console.log('=== ' + seed + ': gtA', gt, 'supplyA@', supply.center, 'choke@', choke.center,
     'islands', state.map.islands.length);
   let nextAct = 1, lastGun = -99, priestFails = 0, placeFails = 0;
@@ -25,7 +26,7 @@ for (const seed of ['simtest1', 'optb']) {
       if (!G.sendPriest(state, 'A', supply)) priestFails++;
     } else if (p.state === 'idle' && p.islandId === supply.id && !supply.temple &&
       state.res.A.supply >= G.CONFIG.Structures.TEMPLE.COST) {
-      const pi = supply.plots.findIndex(pl => !pl.structure);
+      const pi = supply.plots.findIndex(pl => !pl.structure && !segTouches(pl));
       if (pi >= 0) G.buildStructure(state, 'A', 'temple', { site: 'plot', islandId: supply.id, plotIdx: pi, cell: [supply.plots[pi].x, supply.plots[pi].z] });
     }
     const target = supply.temple && supply.temple.buildProgress >= 1 ? choke.center : supply.center;

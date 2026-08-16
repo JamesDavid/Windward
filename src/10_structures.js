@@ -177,8 +177,60 @@ function damageStructure(state, st, amount, source) {
   }
 }
 
+// ---- salvage (player-directed, NetStorm-style reclamation) ----
+// Unbuild a structure for a fraction of its cost. No explosion — but the
+// support recalc still runs, so salvaging a load-bearing tower frays
+// everything beyond it. Great Temples cannot be salvaged (never in list).
+function salvageStructure(state, side, st) {
+  if (st.owner !== side || st.hp <= 0) return false;
+  const refund = Math.floor(structureStats(side, st.type).cost * CONFIG.Salvage.STRUCTURE_REFUND);
+  if (st.site === 'plot' && st.islandId !== null) {
+    const isl = state.map.islands[st.islandId];
+    if (st.plotIdx !== null) isl.plots[st.plotIdx].structure = null;
+    if (st.type === 'temple') {
+      isl.temple = null;
+      isl.owner = null;
+      Events.emit('templeFallen', { island: isl, side });
+    }
+  }
+  state.structures = state.structures.filter(x => x !== st);
+  state.res[side].supply += refund;
+  recalcSupport(state, 'A');
+  recalcSupport(state, 'P');
+  Events.emit('structureSalvaged', { st, refund });
+  return true;
+}
+
+// Unbuild one route segment at this cell for a little Favor back.
+// Prefers the segment whose far end is loosest — you unbuild from the tip.
+function salvageSegmentAt(state, side, cell) {
+  const [x, z] = cell;
+  const touching = [...state.segments.values()].filter(s => s.owner === side &&
+    ((s.a[0] === x && s.a[1] === z) || (s.b[0] === x && s.b[1] === z)));
+  if (!touching.length) return false;
+  const deg = nodeDegrees(state, side);
+  const farOf = (s) => (s.a[0] === x && s.a[1] === z) ? s.b : s.a;
+  touching.sort((a, b) =>
+    (deg.get(cellKey(farOf(a)[0], farOf(a)[1])) || 0) -
+    (deg.get(cellKey(farOf(b)[0], farOf(b)[1])) || 0));
+  state.res[side].favor += CONFIG.Salvage.SEGMENT_FAVOR;
+  destroySegment(state, touching[0], 'salvage');
+  Events.emit('segmentSalvaged', { seg: touching[0] });
+  return true;
+}
+
 function killStructure(state, st, cause) {
   st.hp = 0;
+  // blood money: a combat kill pays the killer's side a fraction of the
+  // build cost (claim-crumbles and collapses pay nothing)
+  if (cause === 'combat' || cause === 'intercept') {
+    const foe = st.owner === 'A' ? 'P' : 'A';
+    const b = Math.floor(structureStats(st.owner, st.type).cost * CONFIG.Bounty.STRUCTURE_SUPPLY_FRACTION);
+    if (b > 0) {
+      state.res[foe].supply += b;
+      Events.emit('bounty', { side: foe, supply: b });
+    }
+  }
   if (st.site === 'plot' && st.islandId !== null) {
     const isl = state.map.islands[st.islandId];
     if (st.plotIdx !== null) isl.plots[st.plotIdx].structure = null;

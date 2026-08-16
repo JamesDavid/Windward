@@ -276,7 +276,7 @@ function updateCraft(state, c, dt) {
   if (c.dead) return;
   if (c.state === 'adrift') {
     const r = adriftTick(state, c, dt);
-    if (r === 'lost') { c.dead = true; Events.emit('craftDestroyed', { craft: c }); }
+    if (r === 'lost') { c.dead = true; awardCraftBounty(state, c); Events.emit('craftDestroyed', { craft: c }); }
     else if (r === 'rebound') { c.state = 'hunt'; c.path = null; }
     return;
   }

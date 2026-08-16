@@ -61,6 +61,16 @@ const CONFIG = Object.freeze({
     REROLL_FAVOR: 1
   },
 
+  // NetStorm-style reclamation and blood money (player-directed)
+  Salvage: {
+    STRUCTURE_REFUND: 0.5,   // fraction of build cost returned, in Supply
+    SEGMENT_FAVOR: 1         // Favor returned per unbuilt route segment
+  },
+  Bounty: {                  // death pleases the gods: paid to the killer's side
+    CRAFT_FAVOR: { transport: 2, siphon: 3, heavy: 5 },
+    STRUCTURE_SUPPLY_FRACTION: 0.25
+  },
+
   Mining: {
     RATE_PER_SECOND: 2,
     RESERVE_MIN: 500, RESERVE_MAX: 1500   // every ore island draws in this band
@@ -106,7 +116,9 @@ const CONFIG = Object.freeze({
     LANCE:    { COST: 10, HP: 70,  DPS: 13, RANGE: 6, ARC_DEG: 90, TURN_DEG_S: 45 },
     AEGIS:    { COST: 12, HP: 130, INTERCEPT: 0.70, ARC_DEG: 120 },
     BULWARK:  { COST: 12, HP: 160, INTERCEPT: 0.70, ARC_DEG: 120 },
-    PORTS_GUN: 1, PORTS_SHIELD: 2, PORTS_ALTAR: 0,
+    // player-directed: defenses are solid — they cap a route dead, accept
+    // no onward attachment, and block transit (ships/priests can't pass)
+    PORTS_GUN: 0, PORTS_SHIELD: 0, PORTS_ALTAR: 0,
     SHIELD_COVER_RADIUS: 2.5,
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,

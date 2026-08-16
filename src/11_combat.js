@@ -16,6 +16,17 @@ function overWaterPos(state, fx, fz) {
   return !state.map.land.has(cellKey(Math.round(fx), Math.round(fz)));
 }
 
+// Death pleases the gods: a downed craft pays Favor to the other side —
+// whether shot from the sky or set adrift by a cut and lost to the sea.
+function awardCraftBounty(state, c) {
+  const foe = c.owner === 'A' ? 'P' : 'A';
+  const b = CONFIG.Bounty.CRAFT_FAVOR[c.kind] || 0;
+  if (b > 0) {
+    state.res[foe].favor += b;
+    Events.emit('bounty', { side: foe, favor: b });
+  }
+}
+
 // ---- damage funnel: every hit passes through here ----
 // target: {kind:'segment'|'structure'|'greatTemple'|'mover', ref, side, pos}
 function applyDamage(state, target, amount, sourcePos) {
@@ -70,6 +81,7 @@ function applyDamage(state, target, amount, sourcePos) {
           Events.emit('convoyLost', { ent: m });
         } else {
           m.dead = true;
+          awardCraftBounty(state, m);
           Events.emit('craftDestroyed', { craft: m });
         }
       }

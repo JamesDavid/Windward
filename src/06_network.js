@@ -182,11 +182,14 @@ function placementLegal(state, side, segs) {
     const key = segKey(a[0], a[1], b[0], b[1]);
     const existing = state.segments.get(side + ':' + key);
     if (existing) return false;
-    // a structure node accepts no pass-through except via its ports (handled
-    // by socket selection); reject segments that would land mid-structure
+    // a structure node accepts no pass-through except via its ports; with
+    // defense ports at 0 (player-directed) a gun/shield seals its cell —
+    // no further wind path may attach to or cross it, friend or foe
     for (const c of [a, b]) {
       const st = structureAt(state, c[0], c[1]);
-      if (st && st.owner !== side) return false;   // enemy structure cell blocked
+      if (st && st.owner !== side) return false;             // enemy structure cell blocked
+      if (st && st.owner === side &&
+        (st.type === 'vane' || st.type === 'bolt' || st.type === 'shield' || st.type === 'mast')) return false;
     }
   }
   return true;

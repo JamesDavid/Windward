@@ -377,7 +377,9 @@ const MENU_DESC = {
   vane: 'short range, hits all around', bolt: 'long range, one target',
   shield: 'absorbs hits for allies behind', temple: 'claims isle, spreads influence',
   yard: 'lets you build 2 more haulers', priest: 'must stand here to found temples',
-  hauler: 'carries mined ore home'
+  hauler: 'carries mined ore home',
+  salvage: 'reclaim it: half its cost back',
+  salvageseg: 'unbind one segment; branches beyond may fray'
 };
 
 function menuButton(label, cost, fn, disabledReason, descKey) {
@@ -565,6 +567,27 @@ function openContextMenu(state, cell, tapX, tapY) {
       options.push(menuButton('BUILD<br>HAULER', CONFIG.Hauler.COST, () => {
         if (!buyHauler(state, 'A')) flashTicker('FLEET AT CAPACITY');
       }, capped ? 'FLEET AT CAPACITY' : (state.res.A.supply < CONFIG.Hauler.COST ? 'NOT ENOUGH SUPPLY' : null), 'hauler'));
+    }
+  }
+
+  // salvage (player-directed, NetStorm-style): reclaim what stands here
+  const stHere = structureAt(state, x, z);
+  if (stHere && stHere.owner === 'A' && stHere.hp > 0) {
+    const refund = Math.floor(structureStats('A', stHere.type).cost * CONFIG.Salvage.STRUCTURE_REFUND);
+    options.push(menuButton('SALVAGE<br>+' + refund + ' ⚇', 0, () => {
+      salvageStructure(state, 'A', stHere);
+      hideBuildMenu();
+      flashTicker('SALVAGED +' + refund + ' ⚇');
+    }, null, 'salvage'));
+  } else if (!stHere) {
+    const touchesOwn = [...state.segments.values()].some(s => s.owner === 'A' &&
+      ((s.a[0] === x && s.a[1] === z) || (s.b[0] === x && s.b[1] === z)));
+    if (touchesOwn) {
+      options.push(menuButton('UNBUILD<br>+' + CONFIG.Salvage.SEGMENT_FAVOR + ' ✦', 0, () => {
+        salvageSegmentAt(state, 'A', cell);
+        hideBuildMenu();
+        flashTicker('SEGMENT UNBOUND +' + CONFIG.Salvage.SEGMENT_FAVOR + ' ✦');
+      }, null, 'salvageseg'));
     }
   }
 
