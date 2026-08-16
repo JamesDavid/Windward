@@ -425,7 +425,9 @@ const CONFIG = Object.freeze({
 
   Powers: {
     TAILWIND:  { FAVOR: 3, DURATION: 15, SPEED_MULT: 2.0, ASSAULT_MULT: 2.0 },
-    WIND_WALL: { FAVOR: 4, DURATION: 12, DAMAGE_REDUCTION: 0.75 },
+    // the sanctioned siege tool: wall the site, raise the gun behind it.
+    // One wall at a time — recasting moves it, nothing stacks.
+    WIND_WALL: { FAVOR: 4, DURATION: 15, DAMAGE_REDUCTION: 0.75, RADIUS: 2.0 },
     TIDAL_SURGE: { DAMAGE: 40, RADIUS: 3, COOLDOWN: 30.0 },
     FOG_BANK:    { DURATION: 20, BOLT_PENALTY: 0.5, RADIUS: 5, COOLDOWN: 40.0 }
   },
@@ -2734,7 +2736,7 @@ function applyDamage(state, target, amount, sourcePos) {
   // Wind Wall (§33A.8): one endpoint, damage reduced 75%
   if (target.side === 'A' && state.time < state.powers.windwallUntil && state.powers.windwallCell) {
     const wc = state.powers.windwallCell;
-    if (Math.hypot(target.pos[0] - wc[0], target.pos[1] - wc[1]) <= 1.2) {
+    if (Math.hypot(target.pos[0] - wc[0], target.pos[1] - wc[1]) <= CONFIG.Powers.WIND_WALL.RADIUS) {
       amount *= 1 - CONFIG.Powers.WIND_WALL.DAMAGE_REDUCTION;
     }
   }
@@ -2886,9 +2888,13 @@ function gunTick(state, st, dt) {
     .sort((a, b) =>
       Math.hypot(a.pos[0] - st.cell[0], a.pos[1] - st.cell[1]) -
       Math.hypot(b.pos[0] - st.cell[0], b.pos[1] - st.cell[1]));
-  // stable class priority
+  // stable class priority; among structures, silence the guns shooting
+  // back BEFORE battering the temple — sieges fail when the bolt trades
+  // with a monument while the defenders shred it
+  const armed = (t) => t.kind === 'structure' && (t.ref.dps || 0) > 0 ? 0 : 1;
   const target = moverTargets.length ? pick.find(t => t.kind === 'mover')
-    : structTargets.length ? pick.find(t => t.kind === 'structure' || t.kind === 'greatTemple')
+    : structTargets.length ? pick.filter(t => t.kind === 'structure' || t.kind === 'greatTemple')
+        .sort((a, b) => armed(a) - armed(b))[0]
     : pick[0];
   if (!target) return;
 
@@ -6055,6 +6061,11 @@ function openContextMenu(state, cell, tapX, tapY) {
   const tryBuild = (type, at) => () => {
     const why = whyNotBuild(state, 'A', type, at);
     if (why) { flashTicker(why); return; }
+    // siegecraft, said once: a half-built frame inside his gun range dies
+    const threatened = state.structures.some(es => es.owner === 'P' && es.hp > 0 && (es.dps || 0) > 0 &&
+      Math.hypot(es.cell[0] - at.cell[0], es.cell[1] - at.cell[1]) <= (es.range || es.radius || 0) + 0.5 &&
+      (state.vision.A.has(cellKey(es.cell[0], es.cell[1])) || state.memory.A.has('st:' + es.id)));
+    if (threatened) showTutorialLine('His guns will tear a half-built frame apart. Arm the WIND WALL and tap this site first — the wall now shelters everything within two cells for 15 breaths.', 6200, 'siegeHint');
     UI.structMode = { type, at };
     UI.structSites = validStructSites(state, type);
     showSockets(state, UI.structSites.map(s => ({ cell: s.cell, kind: 'site' })));

@@ -539,6 +539,11 @@ function openContextMenu(state, cell, tapX, tapY) {
   const tryBuild = (type, at) => () => {
     const why = whyNotBuild(state, 'A', type, at);
     if (why) { flashTicker(why); return; }
+    // siegecraft, said once: a half-built frame inside his gun range dies
+    const threatened = state.structures.some(es => es.owner === 'P' && es.hp > 0 && (es.dps || 0) > 0 &&
+      Math.hypot(es.cell[0] - at.cell[0], es.cell[1] - at.cell[1]) <= (es.range || es.radius || 0) + 0.5 &&
+      (state.vision.A.has(cellKey(es.cell[0], es.cell[1])) || state.memory.A.has('st:' + es.id)));
+    if (threatened) showTutorialLine('His guns will tear a half-built frame apart. Arm the WIND WALL and tap this site first — the wall now shelters everything within two cells for 15 breaths.', 6200, 'siegeHint');
     UI.structMode = { type, at };
     UI.structSites = validStructSites(state, type);
     showSockets(state, UI.structSites.map(s => ({ cell: s.cell, kind: 'site' })));

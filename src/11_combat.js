@@ -35,7 +35,7 @@ function applyDamage(state, target, amount, sourcePos) {
   // Wind Wall (§33A.8): one endpoint, damage reduced 75%
   if (target.side === 'A' && state.time < state.powers.windwallUntil && state.powers.windwallCell) {
     const wc = state.powers.windwallCell;
-    if (Math.hypot(target.pos[0] - wc[0], target.pos[1] - wc[1]) <= 1.2) {
+    if (Math.hypot(target.pos[0] - wc[0], target.pos[1] - wc[1]) <= CONFIG.Powers.WIND_WALL.RADIUS) {
       amount *= 1 - CONFIG.Powers.WIND_WALL.DAMAGE_REDUCTION;
     }
   }
@@ -187,9 +187,13 @@ function gunTick(state, st, dt) {
     .sort((a, b) =>
       Math.hypot(a.pos[0] - st.cell[0], a.pos[1] - st.cell[1]) -
       Math.hypot(b.pos[0] - st.cell[0], b.pos[1] - st.cell[1]));
-  // stable class priority
+  // stable class priority; among structures, silence the guns shooting
+  // back BEFORE battering the temple — sieges fail when the bolt trades
+  // with a monument while the defenders shred it
+  const armed = (t) => t.kind === 'structure' && (t.ref.dps || 0) > 0 ? 0 : 1;
   const target = moverTargets.length ? pick.find(t => t.kind === 'mover')
-    : structTargets.length ? pick.find(t => t.kind === 'structure' || t.kind === 'greatTemple')
+    : structTargets.length ? pick.filter(t => t.kind === 'structure' || t.kind === 'greatTemple')
+        .sort((a, b) => armed(a) - armed(b))[0]
     : pick[0];
   if (!target) return;
 

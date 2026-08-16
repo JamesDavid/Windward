@@ -179,7 +179,9 @@ const CONFIG = Object.freeze({
 
   Powers: {
     TAILWIND:  { FAVOR: 3, DURATION: 15, SPEED_MULT: 2.0, ASSAULT_MULT: 2.0 },
-    WIND_WALL: { FAVOR: 4, DURATION: 12, DAMAGE_REDUCTION: 0.75 },
+    // the sanctioned siege tool: wall the site, raise the gun behind it.
+    // One wall at a time — recasting moves it, nothing stacks.
+    WIND_WALL: { FAVOR: 4, DURATION: 15, DAMAGE_REDUCTION: 0.75, RADIUS: 2.0 },
     TIDAL_SURGE: { DAMAGE: 40, RADIUS: 3, COOLDOWN: 30.0 },
     FOG_BANK:    { DURATION: 20, BOLT_PENALTY: 0.5, RADIUS: 5, COOLDOWN: 40.0 }
   },
