@@ -309,7 +309,7 @@ const CONFIG = Object.freeze({
 
   Mining: {
     RATE_PER_SECOND: 2,
-    RESERVE_CORNER: 80, RESERVE_INTERIOR: 140
+    RESERVE_MIN: 500, RESERVE_MAX: 1500   // every ore island draws in this band
   },
 
   Hauler: {
@@ -960,17 +960,18 @@ function generateOnce(rng) {
 
   // 4. Reserves — mirrored identically so corner totals match (invariant 9),
   //    varied per seed within the variance budget.
-  const reserveRoll = { supply: 1 + (rng() * 2 - 1) * MG.RESERVE_VARIANCE,
-                        neutral: 1 + (rng() * 2 - 1) * MG.RESERVE_VARIANCE,
-                        sacred: 1 + (rng() * 2 - 1) * MG.RESERVE_VARIANCE,
-                        choke: 1 + (rng() * 2 - 1) * MG.RESERVE_VARIANCE };
+  // every ore island draws a significant reserve from the configured band;
+  // mirrored role pairs share a roll so the corner economies stay balanced
+  const band = () => CONFIG.Mining.RESERVE_MIN +
+    Math.round(rng() * (CONFIG.Mining.RESERVE_MAX - CONFIG.Mining.RESERVE_MIN));
+  const reserveRoll = { supply: band(), neutral: band(), sacred: band(), choke: band() };
   for (const isl of islands) {
     if (isl.role.startsWith('greatTemple')) isl.reserve = Infinity;
-    else if (isl.role.startsWith('supply')) isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * reserveRoll.supply);
-    else if (isl.role.startsWith('neutral')) isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * reserveRoll.neutral);
-    else if (isl.role === 'chokepoint') isl.reserve = Math.round(CONFIG.Mining.RESERVE_INTERIOR * reserveRoll.choke);
-    else if (isl.role === 'filler') isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * MG.FILLER_RESERVE_MULT * reserveRoll.neutral);
-    else isl.reserve = Math.round(CONFIG.Mining.RESERVE_INTERIOR * reserveRoll.sacred);
+    else if (isl.role.startsWith('supply')) isl.reserve = reserveRoll.supply;
+    else if (isl.role.startsWith('neutral')) isl.reserve = reserveRoll.neutral;
+    else if (isl.role === 'chokepoint') isl.reserve = reserveRoll.choke;
+    else if (isl.role === 'filler') isl.reserve = Math.round(band() * MG.FILLER_RESERVE_MULT);
+    else isl.reserve = reserveRoll.sacred;
   }
 
   // 5. Ids, centers, plots. One random non-temple island gets a third plot.
@@ -3836,6 +3837,11 @@ function audioPlay(name) {
     case 'impact':
       noiseBurst(0.06, 0.1, 800);
       break;
+    case 'ching':       // ore banked at the temple
+      tone(1318, 0.08, 'triangle', 0.1);
+      tone(1760, 0.16, 'triangle', 0.09, 0.05);
+      tone(2637, 0.1, 'sine', 0.05, 0.09);
+      break;
     case 'telegraph':   // rising water horn
       tone(98, 1.1, 'sawtooth', 0.14, 0, 147);
       noiseBurst(0.9, 0.12, 300, 0.1);
@@ -3866,6 +3872,7 @@ function wireAudio() {
   Events.on('gunFired', ({ side }) => shot(side === 'A' ? 'shotA' : 'shotP'));
   Events.on('craftFired', () => shot('shotP'));
   Events.on('piecePlaced', ({ side }) => { if (side === 'A') { audioPlay('thunk'); audioPlay('activate'); } });
+  Events.on('delivery', ({ side }) => { if (side === 'A') audioPlay('ching'); });
   Events.on('structureBuilt', ({ st }) => { if (st.owner === 'A') audioPlay('thunk'); });
   Events.on('networkSevered', ({ side }) => { if (side === 'A') { audioPlay('sever'); audioPlay('warn'); } });
   Events.on('networkRestored', ({ side }) => { if (side === 'A') audioPlay('chord'); });

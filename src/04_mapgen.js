@@ -314,17 +314,18 @@ function generateOnce(rng) {
 
   // 4. Reserves — mirrored identically so corner totals match (invariant 9),
   //    varied per seed within the variance budget.
-  const reserveRoll = { supply: 1 + (rng() * 2 - 1) * MG.RESERVE_VARIANCE,
-                        neutral: 1 + (rng() * 2 - 1) * MG.RESERVE_VARIANCE,
-                        sacred: 1 + (rng() * 2 - 1) * MG.RESERVE_VARIANCE,
-                        choke: 1 + (rng() * 2 - 1) * MG.RESERVE_VARIANCE };
+  // every ore island draws a significant reserve from the configured band;
+  // mirrored role pairs share a roll so the corner economies stay balanced
+  const band = () => CONFIG.Mining.RESERVE_MIN +
+    Math.round(rng() * (CONFIG.Mining.RESERVE_MAX - CONFIG.Mining.RESERVE_MIN));
+  const reserveRoll = { supply: band(), neutral: band(), sacred: band(), choke: band() };
   for (const isl of islands) {
     if (isl.role.startsWith('greatTemple')) isl.reserve = Infinity;
-    else if (isl.role.startsWith('supply')) isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * reserveRoll.supply);
-    else if (isl.role.startsWith('neutral')) isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * reserveRoll.neutral);
-    else if (isl.role === 'chokepoint') isl.reserve = Math.round(CONFIG.Mining.RESERVE_INTERIOR * reserveRoll.choke);
-    else if (isl.role === 'filler') isl.reserve = Math.round(CONFIG.Mining.RESERVE_CORNER * MG.FILLER_RESERVE_MULT * reserveRoll.neutral);
-    else isl.reserve = Math.round(CONFIG.Mining.RESERVE_INTERIOR * reserveRoll.sacred);
+    else if (isl.role.startsWith('supply')) isl.reserve = reserveRoll.supply;
+    else if (isl.role.startsWith('neutral')) isl.reserve = reserveRoll.neutral;
+    else if (isl.role === 'chokepoint') isl.reserve = reserveRoll.choke;
+    else if (isl.role === 'filler') isl.reserve = Math.round(band() * MG.FILLER_RESERVE_MULT);
+    else isl.reserve = reserveRoll.sacred;
   }
 
   // 5. Ids, centers, plots. One random non-temple island gets a third plot.

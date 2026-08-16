@@ -126,6 +126,11 @@ function audioPlay(name) {
     case 'impact':
       noiseBurst(0.06, 0.1, 800);
       break;
+    case 'ching':       // ore banked at the temple
+      tone(1318, 0.08, 'triangle', 0.1);
+      tone(1760, 0.16, 'triangle', 0.09, 0.05);
+      tone(2637, 0.1, 'sine', 0.05, 0.09);
+      break;
     case 'telegraph':   // rising water horn
       tone(98, 1.1, 'sawtooth', 0.14, 0, 147);
       noiseBurst(0.9, 0.12, 300, 0.1);
@@ -156,6 +161,7 @@ function wireAudio() {
   Events.on('gunFired', ({ side }) => shot(side === 'A' ? 'shotA' : 'shotP'));
   Events.on('craftFired', () => shot('shotP'));
   Events.on('piecePlaced', ({ side }) => { if (side === 'A') { audioPlay('thunk'); audioPlay('activate'); } });
+  Events.on('delivery', ({ side }) => { if (side === 'A') audioPlay('ching'); });
   Events.on('structureBuilt', ({ st }) => { if (st.owner === 'A') audioPlay('thunk'); });
   Events.on('networkSevered', ({ side }) => { if (side === 'A') { audioPlay('sever'); audioPlay('warn'); } });
   Events.on('networkRestored', ({ side }) => { if (side === 'A') audioPlay('chord'); });

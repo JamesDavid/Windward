@@ -63,7 +63,7 @@ const CONFIG = Object.freeze({
 
   Mining: {
     RATE_PER_SECOND: 2,
-    RESERVE_CORNER: 80, RESERVE_INTERIOR: 140
+    RESERVE_MIN: 500, RESERVE_MAX: 1500   // every ore island draws in this band
   },
 
   Hauler: {
