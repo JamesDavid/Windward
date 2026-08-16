@@ -341,7 +341,7 @@ const CONFIG = Object.freeze({
 
   Pieces: {
     HAND_SIZE: 3,
-    COST_SHORT: 2, COST_LONG: 3, COST_L: 3, COST_S: 3, COST_T: 5, COST_TT: 6, COST_X: 7
+    FAVOR_COST: 1   // every route piece costs 1 Favor, flat - the wind is the god's to grant
   },
 
   Structures: {
@@ -1428,9 +1428,10 @@ function piecePlugs(type) {
   return { SHORT: 1, LONG: 1, L: 1, S: 1, T: 2, TT: 2, X: 3 }[type];
 }
 
+// Route pieces cost Favor, flat, regardless of size: the wind is not
+// bought with ore — it is granted, and every binding costs the same ask.
 function pieceCost(type) {
-  const P = CONFIG.Pieces;
-  return { SHORT: P.COST_SHORT, LONG: P.COST_LONG, L: P.COST_L, S: P.COST_S, T: P.COST_T, TT: P.COST_TT, X: P.COST_X }[type];
+  return CONFIG.Pieces.FAVOR_COST;
 }
 
 // Which island (if any) owns this cell.
@@ -1656,8 +1657,8 @@ function placementLegal(state, side, segs) {
 // Commit a placement: pay, create segments, recalc support.
 function placePiece(state, side, type, segs) {
   const cost = pieceCost(type);
-  if (state.res[side].supply < cost) return false;
-  state.res[side].supply -= cost;
+  if (state.res[side].favor < cost) return false;
+  state.res[side].favor -= cost;
   for (const [a, b] of segs) {
     const seg = makeSegment(state, side, a, b);
     state.segments.set(side + ':' + seg.key, seg);
@@ -3386,8 +3387,10 @@ function aiTick(state, dt) {
         }
       }
       // no island worth taking: drive an ATTACK lane toward the player so
-      // the massed fleet finally has waters that reach them
-      if (!ai.plan) {
+      // the massed fleet finally has waters that reach them — but only
+      // once there IS a fleet; roads ahead of the first wave would rush
+      // the player before the opening breath the onboarding promises
+      if (!ai.plan && state.craft.length) {
         const targets = aiAttackTargets(state);
         if (targets.size) {
           const plan = aiPlanPathTo(state, targets);
@@ -3397,8 +3400,7 @@ function aiTick(state, dt) {
     }
     // budget discipline: while he holds few temples, keep the temple fund
     // intact — lanes are worthless if he can never consecrate their ends
-    const templeFund = poseidonTempleCount(state) < 2 ? CONFIG.Structures.TEMPLE.COST : 0;
-    if (ai.plan && res.supply >= pieceCost('SHORT') + templeFund) {
+    if (ai.plan && res.favor >= pieceCost('SHORT')) {
       if (aiPlaceNext(state)) ai.placeAt = state.time + CONFIG.AI.PLACE_INTERVAL;
     }
   }
@@ -5412,7 +5414,7 @@ function buildHand(state) {
     drawPieceIcon(cv, type);
     const cost = document.createElement('span');
     cost.className = 'cost';
-    cost.textContent = pieceCost(type) + ' ⚇';
+    cost.textContent = pieceCost(type) + ' ✦';
     btn.appendChild(cv);
     btn.appendChild(cost);
     btn.addEventListener('click', () => {
@@ -5438,14 +5440,14 @@ function buildHand(state) {
 function refreshHand(state) {
   [...UI.els.hand.children].forEach((btn, i) => {
     btn.classList.toggle('selected', UI.discardArm === i);
-    btn.classList.toggle('unaffordable', state.res.A.supply < pieceCost(state.hand[i]));
+    btn.classList.toggle('unaffordable', state.res.A.favor < pieceCost(state.hand[i]));
   });
 }
 
 // ---- placement flow (entered from the map's context menu) ----
 function beginPiecePlacement(state, i, socket) {
   if (state.over) return;
-  if (state.res.A.supply < pieceCost(state.hand[i])) { flashTicker('NOT ENOUGH SUPPLY'); return; }
+  if (state.res.A.favor < pieceCost(state.hand[i])) { flashTicker('NOT ENOUGH FAVOR'); return; }
   UI.mode = 'placing';
   UI.pieceIdx = i;
   UI.socket = null;
@@ -5709,11 +5711,11 @@ function pieceMenuButton(state, i, socket) {
   drawPieceIcon(cv, type);
   btn.appendChild(cv);
   const b = document.createElement('b');
-  b.textContent = pieceCost(type) + ' ⚇';
+  b.textContent = pieceCost(type) + ' ✦';
   btn.appendChild(b);
-  if (state.res.A.supply < pieceCost(type)) {
+  if (state.res.A.favor < pieceCost(type)) {
     btn.style.opacity = 0.4;
-    btn.addEventListener('click', () => flashTicker('NOT ENOUGH SUPPLY'));
+    btn.addEventListener('click', () => flashTicker('NOT ENOUGH FAVOR'));
   } else {
     btn.addEventListener('click', () => {
       hideBuildMenu();

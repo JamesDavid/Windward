@@ -140,7 +140,7 @@ function buildHand(state) {
     drawPieceIcon(cv, type);
     const cost = document.createElement('span');
     cost.className = 'cost';
-    cost.textContent = pieceCost(type) + ' ⚇';
+    cost.textContent = pieceCost(type) + ' ✦';
     btn.appendChild(cv);
     btn.appendChild(cost);
     btn.addEventListener('click', () => {
@@ -166,14 +166,14 @@ function buildHand(state) {
 function refreshHand(state) {
   [...UI.els.hand.children].forEach((btn, i) => {
     btn.classList.toggle('selected', UI.discardArm === i);
-    btn.classList.toggle('unaffordable', state.res.A.supply < pieceCost(state.hand[i]));
+    btn.classList.toggle('unaffordable', state.res.A.favor < pieceCost(state.hand[i]));
   });
 }
 
 // ---- placement flow (entered from the map's context menu) ----
 function beginPiecePlacement(state, i, socket) {
   if (state.over) return;
-  if (state.res.A.supply < pieceCost(state.hand[i])) { flashTicker('NOT ENOUGH SUPPLY'); return; }
+  if (state.res.A.favor < pieceCost(state.hand[i])) { flashTicker('NOT ENOUGH FAVOR'); return; }
   UI.mode = 'placing';
   UI.pieceIdx = i;
   UI.socket = null;
@@ -437,11 +437,11 @@ function pieceMenuButton(state, i, socket) {
   drawPieceIcon(cv, type);
   btn.appendChild(cv);
   const b = document.createElement('b');
-  b.textContent = pieceCost(type) + ' ⚇';
+  b.textContent = pieceCost(type) + ' ✦';
   btn.appendChild(b);
-  if (state.res.A.supply < pieceCost(type)) {
+  if (state.res.A.favor < pieceCost(type)) {
     btn.style.opacity = 0.4;
-    btn.addEventListener('click', () => flashTicker('NOT ENOUGH SUPPLY'));
+    btn.addEventListener('click', () => flashTicker('NOT ENOUGH FAVOR'));
   } else {
     btn.addEventListener('click', () => {
       hideBuildMenu();

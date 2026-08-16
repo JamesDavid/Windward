@@ -81,9 +81,10 @@ function piecePlugs(type) {
   return { SHORT: 1, LONG: 1, L: 1, S: 1, T: 2, TT: 2, X: 3 }[type];
 }
 
+// Route pieces cost Favor, flat, regardless of size: the wind is not
+// bought with ore — it is granted, and every binding costs the same ask.
 function pieceCost(type) {
-  const P = CONFIG.Pieces;
-  return { SHORT: P.COST_SHORT, LONG: P.COST_LONG, L: P.COST_L, S: P.COST_S, T: P.COST_T, TT: P.COST_TT, X: P.COST_X }[type];
+  return CONFIG.Pieces.FAVOR_COST;
 }
 
 // Which island (if any) owns this cell.

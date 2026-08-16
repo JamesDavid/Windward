@@ -217,8 +217,10 @@ function aiTick(state, dt) {
         }
       }
       // no island worth taking: drive an ATTACK lane toward the player so
-      // the massed fleet finally has waters that reach them
-      if (!ai.plan) {
+      // the massed fleet finally has waters that reach them — but only
+      // once there IS a fleet; roads ahead of the first wave would rush
+      // the player before the opening breath the onboarding promises
+      if (!ai.plan && state.craft.length) {
         const targets = aiAttackTargets(state);
         if (targets.size) {
           const plan = aiPlanPathTo(state, targets);
@@ -228,8 +230,7 @@ function aiTick(state, dt) {
     }
     // budget discipline: while he holds few temples, keep the temple fund
     // intact — lanes are worthless if he can never consecrate their ends
-    const templeFund = poseidonTempleCount(state) < 2 ? CONFIG.Structures.TEMPLE.COST : 0;
-    if (ai.plan && res.supply >= pieceCost('SHORT') + templeFund) {
+    if (ai.plan && res.favor >= pieceCost('SHORT')) {
       if (aiPlaceNext(state)) ai.placeAt = state.time + CONFIG.AI.PLACE_INTERVAL;
     }
   }

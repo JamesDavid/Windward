@@ -49,7 +49,7 @@ function playerAct(t) {
   const gunUp = state.structures.some(s => s.owner === 'A' && (s.type === 'bolt' || s.type === 'vane'));
   const saveForGun = !gunUp && t > 20;   // keep 10 supply back for the first battery
   const saveForTemple = !supply.temple ? G.CONFIG.Structures.TEMPLE.COST : 0;
-  if (state.res.A.supply >= G.pieceCost(type) + (saveForGun ? 10 : 0) + saveForTemple) {
+  if (state.res.A.favor >= G.pieceCost(type) && state.res.A.supply >= (saveForGun ? 10 : 0) + saveForTemple) {
     let bestP = null, bestD = Infinity;
     for (const sock of G.getSockets(state, 'A')) {
       for (const pl of G.legalPlacements(state, 'A', type, sock)) {
@@ -63,12 +63,17 @@ function playerAct(t) {
       state.hand[0] = G.drawPiece();
     }
   }
-  // home defence first: a Chain Vane on a home plot before wave 1
+  // home defence first: a Chain Vane and a Bolt Battery on home plots
   const homeIsl = state.gtA;
   const homeVane = state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === homeIsl.id);
-  if (!homeVane && t > 16 && state.res.A.supply >= 7) {
+  if (!homeVane && t > 12 && state.res.A.supply >= 7) {
     const pi = homeIsl.plots.findIndex(pl => !pl.structure);
     if (pi >= 0) G.buildStructure(state, 'A', 'vane', { site: 'plot', islandId: homeIsl.id, plotIdx: pi, cell: [homeIsl.plots[pi].x, homeIsl.plots[pi].z] });
+  }
+  const homeBolt = state.structures.some(s => s.owner === 'A' && s.type === 'bolt' && s.islandId === homeIsl.id);
+  if (!homeBolt && t > 22 && state.res.A.supply >= 10) {
+    const pi = homeIsl.plots.findIndex(pl => !pl.structure);
+    if (pi >= 0) G.buildStructure(state, 'A', 'bolt', { site: 'plot', islandId: homeIsl.id, plotIdx: pi, cell: [homeIsl.plots[pi].x, homeIsl.plots[pi].z] });
   }
   // guard each claimed island with a vane on its spare plot
   for (const isl of state.map.islands) {

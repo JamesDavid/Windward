@@ -95,7 +95,7 @@ const CONFIG = Object.freeze({
 
   Pieces: {
     HAND_SIZE: 3,
-    COST_SHORT: 2, COST_LONG: 3, COST_L: 3, COST_S: 3, COST_T: 5, COST_TT: 6, COST_X: 7
+    FAVOR_COST: 1   // every route piece costs 1 Favor, flat - the wind is the god's to grant
   },
 
   Structures: {

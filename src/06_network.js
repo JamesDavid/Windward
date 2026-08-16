@@ -195,8 +195,8 @@ function placementLegal(state, side, segs) {
 // Commit a placement: pay, create segments, recalc support.
 function placePiece(state, side, type, segs) {
   const cost = pieceCost(type);
-  if (state.res[side].supply < cost) return false;
-  state.res[side].supply -= cost;
+  if (state.res[side].favor < cost) return false;
+  state.res[side].favor -= cost;
   for (const [a, b] of segs) {
     const seg = makeSegment(state, side, a, b);
     state.segments.set(side + ':' + seg.key, seg);
