@@ -10,20 +10,33 @@ A portrait mobile web prototype for the Meta Horizon Creator Competition (Tower 
 
 ---
 
+## A full match in one minute
+
+A nine-wave match on seed `simtest1` (the balance suite's reference seed), filmed at ~7× speed with a scripted player — every wave telegraphed, fought, and survived:
+
+**▶ [Watch the full-match timelapse (mp4, ~1 min)](docs/media/match_timelapse.mp4)**
+
+<img src="screenshots/match_teaser.gif" width="220">
+
+---
+
 ## Playing
 
 Open `index.html` in a browser (portrait phone, or a narrow browser window). No server or network needed.
 
-- **Tap a route piece** from your hand of three, tap a glowing socket, tap the preview to rotate, confirm.
-- **Tap a network endpoint or island plot** to build a gun, shield, shipyard, or Temple.
-- **Tap an island** to send your priest there; he must stand on an island for the 10 s a Temple takes to consecrate.
+- **Tap anywhere gold markers glow** — island coasts, route ends, structure ports. A context menu opens at your thumb: the route pieces in your hand that fit there, every building valid at that spot (each explained in a line), and a Favor-priced reroll.
+- **Route pieces cost Favor (✦), flat rate**; buildings and haulers cost Supply (⚇), hauled home as ore.
+- **Tap the ghost to turn it, CONFIRM to bind.** The confirm button quotes the wind multiplier the new corridor would ride.
+- **Tap an island** to send your priest; ten seconds of his presence consecrates a Temple and claims the island.
+- **Any island your supported network touches mines automatically** — claiming it *secures* the ore against Poseidon's counter-claim.
 - Win by felling Poseidon's Great Temple. Lose if he fells yours. One-tap reset.
 
 ## Development
 
 ```
-node build.js      # assemble src/*.js into index.html
-node test/test_mapgen.js   # headless logic tests
+node build.js              # assemble src/*.js into index.html
+node test/test_mapgen.js   # headless logic tests (also: network, sim, win, wave5, gauntlet, fairplay)
+node test/opt_capacity.js  # balance sweep harnesses (favor price, income, hauler capacity)
 ```
 
 Game logic lives in `src/*.js` (concatenated in filename order); every tunable number lives in the frozen `CONFIG` object at the top of the built file. `buildlog/BUILDLOG.md` is the running build log required by the competition.
@@ -32,59 +45,49 @@ Game logic lives in `src/*.js` (concatenated in filename order); every tunable n
 
 ## Feature log
 
-Screenshots are portrait-phone captures (390×844) added as each feature lands.
+Screenshots are portrait-phone captures (390×844) retaken as the game evolves; this slate is current as of the sweep-tuned build.
 
 ### 1. Deterministic archipelago generation *(done)*
 
-Every match generates its own nine-island archipelago from a seed shown on the start screen — type a seed back in to replay a map exactly. Generation is zone-constrained (corner opposition never varies, island positions and reserves do) and validated against 11 invariants: supply islands inside starting influence, 8–12 cell runs to the contested interior, a guaranteed over-water approach for Wave 5's scripted strike, a priced island-hop alternative, an open channel so Poseidon's lanes can always be reached, wind that rewards circuit routes over out-and-back spurs, and more. Failed seeds re-roll; a verified golden seed is the last-resort fallback.
+Every match generates its own archipelago from a seed shown on the start screen — type a seed back in to replay a map exactly. Generation is zone-constrained (corner opposition never varies, island positions and reserves do) and validated against 12 invariants: supply islands inside starting influence, measured runs to the contested interior, a guaranteed over-water approach for Wave 5's scripted strike, a priced island-hop alternative, an open channel so Poseidon's lanes can always be reached, wind that rewards circuit routes over out-and-back spurs, and a proven win path. Failed seeds re-roll; a verified golden seed is the last-resort fallback.
 
-<img src="screenshots/start_screen.png" width="300"> <img src="screenshots/map_view.png" width="300">
+<img src="screenshots/intro.png" width="300"> <img src="screenshots/home_markers.png" width="300">
 
-### 2. Portrait scene and the two layers *(done)*
+### 2. A scrolling world under an exploration shroud *(done)*
 
-Fixed oblique camera, no rotation. Limestone islands with bronze building plots, temple colonnades at the two Great Temples, and the wind made visible everywhere it matters: whitecaps drift along the wind vector, trees lean into it, temple smoke streams downwind. Aeolus' corridors are elevated luminous ivory ribbons; Poseidon's lanes are broad dark bands lying on the water — instantly distinguishable layers on a phone.
+The map is deliberately larger than the screen — sized in portrait-screen tiles from a single CONFIG entry (currently 3×3 screens; island count scales automatically, with small stepping-stone skerries grown wherever the island-hop chain would stretch beyond hop range). Drag to pan, pinch to zoom, two fingers to rotate; the oblique tilt never changes. Unexplored terrain sits under an opaque shroud that lifts permanently as your reach extends. Enemy craft additionally require live vision; enemy structures and lanes, once seen, stay drawn at their last known state — and a live lane ghosts one segment beyond your vision, so his paths visibly continue somewhere rather than materialising parentless at the fog edge.
 
-<img src="screenshots/routes_view.png" width="300">
+<img src="screenshots/gun_sites.png" width="300">
 
-### 3. Route piece placement *(done)*
+### 3. Build where you're looking *(done — player-directed)*
 
-A hand of three pieces (short/long straights, L-turn, S-bend, T-junction). Tap a piece, legal sockets illuminate; tap a socket, the piece previews; tap the preview to cycle orientations; confirm. No dragging anywhere. The confirm button shows the wind speed multiplier the new corridor would ride (×0.70–×1.35) before you commit — the placement ghost is a wind instrument. Influence gates every placement, and a rival's claimed islands refuse connection. Behind it sits the support graph: every segment traces to an anchor, severed branches fray for a 3-second rescue window and then visibly unbind segment by segment from the break inward; reconnecting relights everything instantly.
+The interaction is location-first: gold markers glow on every spot you can act, taps snap generously at this perspective, and a context menu opens **at your thumb** — your balance on top, buildings with one-line explanations in the middle, route-piece chips and a reroll on the bottom row nearest your thumb. The hand always holds three prong classes (1 / 2 / 3+); rerolling and discarding are Favor-priced. Confirm/turn/cancel float beside the placement ghost, and arming a weapon lights every legal site with the range ring drawn before you pay.
 
-<img src="screenshots/placement_view.png" width="300">
+<img src="screenshots/ctxmenu.png" width="300"> <img src="screenshots/placement.png" width="300">
 
-### 4. A scrolling world under an exploration shroud *(done)*
+### 4. Living logistics *(done)*
 
-The map is deliberately larger than the screen — sized in portrait-screen tiles from a single CONFIG entry (default 2×3 screens; island count scales automatically, with small stepping-stone islands grown wherever the island-hop chain would stretch beyond hop range). Drag to pan; the fixed oblique angle never rotates. Unexplored terrain sits under a dark shroud that lifts permanently as your reach — structures, corridors, ships — extends across the archipelago. Enemy craft additionally require live vision; enemy structures and lanes, once seen, stay drawn at their last known state.
+Islands carry 500–1500 ore in visible quarries — headframes, pits, and gems that twinkle while reserves last. Any island your supported network touches mines into its local stockpile; haulers bought at yards ride your corridors, dwell to load, and only credit cargo when they moor at the Great Temple (with a satisfying ching). Hauler capacity is sweep-tuned at 12 (24 hydrogen). Cut the road beneath a ship and it goes **adrift** — tumbling downwind on the visible wind field, bleeding hull, until it touches a supported friendly segment or dies. The priest rides the same rules; if he's killed, a successor takes 25 seconds to invest at home.
 
-<img src="screenshots/midgame_view.png" width="300"> <img src="screenshots/supply_view.png" width="300">
+<img src="screenshots/logistics.png" width="300">
 
-### 5. Living logistics *(done)*
+### 5. War on the road itself *(done)*
 
-Islands mine into local stockpiles; haulers bought at yards ride your corridors, dwell to load, and only credit cargo when they moor at the Great Temple. Islands deplete and force expansion. Cut the road beneath a ship and it goes **adrift** — tumbling downwind on the visible wind field, bleeding hull, until it touches a supported friendly segment (cargo intact) or dies (cargo lost, wreck marker). The priest rides the same rules: consecrating a Temple takes ten seconds of his presence, claiming the island, crumbling every rival connection to it — and if he's killed, a successor takes 25 seconds to invest at home.
+Nine authored waves, each telegraphed with Poseidon's own words, each launched from his temple nearest your forward holdings — take his ground and his tide must come further. **Paths are invulnerable along their length**: what can be attacked are raw open ends and structures. Cap a tip with a gun and the path behind it is safe — until the gun dies, explodes its adjacent segment, and re-opens the end. Networks erode from their tips; severed branches fray for a 3-second rescue window and then visibly unbind segment by segment from the break inward; reconnecting relights everything instantly. Wave 5 is a scripted heavy strike verified end-to-end by an automated test; later waves bring Tidal Surge, Fog Bank, and the Age of Wrath.
 
-### 6. War on the road itself *(done)*
+<img src="screenshots/combat.png" width="300">
 
-Nine authored waves, each telegraphed eight seconds out with Poseidon's own words, each launched from his temple nearest your forward holdings — take his ground and his tide must come further. **Paths are invulnerable along their length**: what can be attacked are raw open ends (uncapped tips), and structures. Cap a tip with a gun and the path behind it is safe — until the gun dies, explodes its adjacent segment, and re-opens the end. Networks erode from their tips; inline structures (routes continued through a tower's ports) are the high-stakes joints whose destruction severs everything beyond and starts the visible segment-by-segment unbinding. Siphons can only reach ends over open water; your ballast jars can't touch lanes hugging a coast. Wave 5 is a scripted heavy strike on your most forward structure (verified end-to-end by an automated test); wave 6 brings Tidal Surge — the one power that can bite mid-corridor — wave 7 Fog Bank, wave 8 the Age of Wrath. Poseidon builds his own lanes piece by visible piece, founds temples with his own priest, raises siphon masts along contested straits, and reroutes (after a cooldown) when you cut him.
+### 6. An enemy that plays by your rules *(done — player-directed)*
 
-### 7. Reading the fight *(done)*
+Poseidon builds his own lanes piece by visible piece from sockets of his own network, founds temples with his own priest, and reroutes when you cut him. His assault craft are **lane-bound**: they ride his network, halt within weapon range, and fire from there — cut the lane beneath them and they tumble adrift. `test/test_fairplay.js` independently re-walks his lane graph from his Great Temple every two sim-seconds across three full matches: every lane he ever lays traces home, and every cut lane dies on a collapse timer. Tap any lane to have it named — his say so out loud: *TRACES HOME TO HIS TEMPLES*.
 
-Combat is drawn: gold ballast tracers falling from your guns, teal jets rising from his, impact sparks, explosion rings, wreck markers. Great Temples carry floating health bars (his obeys fog memory), and the screen edge glows red while your temple is under fire. Island bases tint with allegiance — gold yours, teal his, pale stone neutral. Tapping anything names it, with hit points, ore remaining, and allegiance.
+### 7. Reach is everything *(done — player-directed rules)*
 
-### 8. Reach is everything *(done — player-directed rules)*
+**Roads are reach**: route pieces and the towers on their endpoints aren't influence-gated — drive a corridor into Poseidon's waters to lift the fog and put guns on his infrastructure. **His craft need his lanes**: he must build toward you to strike you, and cutting his lanes physically pushes his reach back. Every structure type has its own silhouette (rust vane drum, navy zeppelin battery, bronze shield pylon, marble temple, timber yard); wounded structures burn; kills fling embers; every shot has a flare, a tracer, and a synthesized report. The sea is bump-lit, swells with the wind, and foams along coasts.
 
-Three rules landed from live playtesting. **Roads are reach**: route pieces and the towers on their endpoints aren't influence-gated — drive a corridor into Poseidon's waters to lift the fog and put guns on his infrastructure. **Paths are invulnerable along their length**: only raw open ends and structures can be attacked, so towers are the joints of the network and losing one blows the road open. **His craft need his lanes**: Poseidon's ships operate only in waters his network reaches — he must build toward you to strike you, and cutting his lanes physically pushes his reach back. Ore islands carry visible quarries with headframes; loaded haulers sling a gold ore crate; the sea is bump-lit and swells with the wind.
+<img src="screenshots/endgame.png" width="300">
 
-<img src="screenshots/logistics_view.png" width="300"> <img src="screenshots/watery.png" width="300">
+### 8. Tuned by simulation *(done)*
 
-### 9. An army you can read *(done — player-directed)*
-
-Poseidon's assault craft are **lane-bound**: they ride his network like his haulers, halt on the lane within weapon range, and fire from there — cut the lane beneath them and they tumble adrift. Every structure type has its own silhouette (rust vane drum with spinning arms, long navy zeppelin battery, grounded bronze shield pylon, marble temple, timber yard); wounded structures burn and smoke; kills fling embers; every shot has a muzzle flare, a tracer, and a sound. Build menus explain what each unit does in a line.
-
-<img src="screenshots/unitart.png" width="300">
-
-### 10. Build where you're looking *(done — player-directed)*
-
-The interaction is location-first: gold markers glow on every spot you can act — coasts of your islands, route ends, structure ports. Tap one (taps snap generously at this perspective) and a context menu opens **at your thumb**: the route pieces you hold that fit there, and every building valid at that spot, each with its one-line explanation. Your hand of three shrinks to a read-out strip at the bottom — tap a chip twice to discard it for a Favor.
-
-<img src="screenshots/ctxmenu.png" width="300">
+Three parameter-sweep harnesses (`test/opt_favor.js`, `opt_income.js`, `opt_capacity.js`) run scripted full matches across seeds and score match quality — arc length, pressure survived, engagement, economies alive, no degenerate spam. They set the flat Favor price of route pieces, the temple-income baseline and divisor, and hauler capacity (12/24 — larger loads flood the economy now that every connected island mines). The match video above is the reference seed those sweeps optimise.
 
