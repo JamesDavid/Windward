@@ -76,3 +76,9 @@ Three rules landed from live playtesting. **Roads are reach**: route pieces and 
 
 <img src="screenshots/logistics_view.png" width="300"> <img src="screenshots/watery.png" width="300">
 
+### 9. An army you can read *(done — player-directed)*
+
+Poseidon's assault craft are **lane-bound**: they ride his network like his haulers, halt on the lane within weapon range, and fire from there — cut the lane beneath them and they tumble adrift. Every structure type has its own silhouette (rust vane drum with spinning arms, long navy zeppelin battery, grounded bronze shield pylon, marble temple, timber yard); wounded structures burn and smoke; kills fling embers; every shot has a muzzle flare, a tracer, and a sound. Build menus explain what each unit does in a line.
+
+<img src="screenshots/unitart.png" width="300">
+
