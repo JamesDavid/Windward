@@ -564,6 +564,29 @@ function syncMovers(state) {
   }
   for (const c of state.craft) if (!c.dead) movers.push(c);
 
+  // parked units never stack (player-directed): everything stationary
+  // over an island is assigned its own square to hover above — priest on
+  // one, each hauler on another — and drifts to its mooring smoothly
+  const still = (m) =>
+    (m.kind === 'hauler' && (m.state === 'idle' || m.state === 'dwelling' || m.state === 'unloading')) ||
+    (m.kind === 'priest' && (m.state === 'idle' || m.state === 'consecrating'));
+  const byIsland = new Map();
+  for (const m of movers) {
+    if (!still(m)) continue;
+    const isl = islandAt(state, Math.round(m.pos[0]), Math.round(m.pos[1]));
+    if (!isl) continue;
+    const key = isl.id + ':' + m.owner;
+    if (!byIsland.has(key)) byIsland.set(key, { isl, list: [] });
+    byIsland.get(key).list.push(m);
+  }
+  const parkSlot = new Map();
+  for (const { isl, list } of byIsland.values()) {
+    list.sort((a, b) => a.id - b.id);
+    const free = isl.cells.filter(([x, z]) => !structureAt(state, x, z));
+    const cells = free.length ? free : isl.cells;
+    list.forEach((m, i) => parkSlot.set(m.id, cells[i % cells.length]));
+  }
+
   for (const m of movers) {
     seen.add(m.id);
     const hyd = m.kind === 'hauler' && m.owner === 'A' && !!state.hydrogen.A;
@@ -592,11 +615,20 @@ function syncMovers(state) {
       rec.dir = [dx / dl, dz / dl];
       rec.lastPos = m.pos.slice();
     }
-    rec.grp.position.set(worldX(m.pos[0]), moverY(m), worldZ(m.pos[1]));
+    const slot = parkSlot.get(m.id);
+    if (slot) {
+      if (!rec.park) rec.park = [m.pos[0], m.pos[1]];
+      rec.park[0] += (slot[0] - rec.park[0]) * 0.06;
+      rec.park[1] += (slot[1] - rec.park[1]) * 0.06;
+      rec.grp.position.set(worldX(rec.park[0]), moverY(m), worldZ(rec.park[1]));
+    } else {
+      rec.park = null;
+      rec.grp.position.set(worldX(m.pos[0]), moverY(m), worldZ(m.pos[1]));
+    }
     // ships pass AROUND each other, not through: every ship keeps a hair
     // to its own side of the road and leans out wider while another ship
     // is close, easing back once the road is clear
-    if (m.state !== 'adrift') {
+    if (m.state !== 'adrift' && !slot) {
       let crowd = 0;
       for (const o of movers) {
         if (o === m) continue;
@@ -696,11 +728,54 @@ function syncGreatTemples(state) {
       rec.bar.visible = rec.back.visible = rec.bar.visible && seen;
     }
   }
-  // edge warning while the home temple is under recent fire
+  // edge warnings: red while the home temple is under recent fire, and a
+  // pulsing TEAL STORM while a wave is telegraphed or his craft are at
+  // sea — the wave IS an event even with no words on screen
   const hud = document.getElementById('hud');
   if (hud) {
     const threatened = state.time - (state.gtaLastHit || -99) < 2.5;
-    hud.style.boxShadow = threatened ? 'inset 0 0 60px 18px rgba(217,83,79,0.55)' : '';
+    const storm = (state.fxStormUntil && state.time < state.fxStormUntil) ||
+      state.craft.some(c => !c.dead);
+    if (threatened) hud.style.boxShadow = 'inset 0 0 60px 18px rgba(217,83,79,0.55)';
+    else if (storm) {
+      const a = 0.22 + 0.14 * Math.abs(Math.sin(state.time * 2.6));
+      hud.style.boxShadow = 'inset 0 0 55px 14px rgba(63,184,204,' + a.toFixed(2) + ')';
+    } else hud.style.boxShadow = '';
+  }
+
+  // off-screen threat chevron: while his craft are at sea, an arrow on
+  // the screen edge points at the fleet so the wave can always be FOUND
+  if (hud) {
+    let arrow = document.getElementById('threatarrow');
+    if (!arrow) {
+      arrow = document.createElement('div');
+      arrow.id = 'threatarrow';
+      arrow.style.cssText = 'position:fixed; z-index:40; font-size:26px; color:#3fb8cc; ' +
+        'text-shadow:0 0 8px rgba(63,184,204,0.9); pointer-events:none; display:none; ' +
+        'transition:opacity 0.3s;';
+      arrow.textContent = '➤';
+      document.body.appendChild(arrow);
+    }
+    const alive = state.craft.filter(c => !c.dead);
+    if (alive.length) {
+      let sx = 0, sz = 0;
+      for (const c of alive) { sx += c.pos[0]; sz += c.pos[1]; }
+      const v = new THREE.Vector3(worldX(sx / alive.length), 0.3, worldZ(sz / alive.length)).project(R.camera);
+      const px = (v.x + 1) / 2 * window.innerWidth;
+      const py = (-v.y + 1) / 2 * window.innerHeight;
+      const M = 30;
+      const off = px < M || px > window.innerWidth - M || py < 70 || py > window.innerHeight - 150 || v.z > 1;
+      if (off) {
+        const cx = clamp(px, M, window.innerWidth - M);
+        const cy = clamp(py, 70, window.innerHeight - 150);
+        const ang = Math.atan2(py - cy, px - cx);
+        arrow.style.left = (cx - 13) + 'px';
+        arrow.style.top = (cy - 13) + 'px';
+        arrow.style.transform = 'rotate(' + ang.toFixed(2) + 'rad)';
+        arrow.style.display = 'block';
+        arrow.style.opacity = 0.55 + 0.45 * Math.abs(Math.sin(state.time * 3));
+      } else arrow.style.display = 'none';
+    } else arrow.style.display = 'none';
   }
 }
 
@@ -766,9 +841,12 @@ function syncIslandBars(state) {
       rec = { mine, pit, heap, bar, baseReserve: isl.reserve };
       R.islandBars.set(isl.id, rec);
     }
+    // the whole quarry kit obeys the shroud (player bug report: mines
+    // floating in open sea — they were drawn for islands still under fog)
+    const lifted = groundLifted(state, Math.round(isl.center[0]), Math.round(isl.center[1]));
     // a depleted quarry vanishes (blasted level) and a bronze build pad
     // takes its place — the heap stays until the stockpile is hauled off
-    rec.mine.visible = !isl.minedOut;
+    rec.mine.visible = lifted && !isl.minedOut;
     if (isl.minedOut && !rec.pad) {
       const [hx, hz] = isl.cells[0];
       const pad = new THREE.Mesh(
@@ -790,12 +868,13 @@ function syncIslandBars(state) {
         }
       });
     }
+    if (rec.pad) rec.pad.visible = lifted;
     const stockScale = clamp(isl.stockpile / 40, 0.001, 1.4);
     rec.heap.scale.setScalar(stockScale);
-    rec.heap.visible = isl.stockpile > 0.5;
+    rec.heap.visible = lifted && isl.stockpile > 0.5;
     const frac = rec.baseReserve > 0 ? isl.reserve / rec.baseReserve : 0;
     rec.bar.scale.x = Math.max(0.02, frac);
-    rec.bar.visible = !!isl.owner && !isl.minedOut;
+    rec.bar.visible = lifted && !!isl.owner && !isl.minedOut;
     rec.bar.material.color.setHex(isl.owner === 'A' ? 0x76d09a : 0x4fb6c4);
   }
 }
@@ -831,6 +910,25 @@ function initFxEvents(state) {
     fxSpawn(state, cause === 'collapse' ? 'unravel' : 'boom', segMid(seg), { air: seg.owner === 'A' });
   });
   Events.on('convoyLost', ({ ent }) => fxSpawn(state, 'wreck', ent.pos));
+  // the wave ARRIVES as an event: eruption at the origin, storm edge on
+  // (words stay banished — the sea itself announces him)
+  Events.on('waveTelegraph', () => {
+    state.fxStormUntil = state.time + CONFIG.Waves.TELEGRAPH + 6;
+  });
+  Events.on('waveLaunched', ({ origin }) => {
+    state.fxStormUntil = state.time + 6;
+    if (origin) {
+      fxSpawn(state, 'surge', origin);
+      fxSpawn(state, 'boom', origin);
+      const rng = mulberry32(Math.floor(state.time));
+      for (let i = 0; i < 5; i++) {
+        const a = rng() * Math.PI * 2;
+        fxSpawn(state, 'ember', origin, {
+          vx: Math.cos(a) * (1 + rng()), vy: 1.2 + rng() * 1.6, vz: Math.sin(a) * (1 + rng())
+        });
+      }
+    }
+  });
   // the emptied quarry is blasted level: one good explosion, then a pad
   Events.on('islandDepleted', ({ island }) => {
     const c = island.cells[0];
@@ -1053,14 +1151,56 @@ function showStructPreview(state, side, type, cell, facing) {
 // reach (structures, corridors, ships) lifts it. One-way. ----
 R.shroud = new Map();
 
+// The unexplored world hides under DENSE CLOUD, not flat black
+// (player-directed): an original fbm-noise shader — technique learned
+// from the volumetric-cloud literature, code our own — billowing slowly
+// in world space. Fully opaque: nothing reads through it.
+function makeShroudMaterial() {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { fogTime: { value: 0 } },
+    vertexShader: [
+      'varying vec3 vWorld;',
+      'void main() {',
+      '  vec4 wp = modelMatrix * vec4( position, 1.0 );',
+      '  vWorld = wp.xyz;',
+      '  gl_Position = projectionMatrix * viewMatrix * wp;',
+      '}'
+    ].join('\n'),
+    fragmentShader: [
+      'uniform float fogTime;',
+      'varying vec3 vWorld;',
+      'float hashN( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }',
+      'float vnoise( vec2 p ) {',
+      '  vec2 i = floor( p ); vec2 f = fract( p );',
+      '  vec2 u = f * f * ( 3.0 - 2.0 * f );',
+      '  return mix( mix( hashN( i ), hashN( i + vec2( 1.0, 0.0 ) ), u.x ),',
+      '              mix( hashN( i + vec2( 0.0, 1.0 ) ), hashN( i + vec2( 1.0, 1.0 ) ), u.x ), u.y );',
+      '}',
+      'float fbm( vec2 p ) {',
+      '  float v = 0.0; float a = 0.5;',
+      '  for ( int i = 0; i < 4; i++ ) { v += a * vnoise( p ); p = p * 2.03 + 11.0; a *= 0.5; }',
+      '  return v;',
+      '}',
+      'void main() {',
+      '  vec2 p = vWorld.xz * 0.55 + vec2( fogTime * 0.06, fogTime * 0.035 );',
+      '  float n = fbm( p + fbm( p * 0.7 - fogTime * 0.02 ) * 1.4 );',
+      '  float lift = clamp( ( vWorld.y - 0.1 ) / 1.6, 0.0, 1.0 );',
+      '  vec3 deep = vec3( 0.024, 0.055, 0.066 );',
+      '  vec3 billow = vec3( 0.16, 0.23, 0.26 );',
+      '  vec3 col = mix( deep, billow, n * n * ( 0.35 + 0.65 * lift ) );',
+      '  gl_FragColor = vec4( col, 1.0 );',
+      '}'
+    ].join('\n')
+  });
+  return mat;
+}
+
 function buildShroud(state) {
   for (const m of R.shroud.values()) R.scene.remove(m);
   R.shroud.clear();
   const geo = new THREE.BoxGeometry(1.02, 1.7, 1.02);
-  const opaque = CONFIG.Render.SHROUD_OPACITY >= 1;
-  const mat = new THREE.MeshBasicMaterial({
-    color: 0x060f14, transparent: !opaque, opacity: CONFIG.Render.SHROUD_OPACITY
-  });
+  if (!R.shroudMat) R.shroudMat = makeShroudMaterial();
+  const mat = R.shroudMat;
   for (let z = 0; z < CONFIG.Grid.HEIGHT; z++) {
     for (let x = 0; x < CONFIG.Grid.WIDTH; x++) {
       const m = new THREE.Mesh(geo, mat);

@@ -46,6 +46,9 @@ function cinematicTick(state, dt) {
   // telegraph breath: ease out ~15% and back over the warning. The
   // player's own pinch always wins — the pulse is a multiplier applied
   // at camera time, never a change to their chosen zoom.
+  // the fog of war billows on its own slow clock
+  if (R.shroudMat) R.shroudMat.uniforms.fogTime.value += dt;
+
   const p = t / T;
   R.zoomPulse = (p >= 0 && p <= 1) ? 1 + 0.15 * Math.sin(Math.PI * p) : 1;
   if (R.zoomPulse !== R.lastZoomPulse) {

@@ -141,6 +141,11 @@ function audioPlay(name) {
       tone(98, 1.1, 'sawtooth', 0.14, 0, 147);
       noiseBurst(0.9, 0.12, 300, 0.1);
       break;
+    case 'waveHit':     // the tide arrives: deep war-horn over a crash
+      tone(65, 1.3, 'sawtooth', 0.28, 0, 46);
+      tone(98, 0.9, 'square', 0.1, 0.12, 65);
+      noiseBurst(1.1, 0.5, 240, 0.05);
+      break;
     case 'chant':       // consecration
       tone(196, 0.9, 'triangle', 0.1);
       tone(294, 0.9, 'triangle', 0.08, 0.05);
@@ -187,6 +192,7 @@ function wireAudio() {
   Events.on('consecrationStarted', () => audioPlay('chant'));
   Events.on('tidalSurge', () => { noiseBurst(1.2, 0.5, 250); });
   Events.on('islandDepleted', () => audioPlay('boom'));
+  Events.on('waveLaunched', () => audioPlay('waveHit'));
   // the Great Temple under fire sounds like BOMBARDMENT, not a slot
   // machine: the hit event streams at damage-tick rate, so one heavy
   // boom lands at most every 1.2s (visual vignette carries the rest)

@@ -148,19 +148,23 @@ function initRenderer() {
     // The shader samples by worldPosition.xz, so this is true world flow.
     {
       const mat = sea.material;
-      mat.uniforms.flowDir = { value: new THREE.Vector2(0.7, 0.7) };
-      // NB: the cross-drift variable must NOT be named `cross` — that
-      // shadows a GLSL built-in and some drivers refuse to compile the
-      // shader (flat, normal-less water on those devices)
-      mat.fragmentShader = 'uniform vec2 flowDir;\n' + mat.fragmentShader
+      // The scroll is an ACCUMULATED offset integrated on the CPU — never
+      // flowDir * time. Multiplying a direction by absolute time means a
+      // change of wind under the camera is amplified by every second
+      // accumulated so far: a slight pan made the whole ocean lurch.
+      // (Variables must not shadow GLSL built-ins like `cross` — strict
+      // drivers refuse to compile and the sea renders flat.)
+      mat.uniforms.flowOff = { value: new THREE.Vector2(0, 0) };
+      mat.uniforms.flowSideOff = { value: new THREE.Vector2(0, 0) };
+      mat.fragmentShader = 'uniform vec2 flowOff;\nuniform vec2 flowSideOff;\n' + mat.fragmentShader
         .replace('vec2 uv0 = ( uv / 103.0 ) + vec2(time / 17.0, time / 29.0);',
-          'vec2 flowSide = vec2( -flowDir.y, flowDir.x ); vec2 uv0 = ( uv / 103.0 ) - flowDir * ( time / 11.0 );')
+          'vec2 uv0 = ( uv / 103.0 ) - flowOff / 11.0;')
         .replace('vec2 uv1 = uv / 107.0-vec2( time / -19.0, time / 31.0 );',
-          'vec2 uv1 = uv / 107.0 - flowDir * ( time / 24.0 ) + flowSide * ( time / 89.0 );')
+          'vec2 uv1 = uv / 107.0 - flowOff / 24.0 + flowSideOff / 89.0;')
         .replace('vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) + vec2( time / 101.0, time / 97.0 );',
-          'vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) - flowDir * ( time / 101.0 );')
+          'vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) - flowOff / 101.0;')
         .replace('vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - vec2( time / 109.0, time / -113.0 );',
-          'vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - flowDir * ( time / 109.0 ) - flowSide * ( time / 127.0 );')
+          'vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - flowOff / 109.0 - flowSideOff / 127.0;')
         // the mirror layer moves with the CAMERA, not the world — at full
         // fresnel it dominates and panning makes the whole sea appear to
         // slide off the islands. Cap the view-dependent share so the
@@ -634,13 +638,20 @@ function renderTick(state, dt) {
     if (R.waterSpeedSm === undefined) R.waterSpeedSm = target;
     R.waterSpeedSm += (target - R.waterSpeedSm) * Math.min(1, dt * 4);
     R.seaMesh.material.uniforms.time.value += dt * R.waterSpeedSm;
-    // steer the flow with the wind under the camera, smoothed so panning
-    // across sheared wind never snaps the whole sea
-    const fd = R.seaMesh.material.uniforms.flowDir;
-    if (fd) {
+    // steer the flow with the wind under the camera (smoothed), then
+    // INTEGRATE it into the scroll offsets — direction changes only
+    // affect motion from this moment on, never the accumulated past
+    const uni = R.seaMesh.material.uniforms;
+    if (uni.flowOff) {
       const len = Math.hypot(w.x, w.z) || 1;
-      fd.value.x += (w.x / len - fd.value.x) * Math.min(1, dt * 0.8);
-      fd.value.y += (w.z / len - fd.value.y) * Math.min(1, dt * 0.8);
+      if (!R.flowDirSm) R.flowDirSm = { x: w.x / len, y: w.z / len };
+      R.flowDirSm.x += (w.x / len - R.flowDirSm.x) * Math.min(1, dt * 0.8);
+      R.flowDirSm.y += (w.z / len - R.flowDirSm.y) * Math.min(1, dt * 0.8);
+      const dEff = dt * R.waterSpeedSm;
+      uni.flowOff.value.x += R.flowDirSm.x * dEff;
+      uni.flowOff.value.y += R.flowDirSm.y * dEff;
+      uni.flowSideOff.value.x += -R.flowDirSm.y * dEff;
+      uni.flowSideOff.value.y += R.flowDirSm.x * dEff;
     }
   }
   // the sea itself streams with the wind under the camera

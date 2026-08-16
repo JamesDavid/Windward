@@ -162,7 +162,7 @@ function launchWave(state) {
     state.wave.wrath = true;
     Events.emit('ageOfWrath', {});
   }
-  Events.emit('waveLaunched', { index: idx });
+  Events.emit('waveLaunched', { index: idx, origin: origin.cell.slice() });
 }
 
 function castTidalSurge(state) {
