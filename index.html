@@ -3183,6 +3183,7 @@ function initAI(state) {
     decideAt: 0,
     mastAt: CONFIG.AI.MAST_INTERVAL,
     rerouteBlockedUntil: 0,
+    pauseCooldownUntil: 0,     // rate-limits the reaction pause under fire
     avoidCells: new Map(),     // cellKey -> until (recently cut ground)
     badObjectives: new Map()   // islandId -> until (planning there failed)
   };
@@ -3205,10 +3206,15 @@ function initAI(state) {
   }
   Events.on('segmentDestroyed', ({ seg, cause }) => {
     if (seg.owner !== 'P' || cause === 'collapse') return;
-    // a successful player cut: he avoids the cut ground for the cooldown
-    // (rebuilding elsewhere continues — a total freeze let one gun stall
-    // him forever), and pauses briefly to read as a reaction
-    state.ai.rerouteBlockedUntil = state.time + CONFIG.Waves.AI_REROUTE_DELAY * 2;
+    // a successful player cut: he avoids the cut ground for the cooldown.
+    // The reaction PAUSE is rate-limited to once per cooldown window —
+    // under sustained bombardment (cuts arriving faster than the pause
+    // expires) an unlimited pause rolled forward forever and froze all
+    // his building for the rest of the match (the optb turtling anomaly).
+    if (state.time >= state.ai.pauseCooldownUntil) {
+      state.ai.pauseCooldownUntil = state.time + CONFIG.Waves.AI_REROUTE_COOLDOWN;
+      state.ai.rerouteBlockedUntil = state.time + CONFIG.Waves.AI_REROUTE_DELAY * 2;
+    }
     state.ai.plan = null;
     state.ai.avoidCells.set(cellKey(seg.a[0], seg.a[1]), state.time + CONFIG.Waves.AI_REROUTE_COOLDOWN * 2);
     state.ai.avoidCells.set(cellKey(seg.b[0], seg.b[1]), state.time + CONFIG.Waves.AI_REROUTE_COOLDOWN * 2);
