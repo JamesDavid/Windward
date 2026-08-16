@@ -63,7 +63,9 @@
     pointer-events: none; font-size: 15px; font-style: italic; color: var(--ivory);
     text-shadow: 0 1px 4px #000; opacity: 0; transition: opacity 0.35s;
   }
-  #tutorial.show { opacity: 1; }
+  #tutorial.show { opacity: 1; pointer-events: auto; cursor: pointer; }
+  #banner.show { pointer-events: auto; cursor: pointer; }
+  #ticker.show { pointer-events: auto; cursor: pointer; }
   #ticker {
     position: absolute; top: calc(env(safe-area-inset-top, 0px) + 88px);
     left: 0; right: 0; text-align: center;

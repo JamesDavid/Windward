@@ -5,10 +5,10 @@
 // ================================================================
 
 const TUTORIAL_SCRIPT = [
-  { at: 0.5, text: '“The bag lifts them. Only bound air moves them. Take a wind.”' },
-  { at: 5, text: '“Lay it toward the shrine. Nothing you build need touch the sea.”' },
-  { at: 12, text: '“My ships move where you have bound the air. Favor follows.”' },
-  { at: 20, text: '“An open end is exposed. Cap it, or continue it.”' }
+  { at: 0.5, key: 'tut1', text: '“The bag lifts them. Only bound air moves them. Take a wind.”' },
+  { at: 5, key: 'tut2', text: '“Lay it toward the shrine. Nothing you build need touch the sea.”' },
+  { at: 12, key: 'tut3', text: '“My ships move where you have bound the air. Favor follows.”' },
+  { at: 20, key: 'tut4', text: '“An open end is exposed. Cap it, or continue it.”' }
 ];
 
 const POSEIDON_BANNERS = [
@@ -37,6 +37,8 @@ function initFlow(state) {
   skipBtn.onclick = () => {
     state.flow.skipped = true;
     state.flow.tutorialIdx = TUTORIAL_SCRIPT.length;
+    for (const item of TUTORIAL_SCRIPT) markSeen(item.key);
+    markSeen('wave1lore');
     hideTutorialLine();
     skipBtn.classList.add('hidden');
     try { localStorage.setItem('windward-skip', '1'); } catch (e) { }
@@ -77,7 +79,7 @@ function flowTick(state) {
   if (!f.skipped && f.tutorialIdx < TUTORIAL_SCRIPT.length) {
     const item = TUTORIAL_SCRIPT[f.tutorialIdx];
     if (state.time >= item.at) {
-      showTutorialLine(item.text, 5500);
+      showTutorialLine(item.text, 4200, item.key);   // shown once EVER
       f.tutorialIdx++;
       if (f.tutorialIdx === TUTORIAL_SCRIPT.length) {
         setTimeout(() => document.getElementById('skipbtn').classList.add('hidden'), 6000);
@@ -88,7 +90,7 @@ function flowTick(state) {
   // this is the only Aeolus line after control releases (§23)
   if (!f.waveOneAnnounced && state.time >= CONFIG.Waves.FIRST_AT - CONFIG.Waves.TELEGRAPH) {
     f.waveOneAnnounced = true;
-    if (!f.skipped) showTutorialLine('“They cross without asking him. He rises.”', 5000);
+    if (!f.skipped) showTutorialLine('“They cross without asking him. He rises.”', 4200, 'wave1lore');
   }
 
   // win / lose (§28)
@@ -147,7 +149,7 @@ function initCodex(state) {
       const onSeg = [...state.segments.values()].some(s => s.owner === 'A' &&
         Math.abs((s.a[0] + s.b[0]) / 2 - cell[0]) < 1 && Math.abs((s.a[1] + s.b[1]) / 2 - cell[1]) < 1);
       open(onSeg ? 'corridor' : 'poseidon');
-    }, 650);
+    }, 950);
   });
   canvas.addEventListener('pointerup', () => clearTimeout(codexTimer));
   canvas.addEventListener('pointermove', () => clearTimeout(codexTimer));

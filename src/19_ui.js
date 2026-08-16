@@ -24,6 +24,7 @@ function initUI(state) {
     priestchip: $('priestchip'), buildmenu: $('buildmenu'), codex: $('codex')
   };
   UI.els.seedchip.textContent = state.seed;
+  wireDismissables();
 
   buildHand(state);
 
@@ -622,6 +623,33 @@ function refreshHUD(state) {
 }
 
 // ---- banners / tutorial / ticker ----
+// Every transient line is tap-to-dismiss, and story lines show once EVER
+// (remembered across matches) so they never nag a returning player.
+function seenLines() {
+  try { return new Set(JSON.parse(localStorage.getItem('windward-seen') || '[]')); }
+  catch (e) { return new Set(); }
+}
+function markSeen(key) {
+  try {
+    const s = seenLines();
+    s.add(key);
+    localStorage.setItem('windward-seen', JSON.stringify([...s]));
+  } catch (e) { }
+}
+
+function wireDismissables() {
+  for (const id of ['tutorial', 'banner', 'ticker', 'codex']) {
+    const el = document.getElementById(id);
+    if (el && !el.dataset.dismissWired) {
+      el.dataset.dismissWired = '1';
+      el.addEventListener('click', () => {
+        el.classList.remove('show');
+        if (id === 'codex') el.classList.add('hidden');
+      });
+    }
+  }
+}
+
 let bannerTimeout = null;
 function showBanner(title, sub, poseidon) {
   const b = UI.els.banner;
@@ -634,7 +662,11 @@ function showBanner(title, sub, poseidon) {
 }
 
 let tutorialTimeout = null;
-function showTutorialLine(text, holdMs) {
+function showTutorialLine(text, holdMs, onceKey) {
+  if (onceKey) {
+    if (seenLines().has(onceKey)) return;
+    markSeen(onceKey);
+  }
   const t = UI.els.tutorial;
   t.textContent = text;
   t.classList.add('show');

@@ -60,7 +60,7 @@ function wireGameEvents(state) {
   Events.on('networkSevered', ({ side }) => {
     if (side === 'A' && !state.tutorial.seenSever) {
       state.tutorial.seenSever = true;
-      showTutorialLine('“The binding is cut. Take another path before the wind remembers.”', 6000);
+      showTutorialLine('“The binding is cut. Take another path before the wind remembers.”', 5000, 'sever1');
     }
   });
   Events.on('networkRestored', ({ side }) => {
