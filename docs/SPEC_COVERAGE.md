@@ -50,7 +50,7 @@ with pointers to where each lives and every deliberate deviation. Deviations mar
 | Wave 5 signature sequence reliable | ✅ | `test_wave5.js` end-to-end |
 | Tidal Surge (W6), Fog Bank (W7), Age of Wrath (W8) | ✅ | `12_waves.js` |
 | Tailwind, Wind Wall | 🔶 | Wind Wall aimed at an endpoint ✅; Tailwind fleet-wide rather than per-branch (phone UX simplification) |
-| Three-mast gauntlet kills, gapped pair doesn't; Tailwind halves exposure | ⏳ | mechanics in place (regen gap math); dedicated tuning check pending |
+| Three-mast gauntlet kills, gapped pair doesn't; Tailwind halves exposure | ✅ | `test_gauntlet.js`: chain kills, true gap lets the ship out at ~26 hull |
 
 ## Territory, fog, AI, map
 | Item | Status | Where |
