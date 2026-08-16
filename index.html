@@ -12,6 +12,9 @@
     --sea: #17555e;
     --ink: #10151a;
     --danger: #d9534f;
+    /* top clearance: never less than 34px even when the browser reports
+       no safe-area inset but still overlays a status bar */
+    --topsafe: max(calc(env(safe-area-inset-top, 0px) + 8px), 34px);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -29,7 +32,7 @@
   #hud { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; }
   #topbar {
     display: flex; justify-content: space-between; align-items: center;
-    padding: calc(env(safe-area-inset-top, 0px) + 6px) 10px 4px 10px;
+    padding: var(--topsafe) 10px 4px 10px;
     font-size: 15px; text-shadow: 0 1px 3px #000;
   }
   .res { display: flex; gap: 12px; align-items: center; }
@@ -39,7 +42,7 @@
   .res .favorlabel { color: #d5ecff; }
   #wavechip { font-size: 13px; letter-spacing: 1px; opacity: 0.9; text-align: right; }
   #priestchip {
-    pointer-events: auto; position: absolute; top: 64px; right: 8px;
+    pointer-events: auto; position: absolute; top: calc(var(--topsafe) + 34px); right: 8px;
     background: rgba(16,21,26,0.72); border: 1px solid rgba(242,232,207,0.35);
     border-radius: 10px; padding: 5px 9px; font-size: 12px; text-align: center;
   }
@@ -48,7 +51,7 @@
 
   /* ---------- banners / tutorial ---------- */
   #banner {
-    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 108px);
+    position: absolute; top: calc(var(--topsafe) + 102px);
     left: 0; right: 0; text-align: center;
     pointer-events: none; opacity: 0; transition: opacity 0.4s;
     text-shadow: 0 2px 8px #000;
@@ -58,7 +61,7 @@
   #banner .sub { font-size: 11px; font-style: italic; margin-top: 2px; color: #cfe3e6; }
   #banner.poseidon .title { color: #7fd4dd; }
   #tutorial {
-    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 46px);
+    position: absolute; top: calc(var(--topsafe) + 40px);
     left: 12px; right: 12px; text-align: center;
     pointer-events: none; font-size: 15px; font-style: italic; color: var(--ivory);
     text-shadow: 0 1px 4px #000; opacity: 0; transition: opacity 0.35s;
@@ -67,7 +70,7 @@
   #banner.show { pointer-events: auto; cursor: pointer; }
   #ticker.show { pointer-events: auto; cursor: pointer; }
   #ticker {
-    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 88px);
+    position: absolute; top: calc(var(--topsafe) + 82px);
     left: 0; right: 0; text-align: center;
     font-size: 12px; letter-spacing: 1px; color: #ffd9a0; pointer-events: none;
     text-shadow: 0 1px 3px #000; opacity: 0; transition: opacity 0.3s;
@@ -168,7 +171,7 @@
     border: 1px solid rgba(242,232,207,0.4); border-radius: 8px; padding: 6px;
   }
   #skipbtn {
-    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 118px); left: 10px;
+    position: absolute; top: calc(var(--topsafe) + 112px); left: 10px;
     pointer-events: auto; background: rgba(16,21,26,0.6); color: rgba(242,232,207,0.8);
     border: 1px solid rgba(242,232,207,0.3); border-radius: 8px;
     font-family: inherit; font-size: 11px; letter-spacing: 1px; padding: 5px 10px;
