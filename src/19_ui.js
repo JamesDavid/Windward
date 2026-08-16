@@ -430,7 +430,43 @@ function onTap(state, e) {
     const d = dist2d(s.cell[0], s.cell[1], fx, fz);
     if (d < sd) { sd = d; snapped = s.cell.slice(); }
   }
-  openContextMenu(state, snapped, e.clientX, e.clientY);
+  openContextMenu(state, snapped, e.clientX, e.clientY, fx, fz);
+}
+
+// name whatever SHIP was tapped — nothing that flies or sails stays a
+// mystery, and it heads the context menu (player-directed)
+function identifyUnit(state, fx, fz) {
+  let best = null, bd = 0.9;
+  const consider = (m, label) => {
+    if (!m || m.state === 'dead' || m.dead) return;
+    const d = Math.hypot(m.pos[0] - fx, m.pos[1] - fz);
+    if (d < bd) { bd = d; best = { m, label }; }
+  };
+  for (const h of state.haulers) {
+    if (h.owner === 'A') {
+      consider(h, (state.hydrogen.A ? 'YOUR DIRIGIBLE' : 'YOUR HOT-AIR HAULER'));
+    } else if (state.vision.A.has(cellKey(Math.round(h.pos[0]), Math.round(h.pos[1])))) {
+      consider(h, 'HIS HAULER');
+    }
+  }
+  consider(state.priests.A, 'YOUR PRIEST');
+  const pp = state.priests.P;
+  if (pp && state.vision.A.has(cellKey(Math.round(pp.pos[0]), Math.round(pp.pos[1])))) consider(pp, 'HIS PRIEST');
+  for (const c of state.craft) {
+    if (!state.vision.A.has(cellKey(Math.round(c.pos[0]), Math.round(c.pos[1])))) continue;
+    consider(c, 'HIS ' + c.kind.toUpperCase() + ' CRAFT');
+  }
+  if (!best) return null;
+  const m = best.m;
+  let s = best.label;
+  if (m.hull !== undefined) s += ' · ' + Math.ceil(m.hull) + ' HULL';
+  if (m.cargo) s += ' · ' + Math.floor(m.cargo) + ' ORE ABOARD';
+  if (m.state === 'adrift') s += ' — ADRIFT';
+  else if (m.state === 'dwelling') s += ' — LOADING';
+  else if (m.state === 'unloading') s += ' — DELIVERING';
+  else if (m.state === 'consecrating') s += ' — CONSECRATING';
+  else if (m.state === 'transit' || m.state === 'toIsland' || m.state === 'toHome') s += ' — UNDER WAY';
+  return s;
 }
 
 // every legal site for a structure type, endpoints and plots alike
@@ -555,7 +591,7 @@ function pieceMenuButton(state, i, socket) {
   return btn;
 }
 
-function openContextMenu(state, cell, tapX, tapY) {
+function openContextMenu(state, cell, tapX, tapY, fx, fz) {
   const [x, z] = cell;
   const menu = UI.els.buildmenu;
   menu.innerHTML = '';
@@ -563,8 +599,10 @@ function openContextMenu(state, cell, tapX, tapY) {
   const isl = islandAt(state, x, z);
   const plotIdx = isl ? isl.plots.findIndex(p => p.x === x && p.z === z) : -1;
   const deg = nodeDegrees(state, 'A').get(cellKey(x, z)) || 0;
+  // what was tapped heads the menu: the ship under the thumb first, then
+  // whatever the ground itself is
+  const unitIdent = identifyUnit(state, fx !== undefined ? fx : x, fz !== undefined ? fz : z);
   const ident = identifyCell(state, cell);
-  if (ident) flashTicker(ident);
 
   // a mooring yard gets its own dialog: fleet actions only, no pieces
   const yardHere = structureAt(state, x, z);
@@ -659,11 +697,15 @@ function openContextMenu(state, cell, tapX, tapY) {
       }
     }
   } else if (isl) {
-    // island body: offer builds on the first free plot too, so the player
-    // doesn't have to hit the small bronze disc exactly
+    // island body: EVERY empty tile is buildable ground (player-directed
+    // fortifications) — build exactly where the thumb landed
+    const tappedFree = !structureAt(state, x, z) &&
+      !plotBlockedByQuarry(isl, { x, z });
     const freeIdx = isl.plots.findIndex(pl => !pl.structure && !plotBlockedByQuarry(isl, pl));
-    if (freeIdx >= 0) {
-      const at = { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
+    if (tappedFree || freeIdx >= 0) {
+      const at = tappedFree
+        ? { site: 'plot', islandId: isl.id, plotIdx: -1, cell: [x, z] }
+        : { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
       if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
         options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
       }
@@ -713,7 +755,16 @@ function openContextMenu(state, cell, tapX, tapY) {
     }
   }
 
-  if (!options.length && !pieceOptions.length) return;
+  if (!options.length && !pieceOptions.length && !unitIdent && !ident) return;
+  // identity header: the tapped ship and/or the ground itself
+  if (unitIdent || ident) {
+    const head = document.createElement('div');
+    head.style.cssText = 'flex-basis:100%; text-align:center; font-size:11px; letter-spacing:1px; ' +
+      'color:#cfe3e6; padding-bottom:3px; border-bottom:1px solid rgba(242,232,207,0.2); margin-bottom:3px;';
+    head.innerHTML = (unitIdent ? '<div style="color:var(--ivory)">' + unitIdent + '</div>' : '') +
+      (ident ? '<div>' + ident + '</div>' : '');
+    menu.appendChild(head);
+  }
   // what you can afford, right where you are choosing
   const bal = document.createElement('div');
   bal.style.cssText = 'flex-basis:100%; text-align:center; font-size:12px; letter-spacing:1px; padding-bottom:2px;';

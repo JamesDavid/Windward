@@ -406,23 +406,28 @@ function buildZeppelin(grp) {
     strut.position.set(sx, 0.245, 0);
     grp.add(strut);
   }
-  // pusher propeller
-  const prop = new THREE.Group();
-  const hub = new THREE.Mesh(new THREE.SphereGeometry(0.02, 5, 4), shipMat('bronze', Palette.bronze));
-  for (const a of [0, Math.PI / 2]) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.11, 0.02), shipMat('wicker', 0x8a6a3d));
-    blade.rotation.x = a;
-    prop.add(blade);
+  // no propeller — nothing in this world self-propels. The BOUND WIND
+  // pushes: a bronze wind-scoop at the bow drinks the corridor's
+  // current, and pennants stream aft to show the wind doing the work
+  const scoop = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055, 0.028, 0.1, 8, 1, true), shipMat('bronze', Palette.bronze));
+  scoop.rotation.z = -Math.PI / 2;
+  scoop.position.set(0.38, 0.34, 0);
+  const pennants = new THREE.Group();
+  for (const dz of [-0.03, 0.03]) {
+    const pen = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.16, 0.035),
+      new THREE.MeshBasicMaterial({ color: Palette.gold, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
+    pen.position.set(-0.44, 0.35, dz);
+    pennants.add(pen);
   }
-  prop.add(hub);
-  prop.position.set(-0.42, 0.34, 0);   // blades sweep the YZ plane; spun about X
   const crate = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.11, 0.14), shipMat('gold', Palette.gold));
   crate.position.y = -0.02;
   crate.visible = false;
-  grp.add(env, nose, tail, noseCap, finV, finH, keel, rail, prop, crate);
+  grp.add(env, nose, tail, noseCap, finV, finH, keel, rail, scoop, pennants, crate);
   grp.userData.crate = crate;
   grp.userData.env = env;
-  grp.userData.prop = prop;
+  grp.userData.pennants = pennants;
   return grp;
 }
 
@@ -675,8 +680,13 @@ function syncMovers(state) {
       rec.grp.userData.burner.scale.setScalar(0.8 + 0.5 * f);
       rec.grp.userData.env.material.emissive.setRGB(0.55 * f, 0.3 * f, 0.08 * f);
     }
-    // the dirigible's pusher prop never stops turning
-    if (rec.grp.userData.prop) rec.grp.userData.prop.rotation.x = state.time * 16 + m.id;
+    // the dirigible's pennants stream and flutter in the wind that pushes it
+    if (rec.grp.userData.pennants) {
+      rec.grp.userData.pennants.children.forEach((pen, i) => {
+        pen.rotation.y = 0.3 * Math.sin(state.time * 6 + m.id + i * 1.9);
+        pen.rotation.z = 0.12 * Math.sin(state.time * 4.2 + m.id * 1.3 + i);
+      });
+    }
     // hydrogen fleets fly visibly larger envelopes (§33E)
     if (m.kind === 'hauler' && m.owner === 'A') {
       // the dirigible mesh is inherently larger; no extra scaling
@@ -829,10 +839,17 @@ function syncIslandBars(state) {
       }
       mine.userData.gems = gems;
       mine.position.set(worldX(hx), CONFIG.Render.ISLAND_HEIGHT, worldZ(hz));
+      // the ore heap leans TOWARD the island's centre — a fixed offset
+      // hung it over open water when the quarry sat on a coast, reading
+      // as a mine floating in the sea (player report, seed w9iwff)
+      const hdx = isl.center[0] - hx, hdz = isl.center[1] - hz;
+      const hl = Math.hypot(hdx, hdz) || 1;
       const heap = new THREE.Mesh(
         new THREE.ConeGeometry(0.22, 0.3, 7),
         new THREE.MeshLambertMaterial({ color: Palette.gold }));
-      heap.position.set(worldX(hx) + 0.45, CONFIG.Render.ISLAND_HEIGHT, worldZ(hz) + 0.2);
+      heap.position.set(
+        worldX(hx + (hdx / hl) * 0.55), CONFIG.Render.ISLAND_HEIGHT,
+        worldZ(hz + (hdz / hl) * 0.55));
       const bar = new THREE.Mesh(
         new THREE.BoxGeometry(0.6, 0.05, 0.08),
         new THREE.MeshBasicMaterial({ color: 0x76d09a }));

@@ -49,7 +49,7 @@ const CONFIG = Object.freeze({
 
   Wind: {
     FIELD_W: 6, FIELD_H: 10,
-    AIR_MIN: 0.70, AIR_MAX: 1.35,
+    AIR_MIN: 0.55, AIR_MAX: 1.45,   // sweep-backed (test/opt_headwind.js): wider spread rewards circuit routes; hard one-way lanes rejected (drifting wind would strand fleets)
     SEA_MIN: 0.92, SEA_MAX: 1.08,
     DRIFT_DEGREES: 30, DRIFT_PERIOD: 90.0
   },

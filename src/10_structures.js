@@ -70,7 +70,13 @@ function whyNotBuild(state, side, type, at) {
     if (deg !== 1) return 'ENDPOINTS ONLY';
   } else {
     const isl = state.map.islands[at.islandId];
-    const plot = isl.plots[at.plotIdx];
+    // EVERY empty island tile is buildable ground (player-directed:
+    // fortifications anywhere) — plotIdx -1 means "found a new plot at
+    // this cell", validated like any other
+    const plot = at.plotIdx === -1
+      ? { x: at.cell[0], z: at.cell[1], structure: structureAt(state, at.cell[0], at.cell[1]) }
+      : isl.plots[at.plotIdx];
+    if (at.plotIdx === -1 && !isl.cellSet.has(cellKey(at.cell[0], at.cell[1]))) return 'NOT ON THE ISLAND';
     if (plot.structure) return 'PLOT OCCUPIED';
     if (plotBlockedByQuarry(isl, plot)) return 'THE QUARRY WORKS THIS GROUND';
     if (type === 'temple') {
@@ -86,6 +92,12 @@ function whyNotBuild(state, side, type, at) {
 
 function buildStructure(state, side, type, at, facing) {
   if (whyNotBuild(state, side, type, at)) return null;
+  // building on open island ground founds the plot as it builds
+  if (at.site === 'plot' && at.plotIdx === -1) {
+    const isl = state.map.islands[at.islandId];
+    isl.plots.push({ x: at.cell[0], z: at.cell[1], structure: null });
+    at = Object.assign({}, at, { plotIdx: isl.plots.length - 1 });
+  }
   const stats = structureStats(side, type);
   state.res[side].supply -= stats.cost;
   state.res[side].favor -= stats.favor || 0;   // what is both costs both
