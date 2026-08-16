@@ -73,6 +73,7 @@ function initUI(state) {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     R.camZoom = clamp((R.camZoom || 1) * Math.exp(e.deltaY * 0.0012), 0.75, 2.6);
+    R.userMovingCam = performance.now();
     updateCamera();
   }, { passive: false });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -118,6 +119,7 @@ function initUI(state) {
     if (rdrag && (e.buttons & 2)) {
       R.camAz = rdrag.az0 + (e.clientX - rdrag.x) * 0.006;
       R.camTilt = clamp(rdrag.tilt0 - (e.clientY - rdrag.y) / 280, 0.65, 1.35);
+      R.userMovingCam = performance.now();
       updateCamera();
       return;
     }
@@ -126,6 +128,7 @@ function initUI(state) {
       // swipe up = higher eye (more top-down); swipe down = lower and
       // more oblique. Applied in updateCamera as height vs distance.
       R.camTilt = clamp(tilt3.tilt0 - (avgY() - tilt3.y0) / 280, 0.65, 1.35);
+      R.userMovingCam = performance.now();
       updateCamera();
       return;
     }
@@ -134,6 +137,7 @@ function initUI(state) {
       R.camZoom = clamp(pinch.zoom0 * (pinch.d0 / Math.max(20, g.d)), 0.75, 2.6);
       let da = g.ang - pinch.a0;
       R.camAz = pinch.az0 + da;
+      R.userMovingCam = performance.now();
       updateCamera();
       return;
     }

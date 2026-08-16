@@ -154,7 +154,7 @@ function initRenderer() {
       // shader (flat, normal-less water on those devices)
       mat.fragmentShader = 'uniform vec2 flowDir;\n' + mat.fragmentShader
         .replace('vec2 uv0 = ( uv / 103.0 ) + vec2(time / 17.0, time / 29.0);',
-          'vec2 flowSide = vec2( -flowDir.y, flowDir.x ); vec2 uv0 = ( uv / 103.0 ) - flowDir * ( time / 17.0 );')
+          'vec2 flowSide = vec2( -flowDir.y, flowDir.x ); vec2 uv0 = ( uv / 103.0 ) - flowDir * ( time / 11.0 );')
         .replace('vec2 uv1 = uv / 107.0-vec2( time / -19.0, time / 31.0 );',
           'vec2 uv1 = uv / 107.0 - flowDir * ( time / 24.0 ) + flowSide * ( time / 89.0 );')
         .replace('vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) + vec2( time / 101.0, time / 97.0 );',

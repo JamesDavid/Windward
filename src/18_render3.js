@@ -19,14 +19,24 @@ function initCinematics(state) {
     const grp = new THREE.Group();
     for (let i = 0; i < 3; i++) {
       const streak = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.5 - i * 0.3, 0.13),
-        new THREE.MeshBasicMaterial({ color: 0xdff2ee, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }));
+        new THREE.PlaneGeometry(1.9 - i * 0.3, 0.17),
+        new THREE.MeshBasicMaterial({ color: 0xeafaf5, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
       streak.rotation.x = -Math.PI / 2;
-      streak.position.set(0.7 + i * 0.5, 0, (i - 1) * 0.45);
+      streak.position.set(0.8 + i * 0.55, 0, (i - 1) * 0.5);
       grp.add(streak);
     }
-    R.scene.add(grp);
-    R.cine.wakes.push({ grp, isl, r });
+    // bow foam: an arc hugging the UPWIND coast, where the flow first
+    // meets land — together with the lee streaks the island visibly
+    // parts the current
+    const bowGrp = new THREE.Group();
+    const bow = new THREE.Mesh(
+      new THREE.RingGeometry(r + 0.15, r + 0.42, 14, 1, -0.95, 1.9),
+      new THREE.MeshBasicMaterial({ color: 0xeafaf5, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
+    bow.rotation.x = -Math.PI / 2;
+    bow.position.y = 0.06;
+    bowGrp.add(bow);
+    R.scene.add(grp, bowGrp);
+    R.cine.wakes.push({ grp, bowGrp, bow, isl, r });
   }
 }
 
@@ -48,7 +58,14 @@ function cinematicTick(state, dt) {
   }
   R.seaSurge = 1 + env * 1.6;                       // wave speed multiplier
   if (R.waterShader && R.seaMesh.material.uniforms.distortionScale) {
-    R.seaMesh.material.uniforms.distortionScale.value = 3.2 * (1 + env * 1.2);
+    // reflection distortion is what makes panning read as boiling water:
+    // damp it hard while the camera is being moved by ANY gesture, ease
+    // back when the eye rests
+    const moving = R.userMovingCam && performance.now() - R.userMovingCam < 200;
+    const targetDist = 3.2 * (1 + env * 1.2) * (moving ? 0.18 : 1);
+    if (R.distortSm === undefined) R.distortSm = targetDist;
+    R.distortSm += (targetDist - R.distortSm) * Math.min(1, dt * 6);
+    R.seaMesh.material.uniforms.distortionScale.value = R.distortSm;
   }
 
   // lee wakes trail downwind of each island, breathing with the wind
@@ -56,6 +73,7 @@ function cinematicTick(state, dt) {
     const c = wk.isl.center;
     const lifted = groundLifted(state, Math.round(c[0]), Math.round(c[1]));
     wk.grp.visible = lifted;   // never leak unexplored islands via their wake
+    if (wk.bowGrp) wk.bowGrp.visible = lifted;
     if (!lifted) continue;
     const w = state.wind.at(c[0], c[1]);
     const ang = Math.atan2(w.z, w.x);
@@ -64,9 +82,13 @@ function cinematicTick(state, dt) {
       worldZ(c[1] + Math.sin(ang) * (wk.r + 0.3)));
     wk.grp.rotation.y = -ang;
     wk.grp.children.forEach((s, i) => {
-      s.material.opacity = (0.16 + 0.08 * Math.sin(state.time * 1.4 + wk.isl.id + i)) * (1 - i * 0.25);
-      s.position.x = 0.6 + i * 0.5 + 0.15 * Math.sin(state.time * 2 + i * 1.7 + wk.isl.id);
+      s.material.opacity = (0.26 + 0.12 * Math.sin(state.time * 1.4 + wk.isl.id + i)) * (1 - i * 0.22);
+      s.position.x = 0.6 + i * 0.55 + 0.18 * Math.sin(state.time * 2 + i * 1.7 + wk.isl.id);
     });
+    // the bow arc faces INTO the wind (the flow arrives from -windDir)
+    wk.bowGrp.position.set(worldX(c[0]), 0, worldZ(c[1]));
+    wk.bowGrp.rotation.y = -(ang + Math.PI);
+    wk.bow.material.opacity = 0.22 + 0.1 * Math.sin(state.time * 1.8 + wk.isl.id * 1.3);
   }
 
   // telegraph breath: ease out ~15% and back over the warning. The
