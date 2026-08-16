@@ -636,6 +636,18 @@ function initFxEvents(state) {
     const gt = state.greatTemple[side];
     if (Math.random() < 0.05) fxSpawn(state, 'boom', gt.cell);
   });
+  // money made visible: coins burst where a bounty is earned and where
+  // cargo is credited at the Great Temple
+  const coinBurst = (pos, n, y0) => {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      fxSpawn(state, 'coin', pos, { vx: Math.cos(a) * 0.5, vz: Math.sin(a) * 0.5, y0 });
+    }
+  };
+  Events.on('bounty', (p) => { if (p.pos) coinBurst(p.pos, 4, 0.7); });
+  Events.on('delivery', ({ side }) => {
+    if (side === 'A') coinBurst(state.greatTemple.A.cell, 6, 0.9);
+  });
 }
 
 function fxTick(state, dt) {
@@ -660,8 +672,12 @@ function fxTick(state, dt) {
         mesh = new THREE.Mesh(new THREE.CylinderGeometry(CONFIG.Powers.FOG_BANK.RADIUS, CONFIG.Powers.FOG_BANK.RADIUS, 0.3, 20),
           new THREE.MeshBasicMaterial({ color: 0xb8c4c6, transparent: true, opacity: 0.25 }));
       } else if (f.kind === 'windwall') {
-        mesh = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8),
-          new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.25 }));
+        mesh = new THREE.Mesh(new THREE.SphereGeometry(CONFIG.Powers.WIND_WALL.RADIUS, 14, 10),
+          new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.18 }));
+      } else if (f.kind === 'coin') {
+        mesh = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5),
+          new THREE.MeshBasicMaterial({ color: Palette.gold, transparent: true, opacity: 1 }));
+        mesh.position.set(worldX(f.pos[0]), f.data.y0 || 0.6, worldZ(f.pos[1]));
       } else if (f.kind === 'tracer') {
         const d = f.data;
         const ax = worldX(f.pos[0]), az = worldZ(f.pos[1]);
@@ -697,7 +713,7 @@ function fxTick(state, dt) {
     }
     const life = f.kind === 'wreck' ? 20 : f.kind === 'fogbank' ? CONFIG.Powers.FOG_BANK.DURATION
       : f.kind === 'windwall' ? CONFIG.Powers.WIND_WALL.DURATION : f.kind === 'surge' ? 1.4
-      : f.kind === 'tracer' ? 0.2 : f.kind === 'ember' ? 0.9 : 0.8;
+      : f.kind === 'tracer' ? 0.2 : f.kind === 'ember' ? 0.9 : f.kind === 'coin' ? 0.8 : 0.8;
     if (age > life) {
       R.scene.remove(f.mesh);
       if (f.spark) R.scene.remove(f.spark);
@@ -720,6 +736,14 @@ function fxTick(state, dt) {
       f.mesh.position.z += d.vz * dt;
       d.vy -= 6 * dt;
       f.mesh.position.y = Math.max(0.05, f.mesh.position.y + d.vy * dt);
+      f.mesh.material.opacity = 1 - age / life;
+      continue;
+    }
+    if (f.kind === 'coin') {
+      const d = f.data;
+      f.mesh.position.x += (d.vx || 0) * dt;
+      f.mesh.position.z += (d.vz || 0) * dt;
+      f.mesh.position.y += 0.9 * dt;
       f.mesh.material.opacity = 1 - age / life;
       continue;
     }

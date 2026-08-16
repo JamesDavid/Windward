@@ -97,7 +97,13 @@ The Mooring Yard is a working airfield: an open hangar, a mooring mast with a fl
 
 <img src="screenshots/yard_dialog.png" width="300"> <img src="screenshots/yard_field.png" width="300">
 
-### 10. Tuned by simulation *(done)*
+### 10. A world with weather *(done — player-directed)*
+
+Cinema that never takes the controls: low stylized clouds drift on the wind field, dragging soft shadows across the sea; Poseidon's surf rises and bursts white against the rim of the arena on all four sides; the camera takes one slow breath outward while a wave is telegraphed (your pinch always wins — it's a multiplier, not a zoom change); coins burst where bounties are earned and where cargo is credited; and the endgame is honest siegecraft — a wider, longer Wind Wall shelters a raising gun, and directional guns silence armed defenders before battering temples, verified end-to-end by `test/test_siege.js` against his defended Great Temple.
+
+<img src="screenshots/cinematic.png" width="300">
+
+### 11. Tuned by simulation *(done)*
 
 Three parameter-sweep harnesses (`test/opt_favor.js`, `opt_income.js`, `opt_capacity.js`) run scripted full matches across seeds and score match quality — arc length, pressure survived, engagement, economies alive, no degenerate spam. They set the flat Favor price of route pieces, the temple-income baseline and divisor, and hauler capacity (12/24 — larger loads flood the economy now that every connected island mines). The match video above is the reference seed those sweeps optimise.
 

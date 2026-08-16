@@ -23,7 +23,7 @@ function awardCraftBounty(state, c) {
   const b = CONFIG.Bounty.CRAFT_FAVOR[c.kind] || 0;
   if (b > 0) {
     state.res[foe].favor += b;
-    Events.emit('bounty', { side: foe, favor: b });
+    Events.emit('bounty', { side: foe, favor: b, pos: c.pos.slice() });
   }
 }
 

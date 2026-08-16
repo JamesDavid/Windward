@@ -135,8 +135,9 @@ function updateCamera() {
   // pinch zoom and two-finger rotation orbit the same fixed tilt
   if (R.camZoom === undefined) { R.camZoom = 1; R.camAz = 0; }
   R.camZoom = clamp(R.camZoom, 0.75, 2.6);
-  const back = CONFIG.Render.CAM_BACK * fit * R.camZoom;
-  const h = CONFIG.Render.CAM_HEIGHT * fit * R.camZoom;
+  const zoomFx = R.camZoom * (R.zoomPulse || 1);   // telegraph breath rides on top
+  const back = CONFIG.Render.CAM_BACK * fit * zoomFx;
+  const h = CONFIG.Render.CAM_HEIGHT * fit * zoomFx;
   R.camera.position.set(
     t.x + Math.sin(R.camAz || 0) * back,
     h,

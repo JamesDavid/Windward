@@ -102,6 +102,7 @@ function frame(t) {
   syncGreatTemples(state);
   syncShroud(state);
   fxTick(state, dt);
+  cinematicTick(state, dt);
   renderTick(state, dt);
 }
 

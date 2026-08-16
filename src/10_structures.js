@@ -228,7 +228,7 @@ function killStructure(state, st, cause) {
     const b = Math.floor(structureStats(st.owner, st.type).cost * CONFIG.Bounty.STRUCTURE_SUPPLY_FRACTION);
     if (b > 0) {
       state.res[foe].supply += b;
-      Events.emit('bounty', { side: foe, supply: b });
+      Events.emit('bounty', { side: foe, supply: b, pos: st.cell.slice() });
     }
   }
   if (st.site === 'plot' && st.islandId !== null) {
