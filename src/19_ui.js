@@ -509,7 +509,7 @@ function hideBuildMenu() { UI.els.buildmenu.classList.add('hidden'); }
 
 // what each thing IS, right on the button — menus must be self-explanatory
 const MENU_DESC = {
-  vane: 'short range, hits all around', bolt: 'long range, one target',
+  vane: 'mid range, hits all around', bolt: 'long range; fires only in its aimed quarter',
   shield: 'bound whirlwind: absorbs hits all around', temple: 'claims isle, spreads influence',
   yard: 'lets you build 2 more haulers', priest: 'must stand here to found temples',
   hauler: 'carries mined ore home',

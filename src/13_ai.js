@@ -258,6 +258,36 @@ function aiTick(state, dt) {
     }
   }
 
+  // 3.5 stationary defense (player report: he never placed guns) — he
+  // GARRISONS what he takes: a drum on every claimed island, and every
+  // so often a lance on the forward end nearest the player's holdings
+  if (res.supply >= structureStats('P', 'vane').cost + 14) {
+    for (const isl of state.map.islands) {
+      if (isl.owner !== 'P' || isl.role.startsWith('greatTemple')) continue;
+      const hasGun = state.structures.some(s => s.owner === 'P' && s.islandId === isl.id && (s.dps || 0) > 0 && s.hp > 0);
+      if (hasGun) continue;
+      const cell = isl.cells.find(([x, z]) => !structureAt(state, x, z) && !plotBlockedByQuarry(isl, { x, z }));
+      if (cell) {
+        buildStructure(state, 'P', 'vane', { site: 'plot', islandId: isl.id, plotIdx: -1, cell: [cell[0], cell[1]] });
+        break;   // one garrison per decision tick
+      }
+    }
+  }
+  if (state.time >= (ai.gunAt || 0) && res.supply >= structureStats('P', 'bolt').cost + 20) {
+    ai.gunAt = state.time + 45;
+    const targets = aiAttackTargets(state);
+    const ends = getSockets(state, 'P').filter(s => s.kind === 'end' && !structureAt(state, s.cell[0], s.cell[1]));
+    let best = null, bd = Infinity;
+    for (const e of ends) {
+      for (const k of targets) {
+        const [x, z] = keyCell(k);
+        const d = dist2d(e.cell[0], e.cell[1], x, z);
+        if (d < bd) { bd = d; best = e; }
+      }
+    }
+    if (best && bd < 10) buildStructure(state, 'P', 'bolt', { site: 'endpoint', cell: best.cell });
+  }
+
   // 4. masts along contested straits (§33C.6), between waves
   if (state.time >= ai.mastAt && res.supply >= structureStats('P', 'mast').cost) {
     ai.mastAt = state.time + CONFIG.AI.MAST_INTERVAL;

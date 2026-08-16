@@ -92,9 +92,43 @@ function makePayload(side, type, stats) {
       break;
     }
     case 'shield': {
-      // a bound whirlwind (player-directed 360° ward): translucent vortex
-      // bands around the pylon, with wisps that visibly orbit
-      const glow = airSide(side) ? Palette.aeolusGlow : Palette.poseidonGlow;
+      if (!airSide(side)) {
+        // BULWARK WARD: a circling SEA WALL — weathered breakwater
+        // blocks ringing the pylon, foam crests riding the protected
+        // radius (player-directed: stone and surf, not air)
+        const wallMat = new THREE.MeshLambertMaterial({ color: 0x8a99a0 });
+        const wall = new THREE.Group();
+        for (let i = 0; i < 9; i++) {
+          const a = (i / 9) * Math.PI * 2;
+          const block = new THREE.Mesh(
+            new THREE.BoxGeometry(0.17, 0.11 + (i % 2) * 0.05, 0.075), wallMat);
+          block.position.set(Math.cos(a) * 0.34, y + 0.02, Math.sin(a) * 0.34);
+          block.rotation.y = -a + Math.PI / 2;
+          wall.add(block);
+        }
+        grp.add(wall);
+        grp.userData.whirl = wall;
+        grp.userData.slowWall = true;   // stone circles at the sea's pace
+        const zone = new THREE.Group();
+        const RZ = CONFIG.Structures.SHIELD_COVER_RADIUS;
+        for (let w = 0; w < 10; w++) {
+          const crest = new THREE.Mesh(
+            new THREE.SphereGeometry(0.055, 5, 4),
+            new THREE.MeshBasicMaterial({ color: 0xeef7f5, transparent: true, opacity: 0.5 }));
+          const a = (w / 10) * Math.PI * 2;
+          const r = RZ * (0.55 + (w % 3) * 0.22);
+          crest.position.set(Math.cos(a) * r, 0.1, Math.sin(a) * r);
+          crest.scale.set(3.4, 0.3, 0.5);
+          crest.rotation.y = -a - Math.PI / 2;
+          zone.add(crest);
+        }
+        grp.add(zone);
+        grp.userData.zone = zone;
+        break;
+      }
+      // AEGIS: a bound whirlwind (360° ward) — translucent vortex bands
+      // around the pylon, with wisps that visibly orbit
+      const glow = Palette.aeolusGlow;
       const whirl = new THREE.Group();
       for (let i = 0; i < 3; i++) {
         const band = new THREE.Mesh(
@@ -150,8 +184,37 @@ function makePayload(side, type, stats) {
       break;
     }
     case 'yard': {
-      // a working airfield: open hangar shed + mooring mast with pennant.
-      // Fleet-status dots ride above the roof (synced live elsewhere).
+      if (!airSide(side)) {
+        // SHIPYARD: a stone slipway — twin piers, an inclined launch
+        // ramp, and a crane arm; nothing like the Guild's hangar
+        const pierMat = new THREE.MeshLambertMaterial({ color: 0x8a99a0 });
+        for (const dz of [-0.17, 0.17]) {
+          const pier = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.1, 0.09), pierMat);
+          pier.position.set(0, 0.08, dz);
+          grp.add(pier);
+        }
+        const ramp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.035, 0.24),
+          new THREE.MeshLambertMaterial({ color: 0x5d7a70 }));
+        ramp.position.set(0.03, 0.1, 0);
+        ramp.rotation.z = 0.17;
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.5, 6), dark);
+        post.position.set(-0.22, 0.3, 0.14);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.035, 0.05), dark);
+        arm.position.set(-0.06, 0.52, 0.14);
+        const hook = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.16, 4),
+          new THREE.MeshBasicMaterial({ color: 0x6b5a3a }));
+        hook.position.set(0.1, 0.44, 0.14);
+        const pennant = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.16, 0.07),
+          new THREE.MeshBasicMaterial({ color: Palette.poseidonGlow, side: THREE.DoubleSide }));
+        pennant.position.set(-0.22, 0.6, 0.14);
+        grp.add(ramp, post, arm, hook, pennant);
+        grp.userData.pennant = pennant;
+        grp.scale.setScalar(1.3);
+        break;
+      }
+      // MOORING YARD: a working airfield — open hangar shed + mooring
+      // mast with pennant. Fleet-status dots ride above (synced live).
       const floor = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.36), dark);
       floor.position.y = 0.05;
       for (const dz of [-0.16, 0.16]) {
@@ -203,6 +266,19 @@ function syncStructures(state) {
       const baseY = onLand ? CONFIG.Render.ISLAND_HEIGHT : (airSide(st.owner) ? CONFIG.Render.AIR_ALTITUDE - 0.6 : 0);
       grp.position.set(worldX(st.cell[0]), baseY, worldZ(st.cell[1]));
       grp.userData.baseY = baseY;
+      // fixed-sector guns wear their quarter openly — a faint permanent
+      // wedge everyone can read, friend or foe (player-directed)
+      if (st.type === 'bolt' && st.arc && st.arc < Math.PI * 2) {
+        const wedge = new THREE.Mesh(
+          new THREE.RingGeometry(0.35, st.range, 20, 1, -st.facing - st.arc / 2, st.arc),
+          new THREE.MeshBasicMaterial({
+            color: airSide(st.owner) ? 0xffd977 : 0x7fd4dd,
+            transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false
+          }));
+        wedge.rotation.x = -Math.PI / 2;
+        wedge.position.y = 0.085 - baseY;
+        grp.add(wedge);
+      }
       // scaffold ring at ground level while raising
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(0.42, 0.52, 20),
@@ -229,9 +305,10 @@ function syncStructures(state) {
       const firing = state.time - (st.lastFired || -99) < 0.6;
       rec.payload.rotation.y = state.time * (firing ? 7 : 1.1);
     }
-    // the Aegis whirlwind never stops turning; its zone swirls slower
+    // the Aegis whirlwind never stops turning; the Bulwark's stone wall
+    // circles at the sea's pace; both zones swirl slower
     if (st.type === 'shield' && rec.payload.userData.whirl) {
-      rec.payload.userData.whirl.rotation.y = state.time * 2.4;
+      rec.payload.userData.whirl.rotation.y = state.time * (rec.payload.userData.slowWall ? 0.3 : 2.4);
       if (rec.payload.userData.zone) {
         rec.payload.userData.zone.rotation.y = state.time * 0.55;
         rec.payload.userData.zone.visible = st.buildProgress >= 1;
@@ -469,7 +546,8 @@ function buildPriestShip(grp) {
 function buildTrireme(grp, m) {
   const big = m.kind === 'heavy';
   const L = big ? 0.62 : 0.44, W = big ? 0.24 : 0.17;
-  const hullCol = m.kind === 'transport' ? 0x3a5b52 : m.kind === 'hauler' ? 0x33565e : 0x22454e;
+  const hullCol = m.kind === 'transport' ? 0x3a5b52 : m.kind === 'hauler' ? 0x33565e
+    : m.kind === 'priest' ? 0x2b4f7a : 0x22454e;   // the shrine-ship sails royal blue
   const hull = new THREE.Mesh(new THREE.BoxGeometry(L, 0.08, W), new THREE.MeshLambertMaterial({ color: hullCol }));
   hull.position.y = 0.055;
   const deck = new THREE.Mesh(new THREE.BoxGeometry(L * 0.92, 0.015, W * 0.7), shipMat('deck', 0x5d7a70));
@@ -538,16 +616,76 @@ function buildTrireme(grp, m) {
       amp.position.set(-0.1 + i * 0.1, 0.13, (i % 2 ? 0.03 : -0.03));
       grp.add(amp);
     }
+  } else if (m.kind === 'priest') {
+    // the sea-priest sails a PROCESSIONAL SHRINE-SHIP: a marble
+    // four-column shrine amidships under a glowing teal dome, banner
+    // streaming astern — the floating mirror of the gilded balloon
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.02, 0.15), shipMat('marble', 0xf3ecd9));
+    floor.position.y = 0.12;
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), shipMat('glow', Palette.poseidonGlow));
+    dome.position.y = 0.24;
+    for (const [cx, cz] of [[-0.055, -0.045], [0.055, -0.045], [-0.055, 0.045], [0.055, 0.045]]) {
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.11, 5), shipMat('marble', 0xf3ecd9));
+      col.position.set(cx, 0.18, cz);
+      grp.add(col);
+    }
+    const banner = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.24, 0.06),
+      new THREE.MeshBasicMaterial({ color: Palette.poseidonGlow, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
+    banner.position.set(-L / 2 - 0.12, 0.22, 0);
+    const trident = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.22, 4), shipMat('gold', Palette.gold));
+    trident.position.set(L / 2 - 0.04, 0.24, 0);
+    grp.add(floor, dome, banner, trident);
   }
   return grp;
 }
 
+// Ashore, the priest is a PERSON: a robed figure with a staff standing
+// on the island (player-directed) — the vessel waits offstage.
+function addPriestFigure(grp, sea) {
+  const fig = new THREE.Group();
+  const robe = new THREE.Mesh(
+    new THREE.ConeGeometry(0.075, 0.24, 7),
+    new THREE.MeshLambertMaterial({ color: sea ? 0x2e6b74 : 0xf3ecd9 }));
+  robe.position.y = 0.12;
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.038, 7, 6),
+    new THREE.MeshLambertMaterial({ color: 0xd9b38c }));
+  head.position.y = 0.27;
+  const staff = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.008, 0.008, 0.3, 4),
+    new THREE.MeshLambertMaterial({ color: Palette.bronze }));
+  staff.position.set(0.07, 0.16, 0);
+  const tip = sea
+    ? new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.06, 4),
+        new THREE.MeshLambertMaterial({ color: Palette.gold }))
+    : new THREE.Mesh(new THREE.OctahedronGeometry(0.03),
+        new THREE.MeshLambertMaterial({ color: Palette.gold }));
+  tip.position.set(0.07, 0.33, 0);
+  fig.add(robe, head, staff, tip);
+  fig.visible = false;
+  grp.add(fig);
+  grp.userData.figure = fig;
+}
+
 function makeMoverMesh(m, hydrogen) {
   const grp = new THREE.Group();
+  if (m.kind === 'priest') {
+    // vessel + landing figure, whichever god he serves
+    const vessel = new THREE.Group();
+    if (airSide(m.owner)) buildPriestShip(vessel);
+    else buildTrireme(vessel, m);
+    grp.add(vessel);
+    grp.userData.vessel = vessel;
+    // carry the vessel's userData up (env for effects)
+    grp.userData.env = vessel.userData.env;
+    addPriestFigure(grp, !airSide(m.owner));
+    grp.traverse(o => { if (o.material) o.material = o.material.clone(); });
+    return grp;
+  }
   if (airSide(m.owner)) {
     // the air faction (yours, or the Guild's when you ride the waves)
-    if (m.kind === 'priest') buildPriestShip(grp);
-    else if (m.kind === 'siphon') {
+    if (m.kind === 'siphon') {
       buildHotAir(grp);
       const pipe = new THREE.Mesh(
         new THREE.CylinderGeometry(0.03, 0.045, 0.3, 6), shipMat('glow', Palette.poseidonGlow));
@@ -632,11 +770,19 @@ function syncMovers(state) {
       rec.lastPos = m.pos.slice();
     }
     const slot = parkSlot.get(m.id);
+    // a priest ASHORE is a person: the robed figure stands on the island
+    // while the vessel waits offstage (player-directed)
+    const asFigure = !!slot && m.kind === 'priest' && rec.grp.userData.figure;
+    if (rec.grp.userData.figure) {
+      rec.grp.userData.figure.visible = asFigure;
+      rec.grp.userData.vessel.visible = !asFigure;
+    }
     if (slot) {
       if (!rec.park) rec.park = [m.pos[0], m.pos[1]];
       rec.park[0] += (slot[0] - rec.park[0]) * 0.06;
       rec.park[1] += (slot[1] - rec.park[1]) * 0.06;
-      rec.grp.position.set(worldX(rec.park[0]), moverY(m), worldZ(rec.park[1]));
+      const py = asFigure ? CONFIG.Render.ISLAND_HEIGHT + 0.02 : moverY(m);
+      rec.grp.position.set(worldX(rec.park[0]), py, worldZ(rec.park[1]));
     } else {
       rec.park = null;
       rec.grp.position.set(worldX(m.pos[0]), moverY(m), worldZ(m.pos[1]));

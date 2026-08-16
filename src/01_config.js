@@ -112,10 +112,13 @@ const CONFIG = Object.freeze({
     // pricing doctrine (player-directed): physical things cost Supply,
     // wind-magic costs Favor, and what is both requires both.
     TEMPLE:   { COST: 14, FAVOR: 4, HP: 100, RADIUS: 5, BUILD_SECONDS: 10 },   // stone AND rite
-    VANE:     { COST: 7,  HP: 45,  DPS: 6,  RADIUS: 2 },
-    DRUM:     { COST: 7,  HP: 60,  DPS: 5,  RADIUS: 2 },
-    BOLT_DIR: { COST: 10, HP: 50,  DPS: 16, RANGE: 6, ARC_DEG: 90, TURN_DEG_S: 45 },
-    LANCE:    { COST: 10, HP: 70,  DPS: 13, RANGE: 6, ARC_DEG: 90, TURN_DEG_S: 45 },
+    // player-directed rework: omni guns reach further; directional guns
+    // are FIXED-SECTOR artillery — the quarter aimed at placement is the
+    // only quarter they ever fire into (TURN 0 = no traverse)
+    VANE:     { COST: 7,  HP: 45,  DPS: 6,  RADIUS: 3 },
+    DRUM:     { COST: 7,  HP: 60,  DPS: 5,  RADIUS: 3 },
+    BOLT_DIR: { COST: 10, HP: 50,  DPS: 16, RANGE: 6, ARC_DEG: 90, TURN_DEG_S: 0 },
+    LANCE:    { COST: 10, HP: 70,  DPS: 13, RANGE: 6, ARC_DEG: 90, TURN_DEG_S: 0 },
     // the Aegis is a bound whirlwind on a pylon: full-circle ward (player-
     // directed 360°), and priced in both coins — bronze and petition
     AEGIS:    { COST: 12, FAVOR: 4, HP: 130, INTERCEPT: 0.70, ARC_DEG: 360 },

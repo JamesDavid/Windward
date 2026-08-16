@@ -187,22 +187,30 @@ function gunTick(state, st, dt) {
     .sort((a, b) =>
       Math.hypot(a.pos[0] - st.cell[0], a.pos[1] - st.cell[1]) -
       Math.hypot(b.pos[0] - st.cell[0], b.pos[1] - st.cell[1]));
+  // FIXED-SECTOR artillery (player-directed): the wedge aimed at
+  // placement is the only ground this gun ever covers, so candidates
+  // outside the sector are not targets at all
+  const inSector = (t) => angDiff(
+    Math.atan2(t.pos[1] - st.cell[1], t.pos[0] - st.cell[0]), st.facing) <= (st.arc || Math.PI * 2) / 2;
+  const pickable = st.turn > 0 ? pick : pick.filter(inSector);
   // stable class priority; among structures, silence the guns shooting
   // back BEFORE battering the temple — sieges fail when the bolt trades
   // with a monument while the defenders shred it
   const armed = (t) => t.kind === 'structure' && (t.ref.dps || 0) > 0 ? 0 : 1;
-  const target = moverTargets.length ? pick.find(t => t.kind === 'mover')
-    : structTargets.length ? pick.filter(t => t.kind === 'structure' || t.kind === 'greatTemple')
+  const target = pickable.find(t => t.kind === 'mover')
+    || pickable.filter(t => t.kind === 'structure' || t.kind === 'greatTemple')
         .sort((a, b) => armed(a) - armed(b))[0]
-    : pick[0];
+    || pickable[0];
   if (!target) return;
 
-  // rotate slowly toward the target; fire only inside the arc
+  // legacy traverse path (turn > 0); fixed guns skip straight to firing
   const want = Math.atan2(target.pos[1] - st.cell[1], target.pos[0] - st.cell[0]);
-  const d = want - st.facing;
-  const wrapped = Math.atan2(Math.sin(d), Math.cos(d));
-  const maxTurn = (st.turn || 1) * dt;
-  st.facing += clamp(wrapped, -maxTurn, maxTurn);
+  if (st.turn > 0) {
+    const d = want - st.facing;
+    const wrapped = Math.atan2(Math.sin(d), Math.cos(d));
+    const maxTurn = st.turn * dt;
+    st.facing += clamp(wrapped, -maxTurn, maxTurn);
+  }
   if (angDiff(want, st.facing) <= (st.arc || Math.PI * 2) / 2) {
     const segMult = target.kind === 'segment' ? CONFIG.Structures.GUN_VS_SEGMENT_MULT : 1;
     applyDamage(state, target, dps * segMult * dt, st.cell);
