@@ -315,7 +315,7 @@ const CONFIG = Object.freeze({
   Hauler: {
     DWELL_SECONDS: 4.0, UNLOAD_SECONDS: 2.0,
     HOTAIR_CAPACITY: 12, HYDROGEN_CAPACITY: 24,   // sweep-optimized (test/opt_capacity.js): 24+ floods supply with 500-1500 reserves
-    COST: 8, BUILD_SECONDS: 6,
+    COST: 5, BUILD_SECONDS: 6,   // sweep-optimized (test/opt_costs.js): cheap haulers = more logistics on the board, better on every seed
     START_COUNT: 1,
     SPEED: 1.0                    // cells per second, base, x wind multiplier
   },
@@ -357,7 +357,7 @@ const CONFIG = Object.freeze({
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
     DESTRUCTION_DAMAGE: 50,
-    GUN_VS_SEGMENT_MULT: 0.45   // guns cut lanes, but slowly - no single-gun blockade
+    GUN_VS_SEGMENT_MULT: 0.45   // guns cut lanes, but slowly - no single-gun blockade; sweep-validated (opt_difficulty.js): beats 0.3 and 0.65 at every difficulty
   },
 
   Segments: { AIR_HP: 40, SEA_HP: 55, LEE_SHORE_CELLS: 1 },
@@ -375,7 +375,10 @@ const CONFIG = Object.freeze({
     SIPHON_MAST:{ HP: 50, DPS: 8,  RANGE: 3 }
   },
 
-  Collapse: { RESCUE_WINDOW: 3.0, SEGMENT_INTERVAL: 3.0 },
+  // SEGMENT_INTERVAL is macro-insensitive in sim (test/opt_collapse.js:
+  // identical matches from 1.5 to 900) — set by feel: severed enemy
+  // branches should clear fast enough that the board never reads unfair
+  Collapse: { RESCUE_WINDOW: 3.0, SEGMENT_INTERVAL: 2.0 },
 
   Adrift: {
     SPEED: 0.4, SEA_BEARING_MULT: 0.35,
@@ -417,9 +420,9 @@ const CONFIG = Object.freeze({
 
   Waves: {
     ORIGIN_FROM_NEAREST_TEMPLE: true,
-    STRENGTH_BASE: 0.6, STRENGTH_PER_TEMPLE: 0.15,
+    STRENGTH_BASE: 0.6, STRENGTH_PER_TEMPLE: 0.15,   // sweep-validated (test/opt_difficulty.js): 0.15/1.4 beats steeper and softer ramps
     STRENGTH_MIN: 0.6, STRENGTH_MAX: 1.4,
-    FIRST_AT: 45.0, TELEGRAPH: 8.0,
+    FIRST_AT: 45.0, TELEGRAPH: 8.0,   // sweep-validated (test/opt_pacing.js): x0.8 starves his buildup, x1.25 makes waves toothless
     INTERVAL_EARLY: 55.0, INTERVAL_MID: 45.0, INTERVAL_LATE: 35.0,
     MID_FROM_WAVE: 4, LATE_FROM_WAVE: 7,
     COUNT: 9,
