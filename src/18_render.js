@@ -149,15 +149,18 @@ function initRenderer() {
     {
       const mat = sea.material;
       mat.uniforms.flowDir = { value: new THREE.Vector2(0.7, 0.7) };
+      // NB: the cross-drift variable must NOT be named `cross` — that
+      // shadows a GLSL built-in and some drivers refuse to compile the
+      // shader (flat, normal-less water on those devices)
       mat.fragmentShader = 'uniform vec2 flowDir;\n' + mat.fragmentShader
         .replace('vec2 uv0 = ( uv / 103.0 ) + vec2(time / 17.0, time / 29.0);',
-          'vec2 cross = vec2( -flowDir.y, flowDir.x ); vec2 uv0 = ( uv / 103.0 ) - flowDir * ( time / 17.0 );')
+          'vec2 flowSide = vec2( -flowDir.y, flowDir.x ); vec2 uv0 = ( uv / 103.0 ) - flowDir * ( time / 17.0 );')
         .replace('vec2 uv1 = uv / 107.0-vec2( time / -19.0, time / 31.0 );',
-          'vec2 uv1 = uv / 107.0 - flowDir * ( time / 24.0 ) + cross * ( time / 89.0 );')
+          'vec2 uv1 = uv / 107.0 - flowDir * ( time / 24.0 ) + flowSide * ( time / 89.0 );')
         .replace('vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) + vec2( time / 101.0, time / 97.0 );',
           'vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) - flowDir * ( time / 101.0 );')
         .replace('vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - vec2( time / 109.0, time / -113.0 );',
-          'vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - flowDir * ( time / 109.0 ) - cross * ( time / 127.0 );');
+          'vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - flowDir * ( time / 109.0 ) - flowSide * ( time / 127.0 );');
       mat.needsUpdate = true;
     }
     // upgrade to the canonical three.js wave normals, MIRRORED LOCALLY in
