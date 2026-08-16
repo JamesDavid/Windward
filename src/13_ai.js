@@ -35,11 +35,13 @@ function initAI(state) {
   }
   Events.on('segmentDestroyed', ({ seg, cause }) => {
     if (seg.owner !== 'P' || cause === 'collapse') return;
-    // a successful player cut: pause rerouting, avoid the cut ground
-    state.ai.rerouteBlockedUntil = state.time + CONFIG.Waves.AI_REROUTE_COOLDOWN;
+    // a successful player cut: he avoids the cut ground for the cooldown
+    // (rebuilding elsewhere continues — a total freeze let one gun stall
+    // him forever), and pauses briefly to read as a reaction
+    state.ai.rerouteBlockedUntil = state.time + CONFIG.Waves.AI_REROUTE_DELAY * 2;
     state.ai.plan = null;
-    state.ai.avoidCells.set(cellKey(seg.a[0], seg.a[1]), state.time + 40);
-    state.ai.avoidCells.set(cellKey(seg.b[0], seg.b[1]), state.time + 40);
+    state.ai.avoidCells.set(cellKey(seg.a[0], seg.a[1]), state.time + CONFIG.Waves.AI_REROUTE_COOLDOWN * 2);
+    state.ai.avoidCells.set(cellKey(seg.b[0], seg.b[1]), state.time + CONFIG.Waves.AI_REROUTE_COOLDOWN * 2);
   });
 }
 
@@ -74,12 +76,38 @@ function aiScoreIsland(state, isl) {
 
 // plan a sheltered-preferring water path from his network to the island
 function aiPlanPath(state, isl) {
+  return aiPlanPathTo(state, new Set(isl.cells.map(([x, z]) => cellKey(x, z))));
+}
+
+// attack lanes: water cells within strike distance of the player's temple
+// and forward structures — reaching one puts his massed craft in range
+function aiAttackTargets(state) {
+  const set = new Set();
+  const mark = (cx, cz, r) => {
+    for (let dz = -r; dz <= r; dz++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const x = cx + dx, z = cz + dz;
+        if (!inBounds(x, z)) continue;
+        if (Math.hypot(dx, dz) > r) continue;
+        if (state.map.land.has(cellKey(x, z))) continue;
+        set.add(cellKey(x, z));
+      }
+    }
+  };
+  const gt = state.greatTemple.A;
+  if (gt.hp > 0) mark(gt.cell[0], gt.cell[1], 2);
+  for (const st of state.structures) {
+    if (st.owner === 'A' && st.hp > 0) mark(st.cell[0], st.cell[1], 2);
+  }
+  return set;
+}
+
+function aiPlanPathTo(state, target) {
   // start cells: sockets of his network
   const sockets = getSockets(state, 'P');
   if (!sockets.length) return null;
   const dl = state.ai.distToLand || (state.ai.distToLand = distToLandGrid(state.map));
   const avoid = state.ai.avoidCells;
-  const target = new Set(isl.cells.map(([x, z]) => cellKey(x, z)));
   // Dijkstra-lite with weights: sheltered water 1.0, open water 1.5 (§33B.2a),
   // island cells passable at 1.0 (a lane may land on a coast)
   const startKeys = sockets.map(s => cellKey(s.cell[0], s.cell[1]));
@@ -186,6 +214,15 @@ function aiTick(state, dt) {
           // unreachable for now: blacklist it so he tries something else
           ai.badObjectives.set(best.id, state.time + 30);
           ai.plan = null;
+        }
+      }
+      // no island worth taking: drive an ATTACK lane toward the player so
+      // the massed fleet finally has waters that reach them
+      if (!ai.plan) {
+        const targets = aiAttackTargets(state);
+        if (targets.size) {
+          const plan = aiPlanPathTo(state, targets);
+          if (plan && plan.length >= 3) ai.plan = plan;
         }
       }
     }

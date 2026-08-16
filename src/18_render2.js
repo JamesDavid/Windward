@@ -452,6 +452,19 @@ function syncIslandBars(state) {
         new THREE.MeshLambertMaterial({ color: Palette.gold }));
       wheel.position.y = 0.5;
       mine.add(wheel);
+      // gems glitter in the pit while ore remains
+      const gemColors = [0x9b6bd4, 0xffd977, 0x5fd6a5, 0x7fd4dd];
+      const gems = [];
+      for (let g = 0; g < 4; g++) {
+        const gem = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.055 + (g % 2) * 0.02),
+          new THREE.MeshBasicMaterial({ color: gemColors[g], transparent: true, opacity: 0.95 }));
+        const a = (g / 4) * Math.PI * 2 + 0.6;
+        gem.position.set(Math.cos(a) * 0.16, 0.14 + (g % 2) * 0.05, Math.sin(a) * 0.16);
+        mine.add(gem);
+        gems.push(gem);
+      }
+      mine.userData.gems = gems;
       mine.position.set(worldX(hx), CONFIG.Render.ISLAND_HEIGHT, worldZ(hz));
       const heap = new THREE.Mesh(
         new THREE.ConeGeometry(0.22, 0.3, 7),
@@ -467,6 +480,18 @@ function syncIslandBars(state) {
     }
     rec.mine.visible = isl.reserve > 0 || isl.stockpile > 0.5;
     if (isl.minedOut && rec.pit) rec.pit.material.color.setHex(0x4a4237);
+    // gems twinkle while ore remains; a worked-out pit goes dark
+    if (rec.mine.userData.gems) {
+      rec.mine.userData.gems.forEach((gem, g) => {
+        gem.visible = isl.reserve > 0;
+        if (gem.visible) {
+          const tw = 0.55 + 0.45 * Math.abs(Math.sin(state.time * (2.2 + g * 0.7) + isl.id * 2 + g));
+          gem.material.opacity = tw;
+          gem.scale.setScalar(0.75 + tw * 0.45);
+          gem.rotation.y = state.time * (0.8 + g * 0.3);
+        }
+      });
+    }
     const stockScale = clamp(isl.stockpile / 40, 0.001, 1.4);
     rec.heap.scale.setScalar(stockScale);
     rec.heap.visible = isl.stockpile > 0.5;

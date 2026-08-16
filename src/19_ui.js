@@ -147,7 +147,7 @@ function buildHand(state) {
         UI.discardArm = -1;
         if (state.res.A.favor < CONFIG.Economy.REROLL_FAVOR) { flashTicker('NOT ENOUGH FAVOR'); refreshHand(state); return; }
         state.res.A.favor -= CONFIG.Economy.REROLL_FAVOR;
-        state.hand[i] = drawPiece();
+        state.hand[i] = drawPiece(i);
         buildHand(state);
         flashTicker('THE WIND TAKES IT BACK');
       } else {
@@ -233,7 +233,7 @@ function confirmPlacement(state) {
   if (UI.mode !== 'placing' || !UI.placements.length) return;
   const type = state.hand[UI.pieceIdx];
   if (placePiece(state, 'A', type, UI.placements[UI.orient].segs)) {
-    state.hand[UI.pieceIdx] = drawPiece();
+    state.hand[UI.pieceIdx] = drawPiece(UI.pieceIdx);
     buildHand(state);
     refreshInfluenceView(state);
   }
@@ -474,6 +474,23 @@ function openContextMenu(state, cell, tapX, tapY) {
         pieceOptions.push(pieceMenuButton(state, i, socketHere));
       }
     });
+    if (pieceOptions.length) {
+      // reroll the whole hand for Favor, right here by the thumb
+      const rr = document.createElement('button');
+      rr.innerHTML = '&#8635;<br>REROLL<b>' + CONFIG.Economy.REROLL_FAVOR + ' ✦</b>';
+      if (state.res.A.favor < CONFIG.Economy.REROLL_FAVOR) {
+        rr.style.opacity = 0.4;
+        rr.addEventListener('click', () => flashTicker('NOT ENOUGH FAVOR'));
+      } else {
+        rr.addEventListener('click', () => {
+          state.res.A.favor -= CONFIG.Economy.REROLL_FAVOR;
+          for (let i = 0; i < state.hand.length; i++) state.hand[i] = drawPiece(i);
+          buildHand(state);
+          openContextMenu(state, cell, tapX, tapY);   // fresh chips, same spot
+        });
+      }
+      pieceOptions.push(rr);
+    }
   }
 
   // arming a build shows a ghost with its range, plus EVERY other legal

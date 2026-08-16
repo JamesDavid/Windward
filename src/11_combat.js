@@ -160,7 +160,8 @@ function gunTick(state, st, dt) {
     // radial: hits every valid target in radius
     const all = [...moverTargets, ...structTargets, ...segTargets];
     for (const t of all) {
-      applyDamage(state, t, dps * dt, st.cell);
+      const mult = t.kind === 'segment' ? CONFIG.Structures.GUN_VS_SEGMENT_MULT : 1;
+      applyDamage(state, t, dps * mult * dt, st.cell);
     }
     if (all.length && (!st.nextFxAt || state.time >= st.nextFxAt)) {
       st.nextFxAt = state.time + 0.3;
@@ -187,7 +188,8 @@ function gunTick(state, st, dt) {
   const maxTurn = (st.turn || 1) * dt;
   st.facing += clamp(wrapped, -maxTurn, maxTurn);
   if (angDiff(want, st.facing) <= (st.arc || Math.PI * 2) / 2) {
-    applyDamage(state, target, dps * dt, st.cell);
+    const segMult = target.kind === 'segment' ? CONFIG.Structures.GUN_VS_SEGMENT_MULT : 1;
+    applyDamage(state, target, dps * segMult * dt, st.cell);
     st.firingAt = target.pos.slice();
     st.lastFired = state.time;
     if (!st.nextFxAt || state.time >= st.nextFxAt) {

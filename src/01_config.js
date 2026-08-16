@@ -55,7 +55,7 @@ const CONFIG = Object.freeze({
   },
 
   Economy: {
-    START_SUPPLY: 32, START_FAVOR: 2,
+    START_SUPPLY: 100, START_FAVOR: 100,
     TEMPLE_SUPPLY_PER_10S: 3, TEMPLE_FAVOR_PER_10S: 1,
     INCOME_TICK_SECONDS: 10.0,
     REROLL_FAVOR: 1
@@ -95,7 +95,7 @@ const CONFIG = Object.freeze({
 
   Pieces: {
     HAND_SIZE: 3,
-    COST_SHORT: 2, COST_LONG: 3, COST_L: 3, COST_S: 3, COST_T: 5, COST_X: 7
+    COST_SHORT: 2, COST_LONG: 3, COST_L: 3, COST_S: 3, COST_T: 5, COST_TT: 6, COST_X: 7
   },
 
   Structures: {
@@ -110,7 +110,8 @@ const CONFIG = Object.freeze({
     SHIELD_COVER_RADIUS: 2.5,
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
-    DESTRUCTION_DAMAGE: 50
+    DESTRUCTION_DAMAGE: 50,
+    GUN_VS_SEGMENT_MULT: 0.45   // guns cut lanes, but slowly - no single-gun blockade
   },
 
   Segments: { AIR_HP: 40, SEA_HP: 55, LEE_SHORE_CELLS: 1 },

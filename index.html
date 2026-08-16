@@ -209,7 +209,7 @@
       <div style="display:flex; gap:10px; justify-content:center; align-items:center;">
         <div>
           <div id="hand"></div>
-          <div id="handlabel">YOUR PIECES &middot; TAP MAP TO BUILD &middot; TAP TWICE TO DISCARD (1 &#10022;)</div>
+          <div id="handlabel">1 &middot; 2 &middot; 3 PRONGS &middot; TAP MAP TO BUILD &middot; TAP TWICE TO DISCARD (1 &#10022;)</div>
         </div>
         <div id="handside">
           <button class="sidebtn" id="btn-tech">HYDROGEN · 25&#9099; 6&#10022;<span class="powdesc">ships carry 2&times; ore, but are bigger targets</span></button>
@@ -296,7 +296,7 @@ const CONFIG = Object.freeze({
   },
 
   Economy: {
-    START_SUPPLY: 32, START_FAVOR: 2,
+    START_SUPPLY: 100, START_FAVOR: 100,
     TEMPLE_SUPPLY_PER_10S: 3, TEMPLE_FAVOR_PER_10S: 1,
     INCOME_TICK_SECONDS: 10.0,
     REROLL_FAVOR: 1
@@ -336,7 +336,7 @@ const CONFIG = Object.freeze({
 
   Pieces: {
     HAND_SIZE: 3,
-    COST_SHORT: 2, COST_LONG: 3, COST_L: 3, COST_S: 3, COST_T: 5, COST_X: 7
+    COST_SHORT: 2, COST_LONG: 3, COST_L: 3, COST_S: 3, COST_T: 5, COST_TT: 6, COST_X: 7
   },
 
   Structures: {
@@ -351,7 +351,8 @@ const CONFIG = Object.freeze({
     SHIELD_COVER_RADIUS: 2.5,
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
-    DESTRUCTION_DAMAGE: 50
+    DESTRUCTION_DAMAGE: 50,
+    GUN_VS_SEGMENT_MULT: 0.45   // guns cut lanes, but slowly - no single-gun blockade
   },
 
   Segments: { AIR_HP: 40, SEA_HP: 55, LEE_SHORE_CELLS: 1 },
@@ -1398,21 +1399,32 @@ function newGameState(seedStr) {
 
   // starting hand (deck seeded so replays of a seed match exactly)
   resetPieceDeck(map.seed);
-  for (let i = 0; i < CONFIG.Pieces.HAND_SIZE; i++) state.hand.push(drawPiece());
+  for (let i = 0; i < CONFIG.Pieces.HAND_SIZE; i++) state.hand.push(drawPiece(i));
   return state;
 }
 
-// Piece deck: uniform draw over the five prototype shapes.
-const PIECE_TYPES = ['SHORT', 'LONG', 'L', 'S', 'T', 'X'];
+// The hand always holds three prong classes: an extender (one open end),
+// a brancher (two open ends), and a hub (three open ends). Each slot
+// redraws within its own class.
+const PIECE_CATEGORIES = [
+  ['SHORT', 'LONG', 'L', 'S'],   // 1 prong
+  ['T', 'TT'],                   // 2 prongs
+  ['X']                          // 3 prongs
+];
+const PIECE_TYPES = PIECE_CATEGORIES.flat();
 let pieceRng = mulberry32(1);
 function resetPieceDeck(seed) { pieceRng = mulberry32(hashString(seed + ':pieces')); }
-function drawPiece() {
-  return PIECE_TYPES[Math.floor(pieceRng() * PIECE_TYPES.length)];
+function drawPiece(slot) {
+  const pool = PIECE_CATEGORIES[slot === undefined ? 0 : slot % PIECE_CATEGORIES.length];
+  return pool[Math.floor(pieceRng() * pool.length)];
+}
+function piecePlugs(type) {
+  return { SHORT: 1, LONG: 1, L: 1, S: 1, T: 2, TT: 2, X: 3 }[type];
 }
 
 function pieceCost(type) {
   const P = CONFIG.Pieces;
-  return { SHORT: P.COST_SHORT, LONG: P.COST_LONG, L: P.COST_L, S: P.COST_S, T: P.COST_T, X: P.COST_X }[type];
+  return { SHORT: P.COST_SHORT, LONG: P.COST_LONG, L: P.COST_L, S: P.COST_S, T: P.COST_T, TT: P.COST_TT, X: P.COST_X }[type];
 }
 
 // Which island (if any) owns this cell.
@@ -1455,6 +1467,8 @@ const PIECE_TEMPLATES = {
   L:     [[[0, 0], [0, -1]], [[0, -1], [0, -2]], [[0, -2], [-1, -2]]],
   S:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[-1, -1], [-1, -2]]],
   T:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[0, -1], [1, -1]]],
+  // long-stem T: reaches further before it branches
+  TT:    [[[0, 0], [0, -1]], [[0, -1], [0, -2]], [[0, -2], [-1, -2]], [[0, -2], [1, -2]]],
   // the Cross: a full four-way junction — three fresh nubs from one bind
   X:     [[[0, 0], [0, -1]], [[0, -1], [-1, -1]], [[0, -1], [1, -1]], [[0, -1], [0, -2]]]
 };
@@ -1480,7 +1494,7 @@ function pieceOrientations(type) {
   return variants;
 }
 const PIECE_ORIENTATIONS = {};
-for (const t of ['SHORT', 'LONG', 'L', 'S', 'T', 'X']) PIECE_ORIENTATIONS[t] = pieceOrientations(t);
+for (const t of ['SHORT', 'LONG', 'L', 'S', 'T', 'TT', 'X']) PIECE_ORIENTATIONS[t] = pieceOrientations(t);
 
 // ---- segment factory ----
 function makeSegment(state, side, a, b) {
@@ -2738,7 +2752,8 @@ function gunTick(state, st, dt) {
     // radial: hits every valid target in radius
     const all = [...moverTargets, ...structTargets, ...segTargets];
     for (const t of all) {
-      applyDamage(state, t, dps * dt, st.cell);
+      const mult = t.kind === 'segment' ? CONFIG.Structures.GUN_VS_SEGMENT_MULT : 1;
+      applyDamage(state, t, dps * mult * dt, st.cell);
     }
     if (all.length && (!st.nextFxAt || state.time >= st.nextFxAt)) {
       st.nextFxAt = state.time + 0.3;
@@ -2765,7 +2780,8 @@ function gunTick(state, st, dt) {
   const maxTurn = (st.turn || 1) * dt;
   st.facing += clamp(wrapped, -maxTurn, maxTurn);
   if (angDiff(want, st.facing) <= (st.arc || Math.PI * 2) / 2) {
-    applyDamage(state, target, dps * dt, st.cell);
+    const segMult = target.kind === 'segment' ? CONFIG.Structures.GUN_VS_SEGMENT_MULT : 1;
+    applyDamage(state, target, dps * segMult * dt, st.cell);
     st.firingAt = target.pos.slice();
     st.lastFired = state.time;
     if (!st.nextFxAt || state.time >= st.nextFxAt) {
@@ -3170,11 +3186,13 @@ function initAI(state) {
   }
   Events.on('segmentDestroyed', ({ seg, cause }) => {
     if (seg.owner !== 'P' || cause === 'collapse') return;
-    // a successful player cut: pause rerouting, avoid the cut ground
-    state.ai.rerouteBlockedUntil = state.time + CONFIG.Waves.AI_REROUTE_COOLDOWN;
+    // a successful player cut: he avoids the cut ground for the cooldown
+    // (rebuilding elsewhere continues — a total freeze let one gun stall
+    // him forever), and pauses briefly to read as a reaction
+    state.ai.rerouteBlockedUntil = state.time + CONFIG.Waves.AI_REROUTE_DELAY * 2;
     state.ai.plan = null;
-    state.ai.avoidCells.set(cellKey(seg.a[0], seg.a[1]), state.time + 40);
-    state.ai.avoidCells.set(cellKey(seg.b[0], seg.b[1]), state.time + 40);
+    state.ai.avoidCells.set(cellKey(seg.a[0], seg.a[1]), state.time + CONFIG.Waves.AI_REROUTE_COOLDOWN * 2);
+    state.ai.avoidCells.set(cellKey(seg.b[0], seg.b[1]), state.time + CONFIG.Waves.AI_REROUTE_COOLDOWN * 2);
   });
 }
 
@@ -3209,12 +3227,38 @@ function aiScoreIsland(state, isl) {
 
 // plan a sheltered-preferring water path from his network to the island
 function aiPlanPath(state, isl) {
+  return aiPlanPathTo(state, new Set(isl.cells.map(([x, z]) => cellKey(x, z))));
+}
+
+// attack lanes: water cells within strike distance of the player's temple
+// and forward structures — reaching one puts his massed craft in range
+function aiAttackTargets(state) {
+  const set = new Set();
+  const mark = (cx, cz, r) => {
+    for (let dz = -r; dz <= r; dz++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const x = cx + dx, z = cz + dz;
+        if (!inBounds(x, z)) continue;
+        if (Math.hypot(dx, dz) > r) continue;
+        if (state.map.land.has(cellKey(x, z))) continue;
+        set.add(cellKey(x, z));
+      }
+    }
+  };
+  const gt = state.greatTemple.A;
+  if (gt.hp > 0) mark(gt.cell[0], gt.cell[1], 2);
+  for (const st of state.structures) {
+    if (st.owner === 'A' && st.hp > 0) mark(st.cell[0], st.cell[1], 2);
+  }
+  return set;
+}
+
+function aiPlanPathTo(state, target) {
   // start cells: sockets of his network
   const sockets = getSockets(state, 'P');
   if (!sockets.length) return null;
   const dl = state.ai.distToLand || (state.ai.distToLand = distToLandGrid(state.map));
   const avoid = state.ai.avoidCells;
-  const target = new Set(isl.cells.map(([x, z]) => cellKey(x, z)));
   // Dijkstra-lite with weights: sheltered water 1.0, open water 1.5 (§33B.2a),
   // island cells passable at 1.0 (a lane may land on a coast)
   const startKeys = sockets.map(s => cellKey(s.cell[0], s.cell[1]));
@@ -3321,6 +3365,15 @@ function aiTick(state, dt) {
           // unreachable for now: blacklist it so he tries something else
           ai.badObjectives.set(best.id, state.time + 30);
           ai.plan = null;
+        }
+      }
+      // no island worth taking: drive an ATTACK lane toward the player so
+      // the massed fleet finally has waters that reach them
+      if (!ai.plan) {
+        const targets = aiAttackTargets(state);
+        if (targets.size) {
+          const plan = aiPlanPathTo(state, targets);
+          if (plan && plan.length >= 3) ai.plan = plan;
         }
       }
     }
@@ -4904,6 +4957,19 @@ function syncIslandBars(state) {
         new THREE.MeshLambertMaterial({ color: Palette.gold }));
       wheel.position.y = 0.5;
       mine.add(wheel);
+      // gems glitter in the pit while ore remains
+      const gemColors = [0x9b6bd4, 0xffd977, 0x5fd6a5, 0x7fd4dd];
+      const gems = [];
+      for (let g = 0; g < 4; g++) {
+        const gem = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.055 + (g % 2) * 0.02),
+          new THREE.MeshBasicMaterial({ color: gemColors[g], transparent: true, opacity: 0.95 }));
+        const a = (g / 4) * Math.PI * 2 + 0.6;
+        gem.position.set(Math.cos(a) * 0.16, 0.14 + (g % 2) * 0.05, Math.sin(a) * 0.16);
+        mine.add(gem);
+        gems.push(gem);
+      }
+      mine.userData.gems = gems;
       mine.position.set(worldX(hx), CONFIG.Render.ISLAND_HEIGHT, worldZ(hz));
       const heap = new THREE.Mesh(
         new THREE.ConeGeometry(0.22, 0.3, 7),
@@ -4919,6 +4985,18 @@ function syncIslandBars(state) {
     }
     rec.mine.visible = isl.reserve > 0 || isl.stockpile > 0.5;
     if (isl.minedOut && rec.pit) rec.pit.material.color.setHex(0x4a4237);
+    // gems twinkle while ore remains; a worked-out pit goes dark
+    if (rec.mine.userData.gems) {
+      rec.mine.userData.gems.forEach((gem, g) => {
+        gem.visible = isl.reserve > 0;
+        if (gem.visible) {
+          const tw = 0.55 + 0.45 * Math.abs(Math.sin(state.time * (2.2 + g * 0.7) + isl.id * 2 + g));
+          gem.material.opacity = tw;
+          gem.scale.setScalar(0.75 + tw * 0.45);
+          gem.rotation.y = state.time * (0.8 + g * 0.3);
+        }
+      });
+    }
     const stockScale = clamp(isl.stockpile / 40, 0.001, 1.4);
     rec.heap.scale.setScalar(stockScale);
     rec.heap.visible = isl.stockpile > 0.5;
@@ -5315,7 +5393,7 @@ function buildHand(state) {
         UI.discardArm = -1;
         if (state.res.A.favor < CONFIG.Economy.REROLL_FAVOR) { flashTicker('NOT ENOUGH FAVOR'); refreshHand(state); return; }
         state.res.A.favor -= CONFIG.Economy.REROLL_FAVOR;
-        state.hand[i] = drawPiece();
+        state.hand[i] = drawPiece(i);
         buildHand(state);
         flashTicker('THE WIND TAKES IT BACK');
       } else {
@@ -5401,7 +5479,7 @@ function confirmPlacement(state) {
   if (UI.mode !== 'placing' || !UI.placements.length) return;
   const type = state.hand[UI.pieceIdx];
   if (placePiece(state, 'A', type, UI.placements[UI.orient].segs)) {
-    state.hand[UI.pieceIdx] = drawPiece();
+    state.hand[UI.pieceIdx] = drawPiece(UI.pieceIdx);
     buildHand(state);
     refreshInfluenceView(state);
   }
@@ -5642,6 +5720,23 @@ function openContextMenu(state, cell, tapX, tapY) {
         pieceOptions.push(pieceMenuButton(state, i, socketHere));
       }
     });
+    if (pieceOptions.length) {
+      // reroll the whole hand for Favor, right here by the thumb
+      const rr = document.createElement('button');
+      rr.innerHTML = '&#8635;<br>REROLL<b>' + CONFIG.Economy.REROLL_FAVOR + ' ✦</b>';
+      if (state.res.A.favor < CONFIG.Economy.REROLL_FAVOR) {
+        rr.style.opacity = 0.4;
+        rr.addEventListener('click', () => flashTicker('NOT ENOUGH FAVOR'));
+      } else {
+        rr.addEventListener('click', () => {
+          state.res.A.favor -= CONFIG.Economy.REROLL_FAVOR;
+          for (let i = 0; i < state.hand.length; i++) state.hand[i] = drawPiece(i);
+          buildHand(state);
+          openContextMenu(state, cell, tapX, tapY);   // fresh chips, same spot
+        });
+      }
+      pieceOptions.push(rr);
+    }
   }
 
   // arming a build shows a ghost with its range, plus EVERY other legal

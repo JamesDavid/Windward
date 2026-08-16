@@ -58,21 +58,32 @@ function newGameState(seedStr) {
 
   // starting hand (deck seeded so replays of a seed match exactly)
   resetPieceDeck(map.seed);
-  for (let i = 0; i < CONFIG.Pieces.HAND_SIZE; i++) state.hand.push(drawPiece());
+  for (let i = 0; i < CONFIG.Pieces.HAND_SIZE; i++) state.hand.push(drawPiece(i));
   return state;
 }
 
-// Piece deck: uniform draw over the five prototype shapes.
-const PIECE_TYPES = ['SHORT', 'LONG', 'L', 'S', 'T', 'X'];
+// The hand always holds three prong classes: an extender (one open end),
+// a brancher (two open ends), and a hub (three open ends). Each slot
+// redraws within its own class.
+const PIECE_CATEGORIES = [
+  ['SHORT', 'LONG', 'L', 'S'],   // 1 prong
+  ['T', 'TT'],                   // 2 prongs
+  ['X']                          // 3 prongs
+];
+const PIECE_TYPES = PIECE_CATEGORIES.flat();
 let pieceRng = mulberry32(1);
 function resetPieceDeck(seed) { pieceRng = mulberry32(hashString(seed + ':pieces')); }
-function drawPiece() {
-  return PIECE_TYPES[Math.floor(pieceRng() * PIECE_TYPES.length)];
+function drawPiece(slot) {
+  const pool = PIECE_CATEGORIES[slot === undefined ? 0 : slot % PIECE_CATEGORIES.length];
+  return pool[Math.floor(pieceRng() * pool.length)];
+}
+function piecePlugs(type) {
+  return { SHORT: 1, LONG: 1, L: 1, S: 1, T: 2, TT: 2, X: 3 }[type];
 }
 
 function pieceCost(type) {
   const P = CONFIG.Pieces;
-  return { SHORT: P.COST_SHORT, LONG: P.COST_LONG, L: P.COST_L, S: P.COST_S, T: P.COST_T, X: P.COST_X }[type];
+  return { SHORT: P.COST_SHORT, LONG: P.COST_LONG, L: P.COST_L, S: P.COST_S, T: P.COST_T, TT: P.COST_TT, X: P.COST_X }[type];
 }
 
 // Which island (if any) owns this cell.
