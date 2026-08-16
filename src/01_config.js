@@ -195,8 +195,8 @@ const CONFIG = Object.freeze({
 
   Waves: {
     ORIGIN_FROM_NEAREST_TEMPLE: true,
-    STRENGTH_BASE: 0.6, STRENGTH_PER_TEMPLE: 0.15,   // sweep-validated (test/opt_difficulty.js): 0.15/1.4 beats steeper and softer ramps
-    STRENGTH_MIN: 0.6, STRENGTH_MAX: 1.4,
+    STRENGTH_BASE: 0.6, STRENGTH_PER_TEMPLE: 0.10,   // re-swept after AI garrisons + fixed sectors raised de-facto difficulty: 0.10/1.2 now tops the grid
+    STRENGTH_MIN: 0.6, STRENGTH_MAX: 1.2,
     FIRST_AT: 45.0, TELEGRAPH: 8.0,   // sweep-validated (test/opt_pacing.js): x0.8 starves his buildup, x1.25 makes waves toothless
     INTERVAL_EARLY: 55.0, INTERVAL_MID: 45.0, INTERVAL_LATE: 35.0,
     MID_FROM_WAVE: 4, LATE_FROM_WAVE: 7,
