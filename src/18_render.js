@@ -541,7 +541,7 @@ function showSockets(state, sockets) {
       new THREE.MeshBasicMaterial({ color: Palette.socket, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
     beam.position.y = 1.3;
     grp.add(ring, beam);
-    const y = islandAtCells(state, s.cell) ? CONFIG.Render.ISLAND_HEIGHT + 0.06 : CONFIG.Render.AIR_ALTITUDE;
+    const y = islandAtCells(state, s.cell) ? CONFIG.Render.ISLAND_HEIGHT + 0.06 : playerRouteY();
     grp.position.set(worldX(s.cell[0]), y, worldZ(s.cell[1]));
     grp.userData.socket = s;
     grp.userData.ring = ring;
@@ -549,6 +549,9 @@ function showSockets(state, sockets) {
   }
 }
 function islandAtCells(state, cell) { return islandAt(state, cell[0], cell[1]); }
+// provisional visuals (ghost, beacons, markers) ride at YOUR network's
+// altitude: sky-roads for the Guild, the waterline for Poseidon
+function playerRouteY() { return airSide('A') ? CONFIG.Render.AIR_ALTITUDE : CONFIG.Render.SEA_ALTITUDE + 0.07; }
 function clearSockets() { R.socketGroup.clear(); }
 
 // Always-on markers for every spot the player can act at: tap one and the
@@ -568,7 +571,7 @@ function refreshActionMarkers(state) {
     const onLand = !!islandAt(state, s.cell[0], s.cell[1]);
     const m = new THREE.Mesh(geo, onLand ? matLand : matAir);
     m.position.set(worldX(s.cell[0]),
-      onLand ? CONFIG.Render.ISLAND_HEIGHT + 0.42 : CONFIG.Render.AIR_ALTITUDE + 0.22,
+      onLand ? CONFIG.Render.ISLAND_HEIGHT + 0.42 : playerRouteY() + 0.22,
       worldZ(s.cell[1]));
     R.actionGroup.add(m);
   }
@@ -576,7 +579,7 @@ function refreshActionMarkers(state) {
 
 function showPreview(state, segs, ok) {
   R.previewGroup.clear();
-  const y = CONFIG.Render.AIR_ALTITUDE;
+  const y = playerRouteY();
   for (const [a, b] of segs) {
     const ax = worldX(a[0]), az = worldZ(a[1]), bx = worldX(b[0]), bz = worldZ(b[1]);
     const len = Math.hypot(bx - ax, bz - az);

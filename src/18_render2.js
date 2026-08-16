@@ -918,8 +918,8 @@ function initFxEvents(state) {
   // throws the sea upward (teal, rising); impacts flash at the target
   const tracer = (payload, poseidon) => {
     const { from, to, targetSide, kind } = payload;
-    const ya = poseidon ? 0.25 : 1.05;
-    const yb = targetSide === 'A' ? (kind === 'segment' ? CONFIG.Render.AIR_ALTITUDE : 0.9) : 0.25;
+    const ya = airSide(poseidon ? 'P' : 'A') ? 1.05 : 0.25;
+    const yb = airSide(targetSide) ? (kind === 'segment' ? CONFIG.Render.AIR_ALTITUDE : 0.9) : 0.25;
     fxSpawn(state, 'tracer', from, { to: to.slice(), ya, yb, color: poseidon ? Palette.poseidonGlow : 0xffd977 });
   };
   Events.on('gunFired', (p) => tracer(p, p.side === 'P'));
@@ -936,7 +936,7 @@ function initFxEvents(state) {
     }
   });
   Events.on('segmentDestroyed', ({ seg, cause }) => {
-    fxSpawn(state, cause === 'collapse' ? 'unravel' : 'boom', segMid(seg), { air: seg.owner === 'A' });
+    fxSpawn(state, cause === 'collapse' ? 'unravel' : 'boom', segMid(seg), { air: airSide(seg.owner) });
   });
   Events.on('convoyLost', ({ ent }) => fxSpawn(state, 'wreck', ent.pos));
   // the wave ARRIVES as an event: eruption at the origin, storm edge on
