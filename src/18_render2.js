@@ -726,11 +726,32 @@ function syncShroud(state) {
   for (const k of state.influence.A) lift(k);
 }
 
-// enemy segment fog handling is layered onto syncSegments via this hook
+// enemy segment fog handling is layered onto syncSegments via this hook.
+// A lane whose neighbour is in live vision ghosts one step into the murk,
+// so his paths visibly CONTINUE somewhere instead of materialising
+// parentless at the fog edge — every lane of his traces home to a temple.
 function segmentVisibility(state, s) {
   if (s.owner === 'A') return 'full';
   const m = segMid(s);
   if (state.vision.A.has(cellKey(Math.round(m[0]), Math.round(m[1])))) return 'full';
   if (state.memory.A.has('seg:' + s.key)) return 'dim';
+  const touch = visibleLaneCells(state);
+  if (touch.has(cellKey(s.a[0], s.a[1])) || touch.has(cellKey(s.b[0], s.b[1]))) return 'dim';
   return 'hidden';
+}
+
+// endpoint cells of his lanes currently in live vision, cached per frame
+function visibleLaneCells(state) {
+  const c = R.visLaneCache;
+  if (c && c.t === state.time) return c.set;
+  const set = new Set();
+  for (const s of state.segments.values()) {
+    if (s.owner !== 'P') continue;
+    const m = segMid(s);
+    if (!state.vision.A.has(cellKey(Math.round(m[0]), Math.round(m[1])))) continue;
+    set.add(cellKey(s.a[0], s.a[1]));
+    set.add(cellKey(s.b[0], s.b[1]));
+  }
+  R.visLaneCache = { t: state.time, set };
+  return set;
 }

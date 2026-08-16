@@ -86,6 +86,25 @@ function flowTick(state) {
       }
     }
   }
+  // the first time one of his lanes closes on your holdings, say the law
+  // out loud once: his paths obey the same connection rules yours do
+  if (!f.laneNoteShown && (!f.laneNoteAt || state.time > f.laneNoteAt + 2)) {
+    f.laneNoteAt = state.time;
+    outer:
+    for (const s of state.segments.values()) {
+      if (s.owner !== 'P') continue;
+      for (const st of state.structures) {
+        if (st.owner !== 'A' || st.hp <= 0) continue;
+        if (dist2d(s.a[0], s.a[1], st.cell[0], st.cell[1]) <= 5 ||
+            dist2d(s.b[0], s.b[1], st.cell[0], st.cell[1]) <= 5) {
+          f.laneNoteShown = true;
+          showTutorialLine('His lanes obey the same law as your corridors — every one traces home to a temple. Cut one anywhere behind its tip and everything beyond unbinds.', 5600, 'lanesTraceHome');
+          break outer;
+        }
+      }
+    }
+  }
+
   // Wave 1's telegraph line is delivered by the telegraph system itself;
   // this is the only Aeolus line after control releases (§23)
   if (!f.waveOneAnnounced && state.time >= CONFIG.Waves.FIRST_AT - CONFIG.Waves.TELEGRAPH) {

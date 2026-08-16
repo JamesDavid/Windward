@@ -424,6 +424,17 @@ function identifyCell(state, cell) {
     }
     return s;
   }
+  // name a tapped route segment — his lanes especially, so it is plain
+  // they obey the same law: every lane traces home or unbinds
+  for (const seg of state.segments.values()) {
+    const onCell = (seg.a[0] === cell[0] && seg.a[1] === cell[1]) ||
+      (seg.b[0] === cell[0] && seg.b[1] === cell[1]);
+    if (!onCell) continue;
+    const stateTxt = seg.supportState === 'SUPPORTED' ? '' :
+      (seg.supportState === 'FRAYED' ? ' — CUT · FRAYING' : ' — CUT · UNBINDING');
+    if (seg.owner === 'A') return 'YOUR WIND CORRIDOR' + stateTxt;
+    return 'HIS SEA-LANE — TRACES HOME TO HIS TEMPLES' + stateTxt;
+  }
   return null;
 }
 
