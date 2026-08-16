@@ -7,37 +7,11 @@
 // ================================================================
 
 function initCinematics(state) {
-  R.cine = { pulseT0: -99, wakes: [] };
+  // (island wake streaks and bow-foam arcs tried and removed by player
+  // direction — painted geometry reads as glyphs, not water. The coast
+  // foam, whitecap streaks, and the wave field itself carry the flow.)
+  R.cine = { pulseT0: -99 };
   Events.on('waveTelegraph', () => { R.cine.pulseT0 = R.cine.now || 0; });
-
-  // islands make a LEE WAKE (player-directed): foam streaks trailing
-  // downwind of every island, so the flow visibly parts around land
-  // instead of sliding underneath it
-  for (const isl of state.map.islands) {
-    let r = 1;
-    for (const [x, z] of isl.cells) r = Math.max(r, Math.hypot(x - isl.center[0], z - isl.center[1]));
-    const grp = new THREE.Group();
-    for (let i = 0; i < 3; i++) {
-      const streak = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.9 - i * 0.3, 0.17),
-        new THREE.MeshBasicMaterial({ color: 0xeafaf5, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
-      streak.rotation.x = -Math.PI / 2;
-      streak.position.set(0.8 + i * 0.55, 0, (i - 1) * 0.5);
-      grp.add(streak);
-    }
-    // bow foam: an arc hugging the UPWIND coast, where the flow first
-    // meets land — together with the lee streaks the island visibly
-    // parts the current
-    const bowGrp = new THREE.Group();
-    const bow = new THREE.Mesh(
-      new THREE.RingGeometry(r + 0.15, r + 0.42, 14, 1, -0.95, 1.9),
-      new THREE.MeshBasicMaterial({ color: 0xeafaf5, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
-    bow.rotation.x = -Math.PI / 2;
-    bow.position.y = 0.06;
-    bowGrp.add(bow);
-    R.scene.add(grp, bowGrp);
-    R.cine.wakes.push({ grp, bowGrp, bow, isl, r });
-  }
 }
 
 function cinematicTick(state, dt) {
@@ -61,36 +35,14 @@ function cinematicTick(state, dt) {
     // reflection distortion is what makes panning read as boiling water:
     // damp it hard while the camera is being moved by ANY gesture, ease
     // back when the eye rests
-    const moving = R.userMovingCam && performance.now() - R.userMovingCam < 200;
-    const targetDist = 3.2 * (1 + env * 1.2) * (moving ? 0.18 : 1);
+    const moving = R.userMovingCam && performance.now() - R.userMovingCam < 300;
+    const targetDist = 3.2 * (1 + env * 1.2) * (moving ? 0.1 : 1);
     if (R.distortSm === undefined) R.distortSm = targetDist;
     R.distortSm += (targetDist - R.distortSm) * Math.min(1, dt * 6);
     R.seaMesh.material.uniforms.distortionScale.value = R.distortSm;
   }
 
   // lee wakes trail downwind of each island, breathing with the wind
-  for (const wk of cine.wakes) {
-    const c = wk.isl.center;
-    const lifted = groundLifted(state, Math.round(c[0]), Math.round(c[1]));
-    wk.grp.visible = lifted;   // never leak unexplored islands via their wake
-    if (wk.bowGrp) wk.bowGrp.visible = lifted;
-    if (!lifted) continue;
-    const w = state.wind.at(c[0], c[1]);
-    const ang = Math.atan2(w.z, w.x);
-    wk.grp.position.set(
-      worldX(c[0] + Math.cos(ang) * (wk.r + 0.3)), 0.055,
-      worldZ(c[1] + Math.sin(ang) * (wk.r + 0.3)));
-    wk.grp.rotation.y = -ang;
-    wk.grp.children.forEach((s, i) => {
-      s.material.opacity = (0.26 + 0.12 * Math.sin(state.time * 1.4 + wk.isl.id + i)) * (1 - i * 0.22);
-      s.position.x = 0.6 + i * 0.55 + 0.18 * Math.sin(state.time * 2 + i * 1.7 + wk.isl.id);
-    });
-    // the bow arc faces INTO the wind (the flow arrives from -windDir)
-    wk.bowGrp.position.set(worldX(c[0]), 0, worldZ(c[1]));
-    wk.bowGrp.rotation.y = -(ang + Math.PI);
-    wk.bow.material.opacity = 0.22 + 0.1 * Math.sin(state.time * 1.8 + wk.isl.id * 1.3);
-  }
-
   // telegraph breath: ease out ~15% and back over the warning. The
   // player's own pinch always wins — the pulse is a multiplier applied
   // at camera time, never a change to their chosen zoom.

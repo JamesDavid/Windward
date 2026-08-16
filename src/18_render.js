@@ -160,7 +160,13 @@ function initRenderer() {
         .replace('vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) + vec2( time / 101.0, time / 97.0 );',
           'vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) - flowDir * ( time / 101.0 );')
         .replace('vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - vec2( time / 109.0, time / -113.0 );',
-          'vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - flowDir * ( time / 109.0 ) - flowSide * ( time / 127.0 );');
+          'vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - flowDir * ( time / 109.0 ) - flowSide * ( time / 127.0 );')
+        // the mirror layer moves with the CAMERA, not the world — at full
+        // fresnel it dominates and panning makes the whole sea appear to
+        // slide off the islands. Cap the view-dependent share so the
+        // world-anchored wave pattern stays the thing you see.
+        .replace('), reflectance);',
+          '), reflectance * 0.45);');
       mat.needsUpdate = true;
     }
     // upgrade to the canonical three.js wave normals, MIRRORED LOCALLY in
@@ -621,8 +627,8 @@ function renderTick(state, dt) {
     // panning sweeps the reflections across the screen already — if the
     // waves churn at full speed at the same time the sea reads as racing.
     // Calm the water while the eye is moving, ease back when it rests.
-    const panning = R.userMovingCam && performance.now() - R.userMovingCam < 180;
-    const target = (0.35 + Math.hypot(w.x, w.z) * 0.5) * (R.seaSurge || 1) * (panning ? 0.12 : 1);
+    const panning = R.userMovingCam && performance.now() - R.userMovingCam < 300;
+    const target = (0.35 + Math.hypot(w.x, w.z) * 0.5) * (R.seaSurge || 1) * (panning ? 0.05 : 1);
     // seed BEFORE smoothing — folding the seed into one expression made
     // (target - undefined) = NaN on frame one and froze the sea forever
     if (R.waterSpeedSm === undefined) R.waterSpeedSm = target;
