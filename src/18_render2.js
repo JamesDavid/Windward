@@ -1172,8 +1172,27 @@ function fxTick(state, dt) {
         mesh = new THREE.Mesh(new THREE.CylinderGeometry(CONFIG.Powers.FOG_BANK.RADIUS, CONFIG.Powers.FOG_BANK.RADIUS, 0.3, 20),
           new THREE.MeshBasicMaterial({ color: 0xb8c4c6, transparent: true, opacity: 0.25 }));
       } else if (f.kind === 'windwall') {
-        mesh = new THREE.Mesh(new THREE.SphereGeometry(CONFIG.Powers.WIND_WALL.RADIUS, 14, 10),
-          new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.18 }));
+        // the wall is a BOUNDARY, not a dome — a dome hid everything it
+        // sheltered (player report). A bright ground ring marks the
+        // protected radius and leaves the contents fully visible.
+        const RW = CONFIG.Powers.WIND_WALL.RADIUS;
+        mesh = new THREE.Group();
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(RW - 0.14, RW, 36),
+          new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.09;
+        mesh.add(ring);
+        // low shimmer posts on the rim, swirling — the wall reads as wind
+        for (let i = 0; i < 8; i++) {
+          const post = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.03, 0.045, 0.5, 5),
+            new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.5 }));
+          const a = (i / 8) * Math.PI * 2;
+          post.position.set(Math.cos(a) * (RW - 0.07), 0.3, Math.sin(a) * (RW - 0.07));
+          mesh.add(post);
+        }
+        mesh.userData.spin = true;
       } else if (f.kind === 'coin') {
         mesh = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5),
           new THREE.MeshBasicMaterial({ color: Palette.gold, transparent: true, opacity: 1 }));
@@ -1206,7 +1225,8 @@ function fxTick(state, dt) {
           new THREE.MeshBasicMaterial({ color: 0xff8c3f, transparent: true, opacity: 1 }));
         mesh.position.set(worldX(f.pos[0]), 0.6, worldZ(f.pos[1]));
       }
-      const y = f.kind === 'wreck' || f.kind === 'surge' ? 0.04 : (f.data.air ? CONFIG.Render.AIR_ALTITUDE : 0.3);
+      const y = f.kind === 'wreck' || f.kind === 'surge' || f.kind === 'windwall' ? 0.04
+        : (f.data.air ? CONFIG.Render.AIR_ALTITUDE : 0.3);
       mesh.position.set(worldX(f.pos[0]), y, worldZ(f.pos[1]));
       R.scene.add(mesh);
       f.mesh = mesh;
@@ -1237,6 +1257,15 @@ function fxTick(state, dt) {
       d.vy -= 6 * dt;
       f.mesh.position.y = Math.max(0.05, f.mesh.position.y + d.vy * dt);
       f.mesh.material.opacity = 1 - age / life;
+      continue;
+    }
+    if (f.kind === 'windwall') {
+      // the rim swirls; the whole boundary breathes and fades out at the end
+      f.mesh.rotation.y = state.time * 0.7;
+      const fade = Math.min(1, (life - age) / 2) * (0.8 + 0.2 * Math.sin(state.time * 5));
+      f.mesh.children.forEach((c, i) => {
+        c.material.opacity = (i === 0 ? 0.7 : 0.45) * fade;
+      });
       continue;
     }
     if (f.kind === 'coin') {
