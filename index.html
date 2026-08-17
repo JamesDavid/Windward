@@ -43,7 +43,7 @@
   .res .favorlabel { color: #d5ecff; }
   #wavechip { font-size: 13px; letter-spacing: 1px; opacity: 0.9; text-align: right; }
   #priestchip {
-    pointer-events: auto; position: absolute; top: calc(var(--topsafe) + 34px); right: 8px;
+    pointer-events: auto; position: absolute; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); right: 10px;
     background: rgba(16,21,26,0.72); border: 1px solid rgba(242,232,207,0.35);
     border-radius: 10px; padding: 5px 9px; font-size: 12px; text-align: center;
   }
@@ -90,7 +90,7 @@
   #banner.show { pointer-events: auto; cursor: pointer; }
   #ticker.show { pointer-events: auto; cursor: pointer; }
   #ticker {
-    position: absolute; top: calc(var(--topsafe) + 82px);
+    position: absolute; top: calc(var(--topsafe) + 170px);
     left: 0; right: 0; text-align: center;
     font-size: 12px; letter-spacing: 1px; color: #ffd9a0; pointer-events: none;
     text-shadow: 0 1px 3px #000; opacity: 0; transition: opacity 0.3s;
@@ -139,18 +139,22 @@
     font-family: inherit; font-size: 11px; padding: 6px 8px;
   }
   .sidebtn:disabled { opacity: 0.35; }
+  /* the confirm row wears the SAME dress as the context menu: one dark
+     bordered panel, same button language (player-directed) */
   #confirmrow {
-    display: flex; gap: 10px; justify-content: center; min-height: 40px;
-    position: absolute; z-index: 6; pointer-events: none;
+    display: none;
+    position: absolute; z-index: 6;
+    background: rgba(16,21,26,0.92); border: 1px solid rgba(242,232,207,0.35);
+    border-radius: 14px; padding: 8px; gap: 6px;
   }
-  #confirmrow button { pointer-events: auto; }
+  #confirmrow.shown { display: flex; justify-content: center; }
   #confirmrow button {
-    pointer-events: auto; font-family: inherit; font-size: 15px; letter-spacing: 1px;
-    border-radius: 12px; padding: 8px 22px; border: none;
+    pointer-events: auto; font-family: inherit; font-size: 13px; letter-spacing: 1px;
+    border-radius: 10px; padding: 8px 14px;
+    background: none; color: var(--ivory); border: 1px solid rgba(242,232,207,0.3);
   }
-  #btn-confirm { background: var(--gold); color: var(--ink); font-weight: bold; }
-  #btn-rotate { background: rgba(16,21,26,0.85); color: var(--gold); border: 1px solid rgba(217,164,65,0.6); }
-  #btn-cancel { background: rgba(16,21,26,0.85); color: var(--ivory); border: 1px solid rgba(242,232,207,0.4); }
+  #btn-confirm { background: var(--gold) !important; color: var(--ink) !important; font-weight: bold; border: none !important; }
+  #btn-rotate-l, #btn-rotate { color: var(--gold); border-color: rgba(217,164,65,0.6); font-size: 17px; padding: 6px 12px; }
   .hidden { display: none !important; }
 
   /* ---------- build menu ---------- */
@@ -235,7 +239,8 @@
            dialog. The whole screen belongs to the map. -->
       <div id="confirmrow">
         <button id="btn-confirm" class="hidden">CONFIRM</button>
-        <button id="btn-rotate" class="hidden">&#8635; TURN</button>
+        <button id="btn-rotate-l" class="hidden" title="turn left">&#8634;</button>
+        <button id="btn-rotate" class="hidden" title="turn right">&#8635;</button>
         <button id="btn-cancel" class="hidden">CANCEL</button>
       </div>
       <div id="hand" class="hidden"></div>
@@ -6547,7 +6552,7 @@ function initUI(state) {
   const $ = id => document.getElementById(id);
   UI.els = {
     supply: $('supply'), favor: $('favor'), seedchip: $('seedchip'), waveinfo: $('waveinfo'),
-    hand: $('hand'), confirm: $('btn-confirm'), cancel: $('btn-cancel'), rotate: $('btn-rotate'),
+    hand: $('hand'), confirm: $('btn-confirm'), cancel: $('btn-cancel'), rotate: $('btn-rotate'), rotateL: $('btn-rotate-l'),
     banner: $('banner'), tutorial: $('tutorial'), ticker: $('ticker'),
     priestchip: $('priestchip'), buildmenu: $('buildmenu'), codex: $('codex')
   };
@@ -6557,7 +6562,8 @@ function initUI(state) {
   buildHand(state);
 
   UI.els.confirm.addEventListener('click', () => confirmPlacement(state));
-  UI.els.rotate.addEventListener('click', () => cyclePlacement(state));
+  UI.els.rotate.addEventListener('click', () => cyclePlacement(state, 1));
+  UI.els.rotateL.addEventListener('click', () => cyclePlacement(state, -1));
   UI.els.cancel.addEventListener('click', () => cancelPlacement());
   // (the powers bar is gone, player-directed: Tailwind and the Wall live
   // in the context menu where they are valid actions; the fleet upgrade
@@ -6785,17 +6791,19 @@ function selectSocket(state, socket) {
   return true;
 }
 
-function cyclePlacement(state) {
-  // aiming a bolt at placement: TURN traverses the wedge in 45° steps
+function cyclePlacement(state, dir) {
+  dir = dir || 1;
+  // aiming a bolt at placement: the turn buttons traverse the wedge in
+  // 45° steps, either direction
   if (UI.structMode) {
     if (UI.structMode.type !== 'bolt') return;
-    UI.structMode.facing += Math.PI / 4;
+    UI.structMode.facing += dir * Math.PI / 4;
     showStructPreview(state, 'A', 'bolt', UI.structMode.at.cell, UI.structMode.facing);
     Events.emit('uiCycle', {});
     return;
   }
   if (!UI.placements.length) return;
-  UI.orient = (UI.orient + 1) % UI.placements.length;
+  UI.orient = (UI.orient + dir + UI.placements.length) % UI.placements.length;
   showPreview(state, UI.placements[UI.orient].segs, true);
   updateGhostMultiplier(state);
   Events.emit('uiCycle', {});
@@ -6862,6 +6870,8 @@ function setConfirmVisible(v, anchorCell) {
   const canTurn = UI.structMode ? UI.structMode.type === 'bolt'
     : (UI.placements && UI.placements.length >= 2);
   UI.els.rotate.classList.toggle('hidden', !v || !canTurn);
+  UI.els.rotateL.classList.toggle('hidden', !v || !canTurn);
+  document.getElementById('confirmrow').classList.toggle('shown', v);
   if (v) UI.els.confirm.textContent = 'CONFIRM';
   if (v) placeConfirmRow(anchorCell);
 }

@@ -26,7 +26,7 @@ function initUI(state) {
   const $ = id => document.getElementById(id);
   UI.els = {
     supply: $('supply'), favor: $('favor'), seedchip: $('seedchip'), waveinfo: $('waveinfo'),
-    hand: $('hand'), confirm: $('btn-confirm'), cancel: $('btn-cancel'), rotate: $('btn-rotate'),
+    hand: $('hand'), confirm: $('btn-confirm'), cancel: $('btn-cancel'), rotate: $('btn-rotate'), rotateL: $('btn-rotate-l'),
     banner: $('banner'), tutorial: $('tutorial'), ticker: $('ticker'),
     priestchip: $('priestchip'), buildmenu: $('buildmenu'), codex: $('codex')
   };
@@ -36,7 +36,8 @@ function initUI(state) {
   buildHand(state);
 
   UI.els.confirm.addEventListener('click', () => confirmPlacement(state));
-  UI.els.rotate.addEventListener('click', () => cyclePlacement(state));
+  UI.els.rotate.addEventListener('click', () => cyclePlacement(state, 1));
+  UI.els.rotateL.addEventListener('click', () => cyclePlacement(state, -1));
   UI.els.cancel.addEventListener('click', () => cancelPlacement());
   // (the powers bar is gone, player-directed: Tailwind and the Wall live
   // in the context menu where they are valid actions; the fleet upgrade
@@ -264,17 +265,19 @@ function selectSocket(state, socket) {
   return true;
 }
 
-function cyclePlacement(state) {
-  // aiming a bolt at placement: TURN traverses the wedge in 45° steps
+function cyclePlacement(state, dir) {
+  dir = dir || 1;
+  // aiming a bolt at placement: the turn buttons traverse the wedge in
+  // 45° steps, either direction
   if (UI.structMode) {
     if (UI.structMode.type !== 'bolt') return;
-    UI.structMode.facing += Math.PI / 4;
+    UI.structMode.facing += dir * Math.PI / 4;
     showStructPreview(state, 'A', 'bolt', UI.structMode.at.cell, UI.structMode.facing);
     Events.emit('uiCycle', {});
     return;
   }
   if (!UI.placements.length) return;
-  UI.orient = (UI.orient + 1) % UI.placements.length;
+  UI.orient = (UI.orient + dir + UI.placements.length) % UI.placements.length;
   showPreview(state, UI.placements[UI.orient].segs, true);
   updateGhostMultiplier(state);
   Events.emit('uiCycle', {});
@@ -341,6 +344,8 @@ function setConfirmVisible(v, anchorCell) {
   const canTurn = UI.structMode ? UI.structMode.type === 'bolt'
     : (UI.placements && UI.placements.length >= 2);
   UI.els.rotate.classList.toggle('hidden', !v || !canTurn);
+  UI.els.rotateL.classList.toggle('hidden', !v || !canTurn);
+  document.getElementById('confirmrow').classList.toggle('shown', v);
   if (v) UI.els.confirm.textContent = 'CONFIRM';
   if (v) placeConfirmRow(anchorCell);
 }
