@@ -290,7 +290,7 @@
     </div>
     <button id="startdemo" style="background:none; color:var(--ivory); border:1px solid rgba(242,232,207,0.4); font-size:13px; padding:8px 18px;">WATCH A MATCH</button>
     <button id="resumebtn" class="hidden" style="background:none; color:var(--gold); border:1px solid var(--gold); font-size:13px; padding:8px 18px;">RESUME YOUR MATCH</button>
-    <div style="position:absolute; bottom:calc(env(safe-area-inset-bottom, 0px) + 6px); right:10px; font-size:9px; letter-spacing:1px; opacity:0.4;">BUILD 2026-08-17 19:15 UTC</div>
+    <div style="position:absolute; bottom:calc(env(safe-area-inset-bottom, 0px) + 6px); right:10px; font-size:9px; letter-spacing:1px; opacity:0.4;">BUILD 2026-08-17 19:34 UTC</div>
   </div>
   <div id="endscreen" class="screen hidden">
     <h1 id="endtitle"></h1>
@@ -3622,6 +3622,9 @@ function applyAiTier(state, tier) {
   const L = CONFIG.AI.LADDER;
   state.aiTier = Math.max(0, Math.min(L.length - 1, tier));
   state.aiCfg = Object.assign({}, CONFIG.AI, L[state.aiTier].overrides);
+  // remember the hottest temper this match ever reached (history feeds
+  // the opening tier of future matches)
+  state.ddaPeak = Math.max(state.ddaPeak || 0, state.aiTier);
 }
 
 function initAI(state) {
@@ -4424,27 +4427,38 @@ function initCodex(state) { }
 const SAVE_KEY = 'windward-resume';
 const SKILL_KEY = 'windward-skill';
 
-// ---- persistent skill rating (player-directed dynamic matching) ----
-// A float 0..3 across sessions; a match starts Poseidon at the nearest
-// ladder rung, and the outcome nudges the rating.
-function loadSkillRating() {
+// ---- persistent skill history (player-directed: 'posiedon remembers') --
+// An exponential average of end-of-match skill AND the peak temper the
+// player has ever driven him to (decaying slowly, so one great night
+// doesn't haunt forever). The opening temper reads both.
+function loadSkillHist() {
+  const fresh = { games: 0, ema: 1, peak: 1 };
   try {
-    const v = parseFloat(localStorage.getItem(SKILL_KEY));
-    return isNaN(v) ? 1 : Math.max(0, Math.min(3, v));
-  } catch (e) { return 1; }
+    const raw = localStorage.getItem(SKILL_KEY);
+    if (!raw) return fresh;
+    const v = JSON.parse(raw);
+    if (v && typeof v === 'object' && v.ema !== undefined) return v;
+    const f = parseFloat(raw);   // legacy single-float rating
+    return isNaN(f) ? fresh : { games: 1, ema: f, peak: f };
+  } catch (e) { return fresh; }
 }
-function saveSkillRating(v) {
-  try { localStorage.setItem(SKILL_KEY, String(Math.max(0, Math.min(3, v)))); } catch (e) { }
+function startTierFromHistory() {
+  const h = loadSkillHist();
+  return Math.max(0, Math.min(3, Math.round((h.ema + h.peak) / 2)));
 }
 // outcome nudges: decisive results move a half rung, judgments a quarter
 function updateSkillRating(state) {
-  const cur = loadSkillRating();
+  const h = loadSkillHist();
   const nudge = state.over === 'win' ? 0.5
     : state.over === 'arbitration' ? 0.25
     : state.over === 'arbitrationLoss' ? -0.25
     : state.over === 'lose' ? -0.5 : 0;
-  // anchor on the tier actually played at the end, then nudge
-  saveSkillRating((state.aiTier !== undefined ? state.aiTier : cur) + nudge);
+  const endScore = Math.max(0, Math.min(3, (state.aiTier !== undefined ? state.aiTier : 1) + nudge));
+  const peakInMatch = state.ddaPeak !== undefined ? state.ddaPeak : (state.aiTier || 1);
+  h.ema = h.games > 0 ? h.ema * 0.6 + endScore * 0.4 : endScore;
+  h.peak = Math.max(h.peak * 0.92, peakInMatch);
+  h.games = (h.games || 0) + 1;
+  try { localStorage.setItem(SKILL_KEY, JSON.stringify(h)); } catch (e) { }
 }
 
 // Entities are stored as plain field copies; object references
@@ -8217,7 +8231,7 @@ function startMatch(seedStr, theme, demo) {
   // persistent rating; the DEMO starts FAIR and climbs the same ladder
   // as its champion dominates - the show escalates honestly.
   STATE.dda = true;
-  applyAiTier(STATE, demo ? 1 : Math.round(loadSkillRating()));
+  applyAiTier(STATE, demo ? 1 : startTierFromHistory());
   initFlow(STATE);
   initFxEvents(STATE);
   wireAudio();

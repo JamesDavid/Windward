@@ -12,6 +12,9 @@ function applyAiTier(state, tier) {
   const L = CONFIG.AI.LADDER;
   state.aiTier = Math.max(0, Math.min(L.length - 1, tier));
   state.aiCfg = Object.assign({}, CONFIG.AI, L[state.aiTier].overrides);
+  // remember the hottest temper this match ever reached (history feeds
+  // the opening tier of future matches)
+  state.ddaPeak = Math.max(state.ddaPeak || 0, state.aiTier);
 }
 
 function initAI(state) {

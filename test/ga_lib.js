@@ -74,7 +74,7 @@ function fitnessP(r) {
 
 // One full match: scripted-A (genome) vs the real AI (optionally with
 // aiCfg overrides — an evolved / tiered Poseidon). Returns stats.
-function runMatch(G, seed, genome, maxT, aiOverrides) {
+function runMatch(G, seed, genome, maxT, aiOverrides, ddaStartTier) {
   const g = scale(genome);
   const state = G.newGameState(seed);
   G.recalcSupport(state, 'A'); G.recalcSupport(state, 'P');
@@ -83,7 +83,12 @@ function runMatch(G, seed, genome, maxT, aiOverrides) {
   G.spawnHauler(state, 'A'); G.spawnHauler(state, 'P');
   G.initAI(state);
   if (aiOverrides) Object.assign(state.aiCfg, aiOverrides);
+  if (ddaStartTier !== undefined && ddaStartTier !== null) {
+    state.dda = true;
+    G.applyAiTier(state, ddaStartTier);
+  }
   G.fogTick(state, 1);
+  const tierPath = [state.aiTier];
 
   const gtP = state.greatTemple.P.cell;
   const gtA = state.greatTemple.A.cell;
@@ -257,8 +262,10 @@ function runMatch(G, seed, genome, maxT, aiOverrides) {
     if (t >= nextAct) { nextAct = t + 2.5; act(t); }
     if (state.greatTemple.A.hp <= 0) state.over = 'lose';
     if (state.greatTemple.P.hp <= 0) state.over = 'win';
+    if (state.aiTier !== tierPath[tierPath.length - 1]) tierPath.push(state.aiTier);
   }
   return {
+    tierPath,
     outcome: state.over || 'timeout',
     t: state.time,
     gtA: Math.max(0, Math.round(state.greatTemple.A.hp)),

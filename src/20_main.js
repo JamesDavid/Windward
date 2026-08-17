@@ -51,7 +51,7 @@ function startMatch(seedStr, theme, demo) {
   // persistent rating; the DEMO starts FAIR and climbs the same ladder
   // as its champion dominates - the show escalates honestly.
   STATE.dda = true;
-  applyAiTier(STATE, demo ? 1 : Math.round(loadSkillRating()));
+  applyAiTier(STATE, demo ? 1 : startTierFromHistory());
   initFlow(STATE);
   initFxEvents(STATE);
   wireAudio();
