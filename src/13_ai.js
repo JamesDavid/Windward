@@ -224,10 +224,10 @@ function aiTick(state, dt) {
         }
       }
       // no island worth taking: drive an ATTACK lane toward the player so
-      // the massed fleet finally has waters that reach them — but only
-      // once there IS a fleet; roads ahead of the first wave would rush
-      // the player before the opening breath the onboarding promises
-      if (!ai.plan && state.craft.length) {
+      // the fleet has waters that reach them. From the FIRST TELEGRAPH
+      // onward (player report: waves idled far away and the countdown
+      // paid off with nothing) - but never before the opening breath.
+      if (!ai.plan && (state.craft.length || state.wave.telegraphed || state.wave.index >= 1)) {
         const targets = aiAttackTargets(state);
         if (targets.size) {
           const plan = aiPlanPathTo(state, targets);

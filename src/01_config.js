@@ -142,7 +142,7 @@ const CONFIG = Object.freeze({
 
   Craft: {
     REACH_FROM_LANES: 3.0,   // his craft operate only in waters his network reaches
-    TRANSPORT:  { HP: 42, DPS: 4,  RANGE: 2.2, SPEED: 0.9 },   // assault parties reach a short way inland
+    TRANSPORT:  { HP: 32, DPS: 4,  RANGE: 2.2, SPEED: 0.9 },   // horde-tuned: more bodies, lighter each (player: waves should feel like hordes)
     SIPHON:     { HP: 62, DPS: 6,  RANGE: 3, SPEED: 0.8 },
     HEAVY:      { HP: 112, DPS: 14, RANGE: 3, SPEED: 0.65 },
     SIPHON_MAST:{ HP: 50, DPS: 8,  RANGE: 3 }
@@ -203,16 +203,17 @@ const CONFIG = Object.freeze({
     COUNT: 9,
     AI_REROUTE_DELAY: 2.0, AI_REROUTE_COOLDOWN: 20.0,
     // authored composition per wave: [transports, siphons, heavies]
+    // horde-tuned (player-directed): transports come in numbers
     COMPOSITION: [
-      [2, 0, 0],
       [3, 0, 0],
-      [4, 0, 0],
-      [3, 2, 0],
-      [2, 3, 1],   // wave 5: scripted heavy strike on most forward structure
-      [3, 3, 1],
-      [4, 3, 1],
-      [4, 4, 2],   // AGE OF WRATH
-      [5, 4, 2]
+      [5, 0, 0],
+      [6, 0, 0],
+      [5, 2, 0],
+      [4, 3, 1],   // wave 5: scripted heavy strike on most forward structure
+      [5, 3, 1],
+      [6, 3, 1],
+      [6, 4, 2],   // AGE OF WRATH
+      [8, 4, 2]
     ],
     TWO_FRONT_FROM_WAVE: 3
   },
