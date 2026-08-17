@@ -46,7 +46,7 @@ Gaia, Zeus, earth and storm layers, throughput and congestion, route and termina
 ---
 
 ### Submission artefacts status
-- **Design Intent** (`docs/design-intent.docx`): refreshed 2026-08-15 to match the built game (scrolling seeded archipelago, roads-are-reach, raw-end exposure, lane-reach waves, exploration fog). 491 words, template's seven sections, regenerated with no author metadata anywhere in the file.
+- **Design Intent** (`docs/design-intent.docx`): refreshed 2026-08-17 — wind law, wrath tides + Zeus verdict, de-branded audience line (rules §6g), 'not yet in' list per template §5. 493 words, template's seven sections exactly, no author metadata.
 - **Build Log**: this file, updated with every commit.
 - **Playable build**: `index.html` + `/vendor/three.min.js`, fully offline, all art procedural, all audio WebAudio-synthesised. Contest zip will be produced only when instructed.
 
@@ -76,7 +76,7 @@ ENTRY TEMPLATE — copy for each session.
 
 ## Session 0 (2026-08-15): setup
 
-**Tool(s):** —
+**Tool(s):** Claude Code (Claude Fable 5) — planning and scaffolding only
 **Commits:** —
 
 **What I built:** Repository initialised, spec finalised, build log started.
@@ -87,7 +87,7 @@ ENTRY TEMPLATE — copy for each session.
 
 ## Session 1 (2026-08-15): scaffold, build pipeline, deterministic map generator
 
-**Tool(s):** Claude Code (agent wrote all code from the spec; no hand-coding)
+**Tool(s):** Claude Code (Claude Fable 5) — the agent wrote all code from the spec; no hand-coding
 **Commits:** `ddd8dea`..`949c777`
 
 ### Prompts and commits
@@ -196,9 +196,31 @@ ENTRY TEMPLATE — copy for each session.
 | 67 | **Powers + refit sweep verdicts (first honest run - trial player now casts/buys):** Tailwind x Wall favor grid is jagged noise across 2-4 (61-72) with one real signal - 5+ favor tailwind uniformly worse (66/62/61 row); hydrogen refit price sweeps FLAT 68/68/68 from 15+4 to 40+10, so price is not the lever (the wind exemption is the value). Current values (3/4, 25+6) stand, config annotated | `7be092a` | docs: sweep-verdict annotations |
 | 68 | **Media refresh (player: 'update the readme and screenshots... video of best match seed/gif' → 'a whole new set'):** all 16 screenshots retaken on the current build (capture driver now ends the guided tut + suppresses the lane-law pill — two shots were photobombed); 3 new feature shots (wrath countdown, Zeus verdict, fleet-waits ticker); new film on seed optc with the sweep-scored player — first take (w9iwff) diverged in-browser to a wave-11 loss, second (optc, uncapped) won by arbitration but with 508 segments of favor-overflow road spam on camera, final take caps expansion at 140 segs: 14 waves, both networks ground to stubs (27 vs 22), temple holds, ZEUS CALLS THE MATTER SETTLED. README: new §15 'Every match ends', §12/§14 rewritten | `a8adb22` | docs: full media refresh |
 | 69 | **Release zip (player-directed) + CONFIRM legibility (player: 'what does confirm 0.57 mean'):** WINDWARD_submission.zip 0.50 MB — index.html top-level, vendor/, design-intent.docx (refreshed to 494 words: wind law + guaranteed verdict replace stale nine-and-done claims), buildlog.md (renamed per rules). Formal offline test on a FRESH extraction: file:// load, zero non-file requests, no page errors, one real minute of play. Anonymity scans clean (no names/URLs anywhere; title WINDWARD). The ghost's CONFIRM now reads 'CONFIRM · HEADWIND ×0.57' / FAIR WIND / TAILWIND, banded by the wind-law closure threshold — the number was the §21A.5 wind multiplier, now it says so | `4eb4989` | feat: release zip, CONFIRM wording |
-| 70 | **Library audit + GitHub release (player-directed):** confirmed the zip carries every external file the game references — exactly three (vendor/three.min.js + Water.js script tags, waternormals.jpg via TextureLoader); audio synthesized, art procedural, fonts system, favicon data-URI; the offline test's zero-non-file-requests already proved completeness. Published release v1.0-prototype with the zip attached: github.com Releases tag v1.0-prototype (URL kept out of the packaged files — anonymity applies to the SUBMISSION, the repo hosting is separate) | (release) | chore: v1.0-prototype release |
+| 70 | **Library audit + GitHub release (player-directed):** confirmed the zip carries every external file the game references — exactly three (vendor/three.min.js + Water.js script tags, waternormals.jpg via TextureLoader); audio synthesized, art procedural, fonts system, favicon data-URI; the offline test's zero-non-file-requests already proved completeness. Published a public release (tag v1.0-prototype) with the zip attached — no hosting URLs in the packaged files; anonymity applies to the SUBMISSION, the hosting is separate | (release) | chore: v1.0-prototype release |
 | 71 | **Demo trust fixes (player watched: hauler 'without having a mooring'; wpm94e 'plot occupied error again'):** demonstrator raises a MOORING YARD before any hauler buy (GT moors two, legal but read as a cheat) and island-menu BUILD HAULER shows N/M MOORED; refused buttons carry data-refused and the puppeteer never presses them — any refused/silent failure is blacklisted 30s and it moves to the next priority (verified on wpm94e: refused bolt aborts in one beat; full teach order paths→priest→temple→vane→yard→haulers runs clean). Headless repro found the reported seed CLEAN on current build — cached deployed build suspected — but the loop is now impossible by construction | `0b05ab4` | fix: demo teach order + no-loop |
 | 72 | **Dismiss ✕ on the context menu (player-directed):** round ✕ chip at the END of the bottom row — lower-right by flex flow, so it can never clip (two absolute-positioned attempts, corner-inset and overhang, both clipped when the clamped menu hugged the viewport edge; screenshots caught both). Edge clamp widened 6→18px. ctxmenu.png retaken; test_input green | `bebd42d` | feat: menu dismiss ✕ |
 | 73 | **Verdict choice + save/resume (player: 'continue until complete defeat on the zeus screen', 'be more clear who won', 'life happens'):** Zeus screen now reads ZEUS RULES IN YOUR FAVOR / 'Victory. ...' with gold REFUSE — FIGHT ON (declining sets arbitrationDeclined; tides resume until a temple truly falls — headless-verified no re-arbitration). NEW src/16_save.js: focus loss snapshots dynamic state to localStorage (map from seed; fog memory + AI plans dropped by design), title offers RESUME YOUR MATCH — WAVE N · seed; restore re-links plots/temples/ids then recalcs. Playwright round-trip in the battery (test_resume: save on hide ✓ offer ✓ exact restore ✓ match lives on ✓). Also: wind readout moved to its own pill above CONFIRM (changing label made the clamped row jitter/overflow — player report) | `4536a97` | feat: fight on, save/resume |
 | 74 | **Evolved demonstrator (player: 'predictable... always looses. lets step it up... genetic algorithm... best winning strategy against posiedon'):** the old demo player was DISARMED, not dumb — its action space had no route to victory. New 14-gene strategist (test/ga_lib.js) contains the win path (temple chains toward his corner via expandBias, aimed bolts + a kill-shot rule in range of his GT, shields, powers, refit, fleet management); parallel GA (test/opt_evolve.js, checkpointed, worker-fanned; test/ga_worker.js) evolved 14 gens x 18 genomes ≈ 800 matches. Champion: 6-for-6 holdout WINS (127-237s) incl. both fortress seeds. Doctrine discovered: BLITZ — offenseAt pinned at 60s, 20s kill-shots, ~43 supply war chest, 2-hauler economy, early hydrogen, near-zero island defense (tempo IS defense). Baked into DEMO_STRAT; puppeteer stage delays halved (the menu theatre ran at a third of headless APM — live demo could not hold blitz pace until then). LIVE WATCH demo now wins the reference seed at t=184 through the real menus | `5ef2fc4` | feat: GA champion demo |
 | 75 | **Confirm-failure blacklist + build stamp (player: 'wun2hq... chain vane on main island... error over and over'):** live repro on that exact seed came back CLEAN (vane binds in one attempt at t=33) — second consecutive report matching an already-fixed loop, strongly indicating a stale Pages cache on the player's phone. But the audit found one REAL uncovered loop path: refused buttons and silent press-failures were blacklisted, a failed CONFIRM (refusal flash) was not — it now blacklists when a confirm changes neither structures nor segments. Title screen carries BUILD yyyy-mm-dd hh:mm UTC so version questions settle at a glance | `4c9029d` | fix: confirm blacklist, build stamp |
+
+## Session 2 (2026-08-16): live-playtest hardening, wind law, every match ends
+
+**Tool(s):** Claude Code (Claude Fable 5) — all code by the agent; the player playtested live on a phone and directed by observation
+**Commits:** rows 20-63 above
+**What was built:** hordes and telegraph-driven attack lanes; the demo turned UI puppeteer; the wind law of the roads (favorable-channel routing, bound-channel floor, tacking valve, visible flow streaks); menu category columns; wave narration; fun-sweep batch (starting currency, wind fracs, tempo, bounties); wrath tides + Zeus arbitration so no match fizzles; a full media refresh.
+**Key decisions:** the wind should BITE (strict closure + weak divine floor beat every gentler cell); every match must end with a verdict; sweeps only count when the scripted player actually exercises the mechanic.
+**Pivots:** strict no-adverse-legs wind law starved a whole match headlessly — the bound-channel floor and tack valve turned deadlock into tension. Gentle wrath (0.06/40s) stalemated; census-tuned to 0.15/30s.
+**After playtesting:** occupied-press loops, invisible wind-waits, and white-on-ivory flow streaks all found by the player watching a phone — each fixed and regression-guarded.
+**What was learned:** every mechanics change re-prices every tuned number; live phones catch what software rendering cannot; a demo that cannot act through the real UI teaches nothing.
+**Where things stand:** deployed, battery green, submission zip v1 cut and offline-verified.
+
+## Session 3 (2026-08-17): save/resume, verdict choice, the evolved demonstrator
+
+**Tool(s):** Claude Code (Claude Fable 5) — all code by the agent, including the genetic-search harness it wrote and ran
+**Commits:** rows 64-75 above
+**What was built:** REFUSE — FIGHT ON on the Zeus screen; localStorage save on focus loss with a RESUME offer (Playwright round-trip in the battery); the wind readout pill; menu dismiss X; T-fork stub siting so the AI never corks its own lanes; a 14-gene evolvable strategist + parallel GA (~800 matches) whose champion wins all six holdout seeds; the champion baked into the WATCH demo, which now wins live through the real menus.
+**Key decisions:** neural-net play rejected as overkill — an evolved, legible 14-parameter policy beats it on cost, auditability, and contest fit; demo action tempo doubled so the blitz doctrine survives the menu theatre.
+**Pivots:** the old demo player was disarmed, not dumb — no amount of tuning fixes a missing action space.
+**After playtesting:** two player reports of already-fixed loops traced to stale phone caches; a BUILD stamp now sits on the title screen, and failed CONFIRMs blacklist so no refusal can ever loop again.
+**What was learned:** verify at the source (instrumented refusal traps) before trusting any repro; fitness functions must contain the win condition or evolution optimizes survival theatre.
+**Where things stand:** rules audit passed with fixes (docx de-branded, session entries completed); zip re-cut this session with all features.
