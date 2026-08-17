@@ -800,7 +800,7 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     groups.favor.push(twBtn, wwBtn);
   }
 
-  // salvage (player-directed, NetStorm-style): reclaim what stands here
+  // salvage (player-directed, classic-RTS-style): reclaim what stands here
   const stHere = structureAt(state, x, z);
   if (stHere && stHere.owner === 'A' && stHere.hp > 0) {
     const refund = Math.floor(structureStats('A', stHere.type).cost * CONFIG.Salvage.STRUCTURE_REFUND);

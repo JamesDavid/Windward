@@ -65,7 +65,7 @@ const CONFIG = Object.freeze({
     REROLL_FAVOR: 1
   },
 
-  // NetStorm-style reclamation and blood money (player-directed)
+  // classic-RTS-style reclamation and blood money (player-directed)
   Salvage: {
     STRUCTURE_REFUND: 0.5,   // fraction of build cost returned, in Supply
     SEGMENT_FAVOR: 1         // Favor returned per unbuilt route segment

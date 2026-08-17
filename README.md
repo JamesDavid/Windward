@@ -4,7 +4,7 @@ A portrait mobile web prototype for the Meta Horizon Creator Competition (Tower 
 
 **▶ Play the current build: https://jamesdavid.github.io/Windward/** (open on a phone, or a narrow browser window)
 
-> **One road, five jobs.** A single system carries the whole game — the bound road. It is *movement* (everything rides it), *income* (islands it touches are mined; haulers must land the ore), *reach* (only the road lifts the fog and grants ground), *attack surface* (roads are invulnerable along their length — the raw ends and capping towers are the joints), and *drama* (a severed branch visibly unbinds segment by segment while you race to reconnect it). The hard constraint is the clock: **the tide comes nine times**, each further and harder — and the ninth only says *come down*. Play either god: bind the air, or ride the waves.
+> **One road, five jobs.** A single system carries the whole game — the bound road. It is *movement* (everything rides it), *income* (islands it touches are mined; haulers must land the ore), *reach* (only the road lifts the fog and grants ground), *attack surface* (roads are invulnerable along their length — the raw ends and capping towers are the joints), and *drama* (a severed branch visibly unbinds segment by segment while you race to reconnect it). The hard constraint is the clock: **the tide comes nine times**, each further and harder — then his wrath, until a temple falls or Zeus weighs the board. You are the Windwright. Bind the air.
 
 **Tech:** Three.js / HTML5, single-player, portrait, fully offline. All entrant-authored code assembles into one readable `index.html`; Three.js lives under `/vendor`. All art is procedural Three.js geometry and all audio is runtime WebAudio synthesis — no external assets of any kind.
 
@@ -12,9 +12,9 @@ A portrait mobile web prototype for the Meta Horizon Creator Competition (Tower 
 
 ## Watch the game beat Poseidon
 
-A full match played by the **genetically-evolved champion strategy** (the same one that drives WATCH A MATCH mode), filmed on the reference seed and shown at speed: temple chains toward Poseidon's corner, aimed bolt batteries at his doorstep, Wind Walls at every telegraph, the hydrogen refit — then nine tides and his wrath weathered with the temple standing, and the verdict: **ZEUS RULES IN YOUR FAVOR**, with REFUSE — FIGHT ON offered on screen:
+Thirty-four seconds of total war: the **round-2 co-evolved champion** against the *scaling* Poseidon (he climbs his difficulty ladder as you dominate — his temper reads out live in the HUD). Temple chains sprint at his corner, aimed batteries rise at his doorstep, and his Great Temple falls at match-minute two — **THE ARCHIPELAGO ACKNOWLEDGES YOUR GOD**:
 
-**▶ [Watch the full match (mp4, ~1.75 min)](docs/media/match_timelapse.mp4)**
+**▶ [Watch the full match (mp4, ~35s)](docs/media/match_timelapse.mp4)**
 
 <img src="screenshots/match_teaser.gif" width="220">
 
@@ -88,7 +88,7 @@ Poseidon builds his own lanes piece by visible piece from sockets of his own net
 
 <img src="screenshots/endgame.png" width="300">
 
-### 8. Salvage, bounty, and solid defenses *(done — player-directed, NetStorm-inspired)*
+### 8. Salvage, bounty, and solid defenses *(done — player-directed, classic-RTS-inspired)*
 
 Nothing is forever-spent: **salvage** any of your structures for half its cost back, or unbind route segments tip-first for a Favor each — no explosion, but the support graph recalculates, so reclaiming a load-bearing tower frays everything beyond it. **Death pays**: a downed enemy craft grants Favor by class (adrift losses count — cutting the lane under a ship *is* a kill), and combat-killed structures pay a quarter of their cost. And **defenses are solid**: guns, screens, and masts accept no onward path, and standing on a route they block transit for everyone — including your own ships, which slip loose and drift if a new tower seals the road under them. Towers cap; temples junction; plan accordingly.
 
@@ -130,11 +130,17 @@ Haulers route on the best channel the wind favors and never travel opposite the 
 
 An 8-seed census caught half of all matches fizzling: the ninth tide passes, nothing forces a conclusion, and a full-health player just drifts. Now the tide never stops — past the authored nine, **wrath tides** come every 30 seconds at the final horde composition, escalating (+0.15 strength per tide toward a 1.8 cap) until something breaks. And if nothing breaks, **Zeus weighs the whole board** — temple health, islands held, standing road segments, living fleets, and treasury (coin *and* Favor), each weighted — and rules for the stronger claim. The verdict screen shows his scales ("temples 1–2, roads 43–83, fleets 3–31…"), it is plainly worded as the win or loss it is, and it can go *against* you: holding your keep while Poseidon owns the archipelago is not victory (a playtest caught the old rule crowning a player on the verge of losing). Either way, a gold **REFUSE — FIGHT ON** button declines the ruling: the tides resume permanently, and only a fallen Great Temple ends the matter. Census: 0/8 timeouts; every match ends with a screen, never a shrug.
 
-<img src="screenshots/wrath.png" width="300"> <img src="screenshots/zeus.png" width="300">
+<img src="screenshots/zeus.png" width="300">
 
 ### 16. Life happens — save & resume *(done — player-directed: "this is a mobile game")*
 
 Lock your phone, switch apps, lose the tab mid-siege: the moment the page loses focus, the full match state snapshots to local storage — resources, every road with its support state, structures, haulers mid-flight with cargo and paths, priests, enemy craft, the wave clock, fog exploration, quarry reserves. The map itself regenerates from the seed. On your next visit the title screen offers **RESUME YOUR MATCH — WAVE N · seed**; restoring re-links everything and recalculates support, influence, and fog. Demo matches never save; a decided match clears its save. The whole round trip is a permanent Playwright test in the battery (`test/test_resume.js`): save on hide, offer on reload, exact restore, resumed match proven alive. A build stamp on the title corner settles which-version-am-I-running questions at a glance.
 
 <img src="screenshots/resume.png" width="300">
+
+### 17. Poseidon has a temper — and a memory *(done — player-directed co-evolution)*
+
+Poseidon's strategy is no longer one hand-tuned opponent: it is a **ladder of four genomes** — CALM, STERN, ANGRY, ENRAGED — bred by evolving *him* against the champion Aeolus (~580 matches) and grading the population by ~150 duels. CALM loses to strong play six-of-six; ENRAGED fells the champion half the time; evolution's own discovery was that the hard tiers press with *faster* waves, not bigger ones. In play, **Zeus's scales run the match silently**: at every wave telegraph the same board-tally that decides arbitration reads who owns the archipelago — dominate and Poseidon's temper climbs a rung, drown and he cools. His current mood shows live under the wave chip ("POSEIDON IS ANGRY"), and he **remembers you**: a persistent history (skill average plus the peak temper you ever drove him to, slowly decaying) sets his opening mood, so a returning strong player is greeted ENRAGED from wave one. A round-2 Aeolus was then co-evolved against this scaling opponent — 6-for-6 holdout kills under 125 seconds, the strategy in the film above — closing the arms-race loop. Verified end to end: 6 full scaling matches (temper visibly climbing 1→2→3 under domination, easing 1→0 under struggle), Playwright checks on the memory math, and the whole battery green.
+
+<img src="screenshots/wrath.png" width="300">
 

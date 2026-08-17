@@ -199,7 +199,7 @@ function damageStructure(state, st, amount, source) {
   }
 }
 
-// ---- salvage (player-directed, NetStorm-style reclamation) ----
+// ---- salvage (player-directed, classic-RTS-style reclamation) ----
 // Unbuild a structure for a fraction of its cost. No explosion — but the
 // support recalc still runs, so salvaging a load-bearing tower frays
 // everything beyond it. Great Temples cannot be salvaged (never in list).
