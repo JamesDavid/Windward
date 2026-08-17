@@ -92,8 +92,10 @@ function exitDemo() {
   document.getElementById('startscreen').classList.remove('hidden');
 }
 
-// ---- the demonstrator: the same naive player the balance sweeps use,
-// plus a camera that drifts between the frontier and any live fight ----
+// ---- the demonstrator: a puppeteer that PLAYS THE REAL UI — opens the
+// context menu where it acts, highlights the button it presses, and
+// walks the ghost -> TURN -> CONFIRM flow a human would; the camera
+// drifts between the frontier and any live fight ----
 function initDemo(state) {
   const gt = state.greatTemple.A.cell;
   const choke = state.map.islands.find(i => i.role === 'chokepoint');
@@ -105,54 +107,131 @@ function initDemo(state) {
   };
 }
 
-function demoAct(state) {
+// The demonstrator PLAYS THE UI (player-directed): it opens the real
+// context menu at the spot it acts on, highlights the button it means
+// to press, clicks it, and walks the same ghost -> CONFIRM flow a
+// human would. Returns {cell, key, kind} or null.
+function demoPlan(state) {
   const d = state.demoCtl;
-  const segTouches = (pl) => [...state.segments.values()].some(s => s.owner === 'A' &&
-    ((s.a[0] === pl.x && s.a[1] === pl.z) || (s.b[0] === pl.x && s.b[1] === pl.z)));
   const p = state.priests.A;
-  if (p.state === 'idle' && !d.supply.temple && p.islandId !== d.supply.id) sendPriest(state, 'A', d.supply);
-  else if (p.state === 'idle' && p.islandId === d.supply.id && !d.supply.temple &&
+  // 1. priest toward the supply island (only once a road reaches it —
+  // otherwise fall through and LAY the road), then its temple
+  if (p.state === 'idle' && !d.supply.temple && p.islandId !== d.supply.id &&
+    findNetPath(state, 'A', [Math.round(p.pos[0]), Math.round(p.pos[1])], d.supply.cells)) {
+    // SEND PRIEST lives on the island-BODY menu, not the plot menu
+    const isPlot = ([x, z]) => d.supply.plots.some(pl => pl.x === x && pl.z === z);
+    const c = d.supply.cells.find(cc => !isPlot(cc)) || d.supply.cells[0];
+    return { cell: [c[0], c[1]], key: 'priest', kind: 'instant' };
+  }
+  if (p.state === 'idle' && p.islandId === d.supply.id && !d.supply.temple &&
     state.res.A.supply >= CONFIG.Structures.TEMPLE.COST) {
-    const pi = d.supply.plots.findIndex(pl => !pl.structure && !segTouches(pl) && !plotBlockedByQuarry(d.supply, pl));
-    if (pi >= 0) buildStructure(state, 'A', 'temple', { site: 'plot', islandId: d.supply.id, plotIdx: pi, cell: [d.supply.plots[pi].x, d.supply.plots[pi].z] });
+    const c = d.supply.cells.find(([x, z]) => !structureAt(state, x, z) && !plotBlockedByQuarry(d.supply, { x, z }));
+    if (c) return { cell: [c[0], c[1]], key: 'temple', kind: 'ghost' };
   }
-  const target = d.supply.temple && d.supply.temple.buildProgress >= 1 ? d.choke.center : d.supply.center;
-  const type = state.hand[0];
-  if (state.res.A.favor >= pieceCost(type)) {
-    let bestP = null, bestD = Infinity;
-    for (const sock of getSockets(state, 'A')) {
-      for (const pl of legalPlacements(state, 'A', type, sock)) {
-        const far = pl.segs[pl.segs.length - 1][1];
-        const dd = Math.abs(far[0] - target[0]) + Math.abs(far[1] - target[1]);
-        if (dd < bestD) { bestD = dd; bestP = pl; }
-      }
-    }
-    if (bestP) { placePiece(state, 'A', type, bestP.segs); state.hand[0] = drawPiece(); buildHand(state); }
-  }
+  // 2. one home vane, early
   const home = state.gtA;
-  if (!state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === home.id) &&
-    state.time > 12 && state.res.A.supply >= 7) {
+  if (state.time > 12 && state.res.A.supply >= 12 &&
+    !state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === home.id)) {
     const c = home.cells.find(([x, z]) => !structureAt(state, x, z) && !plotBlockedByQuarry(home, { x, z }));
-    if (c) buildStructure(state, 'A', 'vane', { site: 'plot', islandId: home.id, plotIdx: -1, cell: [c[0], c[1]] });
+    if (c) return { cell: [c[0], c[1]], key: 'vane', kind: 'ghost' };
   }
-  if (state.time - d.lastGun > 40) {
+  // 3. a forward bolt now and then (with a TURN for show)
+  if (state.time - d.lastGun > 45 && state.res.A.supply >= 14) {
     const ends = getSockets(state, 'A').filter(s => s.kind === 'end' && !structureAt(state, s.cell[0], s.cell[1]));
     ends.sort((a, b) =>
       (Math.abs(b.cell[0] - d.gt[0]) + Math.abs(b.cell[1] - d.gt[1])) -
       (Math.abs(a.cell[0] - d.gt[0]) + Math.abs(a.cell[1] - d.gt[1])));
-    if (ends.length && state.res.A.supply >= 10) {
-      if (buildStructure(state, 'A', 'bolt', { site: 'endpoint', cell: ends[0].cell })) d.lastGun = state.time;
-    }
+    if (ends.length) { d.lastGun = state.time; return { cell: ends[0].cell.slice(), key: 'bolt', kind: 'ghost', turns: 1 }; }
   }
-  buyHauler(state, 'A');
+  // 4. a hauler when the fleet has room
+  const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
+  if (fleet < fleetCap(state, 'A') && state.res.A.supply >= CONFIG.Hauler.COST + 10) {
+    // the BUILD HAULER button lives on the island-body menu: pick a
+    // home cell that is NOT a marked plot so that branch opens
+    const isPlot = ([x, z]) => home.plots.some(pl => pl.x === x && pl.z === z);
+    const c = home.cells.find(cc => !isPlot(cc)) || home.cells[0];
+    return { cell: [c[0], c[1]], key: 'hauler', kind: 'instant' };
+  }
+  // 5. otherwise: lay a path toward the objective, through the real menu
+  const target = d.supply.temple && d.supply.temple.buildProgress >= 1 ? d.choke.center : d.supply.center;
+  const type = state.hand[0];
+  if (state.res.A.favor >= pieceCost(type)) {
+    let bestSock = null, bestIdx = 0, bestD = Infinity;
+    for (const sock of getSockets(state, 'A')) {
+      const pls = legalPlacements(state, 'A', type, sock);
+      for (let i = 0; i < pls.length; i++) {
+        const far = pls[i].segs[pls[i].segs.length - 1][1];
+        const dd = Math.abs(far[0] - target[0]) + Math.abs(far[1] - target[1]);
+        if (dd < bestD) { bestD = dd; bestSock = sock; bestIdx = i; }
+      }
+    }
+    if (bestSock) return { cell: bestSock.cell.slice(), key: 'piece-' + type, kind: 'ghost', turns: Math.min(bestIdx, 3) };
+  }
+  return null;
+}
+
+function demoHighlight(sel) {
+  const btn = document.querySelector(sel);
+  if (btn) btn.classList.add('demopress');
+  return btn;
 }
 
 function demoTick(state, dt) {
   const d = state.demoCtl;
   if (!d) return;
-  if (state.time >= d.nextAct) { d.nextAct = state.time + 2.5; demoAct(state); }
-  // camera director: fights first, else the frontier
+  const now = state.time;
+  // ---- staged puppeteering of the real UI ----
+  if (!d.phase) {
+    if (now >= d.nextAct) {
+      const plan = demoPlan(state);
+      if (plan) {
+        d.plan = plan;
+        // open the true context menu at the spot, at its screen position
+        const v = new THREE.Vector3(worldX(plan.cell[0]), 0.4, worldZ(plan.cell[1])).project(R.camera);
+        const px = (v.x + 1) / 2 * window.innerWidth;
+        const py = (-v.y + 1) / 2 * window.innerHeight;
+        openContextMenu(state, plan.cell, px, Math.max(140, py), plan.cell[0], plan.cell[1]);
+        d.phase = 'press';
+        d.phaseAt = now;
+      } else d.nextAct = now + 2;
+    }
+  } else if (d.phase === 'press' && now - d.phaseAt > 0.9) {
+    const btn = demoHighlight('#buildmenu button[data-key="' + d.plan.key + '"]');
+    if (!btn) { hideBuildMenu(); d.phase = null; d.nextAct = now + 1.5; }
+    else { d.phase = 'click'; d.phaseAt = now; }
+  } else if (d.phase === 'click' && now - d.phaseAt > 0.7) {
+    const btn = document.querySelector('#buildmenu button[data-key="' + d.plan.key + '"]');
+    if (btn) btn.click();
+    hideBuildMenu();
+    if (d.plan.kind === 'instant') { d.phase = null; d.nextAct = now + 2.5; }
+    else { d.phase = 'turn'; d.phaseAt = now; d.turnsLeft = d.plan.turns || 0; }
+  } else if (d.phase === 'turn' && now - d.phaseAt > 0.6) {
+    // the press may have failed silently (cost, ground taken): only a
+    // live ghost earns a CONFIRM performance
+    if (UI.mode !== 'placing' && !UI.structMode) { d.phase = null; d.nextAct = now + 1.5; }
+    else if (d.turnsLeft > 0) {
+      const rot = document.getElementById('btn-rotate');
+      if (rot && !rot.classList.contains('hidden')) { rot.classList.add('demopress'); rot.click(); setTimeout(() => rot.classList.remove('demopress'), 400); }
+      d.turnsLeft--;
+      d.phaseAt = now;
+    } else {
+      const ok = demoHighlight('#btn-confirm');
+      d.phase = ok ? 'confirm' : null;
+      d.phaseAt = now;
+      if (!ok) { cancelPlacement(); d.nextAct = now + 1.5; }
+    }
+  } else if (d.phase === 'confirm' && now - d.phaseAt > 0.7) {
+    const ok = document.getElementById('btn-confirm');
+    if (ok) { ok.classList.remove('demopress'); ok.click(); }
+    d.phase = null;
+    d.nextAct = now + 2.2;
+  }
+  // camera director: the spot being acted on while a menu is up,
+  // else fights, else the frontier
   let tx = null, tz = null, tzoom = 1.25;
+  if (d.phase && d.plan) {
+    tx = worldX(d.plan.cell[0]); tz = worldZ(d.plan.cell[1]); tzoom = 1.05;
+  } else {
   const fights = state.craft.filter(c => !c.dead &&
     state.structures.some(st => st.owner === 'A' && st.hp > 0 &&
       Math.hypot(st.cell[0] - c.pos[0], st.cell[1] - c.pos[1]) < 10));
@@ -167,6 +246,7 @@ function demoTick(state, dt) {
       if (dd > bd) { bd = dd; best = s; }
     }
     if (best) { tx = worldX((best.cell[0] + d.gt[0]) / 2); tz = worldZ((best.cell[1] + d.gt[1]) / 2); tzoom = 1.4; }
+  }
   }
   if (tx !== null && !(R.userMovingCam && performance.now() - R.userMovingCam < 4000)) {
     d.camX += (tx - d.camX) * dt * 0.8;
@@ -253,6 +333,11 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('resetbtn').addEventListener('click', () => {
     startMatch(makeSeedString(), STATE ? STATE.theme : 'air');
+  });
+  document.getElementById('menubtn').addEventListener('click', () => {
+    STATE = null;
+    document.getElementById('endscreen').classList.add('hidden');
+    document.getElementById('startscreen').classList.remove('hidden');
   });
   requestAnimationFrame(frame);
 });

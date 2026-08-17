@@ -24,7 +24,7 @@ A nine-wave match on seed `simtest1` (the balance suite's reference seed), filme
 
 Open `index.html` in a browser (portrait phone, or a narrow browser window). No server or network needed.
 
-- **Tap anywhere gold markers glow** — island coasts, route ends, structure ports. A context menu opens at your thumb: the route pieces in your hand that fit there, every building valid at that spot (each explained in a line), the divine powers (Tailwind anywhere; the Wall shelters the very spot you tapped), salvage, and a Favor-priced reroll. The bottom bar is empty by design — the whole screen belongs to the map.
+- **Tap anywhere gold markers glow** — island coasts, route ends, structure ports. A context menu opens at your thumb, its options grouped in labelled category columns (ATTACK · SHIELD · FACTORY · RITES · FAVOR · DESTROY, with PATHWAYS on the row nearest your thumb): the route pieces in your hand that fit there, every building valid at that spot (each explained in a line), the divine powers (Tailwind anywhere; the Wall shelters the very spot you tapped), salvage, and a Favor-priced reroll. The bottom bar is empty by design — the whole screen belongs to the map.
 - **Route pieces cost Favor (✦), flat rate**; buildings and haulers cost Supply (⚇), hauled home as ore.
 - **Tap the ghost to turn it, CONFIRM to bind.** The confirm button quotes the wind multiplier the new corridor would ride.
 - **Tap an island** to send your priest; ten seconds of his presence consecrates a Temple and claims the island.
@@ -113,4 +113,14 @@ Two calls to action: **BIND THE AIR** or **RIDE THE WAVES**. Playing Poseidon mi
 ### 12. Tuned by simulation *(done)*
 
 Three parameter-sweep harnesses (`test/opt_favor.js`, `opt_income.js`, `opt_capacity.js`) run scripted full matches across seeds and score match quality — arc length, pressure survived, engagement, economies alive, no degenerate spam. They set the flat Favor price of route pieces, the temple-income baseline and divisor, and hauler capacity (12/24 — larger loads flood the economy now that every connected island mines). The match video above is the reference seed those sweeps optimise.
+
+### 13. A demonstrator that plays the real UI *(done — player-directed)*
+
+**WATCH A MATCH** on the title screen hands the controls to a demonstrator that plays exactly the way you would: it opens the true context menu at the spot it's acting on, the button it means to press lights gold and pulses, the press fires the same handler your thumb would, and ghost placements walk the same TURN → CONFIRM flow. Priest voyages, temple foundings, haulers, guns, and every road piece all go through the visible menus — so watching one demo teaches the entire interface. The wave chip narrates the assault as it happens ("TWO SHIPS EN ROUTE" → "ATTACKING"), waves arrive as real hordes (up to eight transports with siphons and heavies behind), and any tap returns you to the title. The end screen now offers both **AGAIN** and **BACK TO MENU**.
+
+<img src="screenshots/demo_menu.png" width="300">
+
+### 14. The wind rules the roads *(done — player-directed)*
+
+Free hot-air haulers cannot beat into the wind: route planning closes any open-air leg whose wind multiplier drops below 0.8 against the direction of travel and weights the rest by headwind, so a loaded balloon picks the best channel home — or holds at its mooring, cargo aboard, until the drifting wind opens a road. The hydrogen refit's dirigibles (bow scoops, powered lift) are exempt, which makes the upgrade a genuine second decision, not just a bigger bag. Verified across the full sim battery: the economy stays alive under the constraint (47 deliveries on the reference seed), and the difficulty grid was re-swept under horde compositions (`gun-vs-road 0.3` is the new optimum at the same ramp).
 

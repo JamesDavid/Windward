@@ -174,6 +174,14 @@
   }
   #buildmenu button b { color: var(--gold); font-size: 12px; }
   #buildmenu button:disabled { opacity: 0.35; }
+  /* the demo puppeteer's visible 'press' on a menu button */
+  #buildmenu button.demopress {
+    background: var(--gold) !important; color: var(--ink) !important;
+    animation: demopress 0.55s ease-in-out infinite;
+  }
+  #buildmenu button.demopress b, #buildmenu button.demopress span { color: var(--ink) !important; }
+  #confirmrow button.demopress { animation: demopress 0.55s ease-in-out infinite; }
+  @keyframes demopress { 50% { transform: scale(1.08); box-shadow: 0 0 12px rgba(217,164,65,0.9); } }
   /* first-discovery glint on the relocated power buttons (once ever) */
   #buildmenu button.shimmer { animation: powshine 1.1s ease-in-out 3; }
   @keyframes powshine {
@@ -251,7 +259,7 @@
     <h1>WINDWARD</h1>
     <h2>THE AGE OF AIR</h2>
     <p id="lorepara" style="max-width:340px; font-style: italic; line-height:1.5;">When the
-      shipwrights discovered lift, the Air Guild bound Odysseus' lost winds into roads of
+      shipwrights discovered lift, the Air Guild harnessed Odysseus' lost winds into roads of
       bound air — and cargo began crossing without paying the sea. Poseidon is passed
       over, and his forces are rising to collect. Choose your side.</p>
     <div class="seedrow">SEED <input id="seedinput" maxlength="8" autocomplete="off"></div>
@@ -265,7 +273,10 @@
     <h1 id="endtitle"></h1>
     <p id="endtext"></p>
     <div class="seedrow">SEED <span id="endseed" style="font-family:monospace"></span></div>
-    <button id="resetbtn">AGAIN</button>
+    <div style="display:flex; gap:12px;">
+      <button id="resetbtn">AGAIN</button>
+      <button id="menubtn" style="background:none; color:var(--ivory); border:1px solid rgba(242,232,207,0.4);">BACK TO MENU</button>
+    </div>
   </div>
 </div>
 <script src="vendor/three.min.js"></script>
@@ -328,6 +339,7 @@ const CONFIG = Object.freeze({
   Wind: {
     FIELD_W: 6, FIELD_H: 10,
     AIR_MIN: 0.55, AIR_MAX: 1.45,   // sweep-backed (test/opt_headwind.js): wider spread rewards circuit routes; hard one-way lanes rejected (drifting wind would strand fleets)
+    HAULER_MIN_MULT: 0.8,           // hot-air haulers plan only wind-favorable legs (player-directed: "they can't go against the wind"); below this the leg is closed and they wait for the shift. Hydrogen dirigibles exempt.
     SEA_MIN: 0.92, SEA_MAX: 1.08,
     DRIFT_DEGREES: 30, DRIFT_PERIOD: 90.0
   },
@@ -408,7 +420,7 @@ const CONFIG = Object.freeze({
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
     DESTRUCTION_DAMAGE: 50,
-    GUN_VS_SEGMENT_MULT: 0.2   // re-tuned for FIXED-SECTOR guns: no traverse downtime means ~100% uptime, so the old 0.45 ground both networks to dust (496 cuts/match); 0.12-0.3 all healthier in the spot sweep
+    GUN_VS_SEGMENT_MULT: 0.3   // horde-era grid: top cell at ramp 0.1/1.2 (avg 97); 0.45 within noise, 0.65 degenerate under 100% sector-gun uptime
   },
 
   Segments: { AIR_HP: 40, SEA_HP: 55, LEE_SHORE_CELLS: 1 },
@@ -2143,6 +2155,58 @@ function findNetPath(state, side, fromCell, toCells) {
   return null;
 }
 
+// Free hot-air balloons ride ONLY the favorable wind (player-directed:
+// "they can't go against the wind"): route planning closes any open-air
+// leg whose wind multiplier falls below Wind.HAULER_MIN_MULT in its
+// direction of travel, and weights the remaining legs by headwind — so
+// a hauler picks the best channel, or WAITS at its mooring for the
+// wind to shift. Island-ground legs always pass. Hydrogen dirigibles
+// (bow scoops, powered lift) are exempt and beat into any wind.
+function findHaulerPath(state, side, fromCell, toCells) {
+  if (side !== 'A' || state.hydrogen.A) return findNetPath(state, side, fromCell, toCells);
+  const minMult = CONFIG.Wind.HAULER_MIN_MULT;
+  const adj = buildNetGraph(state, side);
+  const start = cellKey(fromCell[0], fromCell[1]);
+  if (!adj.has(start)) return null;
+  const target = new Set(toCells.map(c => cellKey(c[0], c[1])));
+  const dist = new Map([[start, 0]]);
+  const prev = new Map([[start, null]]);
+  const open = [[0, start]];   // small graph: linear-scan "heap" is fine
+  while (open.length) {
+    let bi = 0;
+    for (let i = 1; i < open.length; i++) if (open[i][0] < open[bi][0]) bi = i;
+    const [d, k] = open.splice(bi, 1)[0];
+    if (d > dist.get(k)) continue;
+    if (target.has(k)) {
+      const path = [];
+      let cur = k;
+      while (cur !== null) { path.push(keyCell(cur)); cur = prev.get(cur); }
+      path.reverse();
+      return path;
+    }
+    const [ax, az] = keyCell(k);
+    for (const nk of adj.get(k) || []) {
+      const [bx, bz] = keyCell(nk);
+      const ia = islandAt(state, ax, az), ib = islandAt(state, bx, bz);
+      let cost = 1;
+      if (!(ia && ia === ib)) {         // open-air leg: the wind rules it
+        const dx = bx - ax, dz = bz - az;
+        const len = Math.hypot(dx, dz) || 1;
+        const mult = state.wind.multiplier((ax + bx) / 2, (az + bz) / 2, dx / len, dz / len, true);
+        if (mult < minMult) continue;   // no beating into the wind
+        cost = len / mult;
+      }
+      const nd = d + cost;
+      if (nd < (dist.has(nk) ? dist.get(nk) : Infinity)) {
+        dist.set(nk, nd);
+        prev.set(nk, k);
+        open.push([nd, nk]);
+      }
+    }
+  }
+  return null;
+}
+
 // ---- shared transit-entity movement ----
 // ent: {pos:[fx,fz], path, legIndex, legT, owner, kind}
 function legSpeed(state, ent, a, b) {
@@ -2301,7 +2365,7 @@ function updateHauler(state, h, dt) {
       h.strandedSince = null;
       const target = pickCollectionTarget(state, side);
       if (target) {
-        const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], target.cells);
+        const path = findHaulerPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], target.cells);
         if (path && path.length > 1) {
           h.targetIsland = target.id;
           h.path = path; h.legIndex = 0; h.legT = 0;
@@ -2319,14 +2383,22 @@ function updateHauler(state, h, dt) {
     case 'dwelling': {
       h.timer -= dt;
       if (h.timer <= 0) {
-        const isl = state.map.islands[h.targetIsland];
-        const take = Math.min(h.capacity, Math.floor(isl ? isl.stockpile : 0));
-        if (isl) isl.stockpile -= take;
-        h.cargo = take;
         const home = state.greatTemple[side];
-        const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [home.cell]);
-        if (path) { h.path = path; h.legIndex = 0; h.legT = 0; h.state = 'toHome'; }
-        else enterAdrift(state, h);   // road home is gone
+        const path = findHaulerPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [home.cell]);
+        if (path) {
+          // load only on actual departure — a wind-wait must not re-take
+          const isl = state.map.islands[h.targetIsland];
+          const take = Math.min(h.capacity, Math.floor(isl ? isl.stockpile : 0));
+          if (isl) isl.stockpile -= take;
+          h.cargo = take;
+          h.path = path; h.legIndex = 0; h.legT = 0; h.state = 'toHome';
+        }
+        else if (findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [home.cell])) {
+          // the road home exists but the wind is against it: hold at the
+          // mooring and try again shortly — the wind always shifts
+          h.timer = 2;
+        }
+        else enterAdrift(state, h);   // road home is truly gone
       }
       break;
     }
@@ -2355,7 +2427,7 @@ function updateHauler(state, h, dt) {
       } else if (r === 'rebound') {
         h.state = h.cargo > 0 ? 'toHome' : 'idle';
         if (h.state === 'toHome') {
-          const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [state.greatTemple[side].cell]);
+          const path = findHaulerPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [state.greatTemple[side].cell]);
           if (path) { h.path = path; h.legIndex = 0; h.legT = 0; }
           else h.state = 'idle';
         }
@@ -7026,6 +7098,7 @@ const MENU_DESC = {
 
 function menuButton(label, cost, fn, disabledReason, descKey, favorCost) {
   const btn = document.createElement('button');
+  if (descKey) btn.dataset.key = descKey;   // the demo puppeteer finds buttons by this
   const desc = MENU_DESC[descKey] ? '<span style="font-size:9px; opacity:0.75; line-height:1.1; display:block; max-width:70px">' + MENU_DESC[descKey] + '</span>' : '';
   // pricing doctrine: physical → ⚇, wind-magic → ✦, both → both shown
   const costTxt = (cost || favorCost)
@@ -7114,6 +7187,7 @@ function pieceMenuButton(state, i, socket) {
   const type = state.hand[i];
   const btn = document.createElement('button');
   btn.className = 'piecechip';
+  btn.dataset.key = 'piece-' + type;
   const cv = document.createElement('canvas');
   cv.width = cv.height = 44;
   drawPieceIcon(cv, type);
@@ -7139,8 +7213,8 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
   menu.innerHTML = '';
   // compact category rows above the buttons (player-directed):
   // ATTACK / SHIELD / WORKS / FAVOR / DESTROY / PATHWAYS
-  const groups = { attack: [], shield: [], works: [], favor: [], destroy: [] };
-  const GROUP_LABELS = { attack: 'ATTACK', shield: 'SHIELD', works: 'WORKS', favor: 'FAVOR', destroy: 'DESTROY' };
+  const groups = { attack: [], shield: [], factory: [], rites: [], favor: [], destroy: [] };
+  const GROUP_LABELS = { attack: 'ATTACK', shield: 'SHIELD', factory: 'FACTORY', rites: 'RITES', favor: 'FAVOR', destroy: 'DESTROY' };
   const isl = islandAt(state, x, z);
   const plotIdx = isl ? isl.plots.findIndex(p => p.x === x && p.z === z) : -1;
   const deg = nodeDegrees(state, 'A').get(cellKey(x, z)) || 0;
@@ -7156,7 +7230,7 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
   if (yardMenu) {
     const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
     const cap = fleetCap(state, 'A');
-    groups.works.push(menuButton('BUILD<br>HAULER<br><i style="font-size:9px">' + fleet + ' / ' + cap + ' MOORED</i>',
+    groups.factory.push(menuButton('BUILD<br>HAULER<br><i style="font-size:9px">' + fleet + ' / ' + cap + ' MOORED</i>',
       CONFIG.Hauler.COST, () => {
         if (!buyHauler(state, 'A')) flashTicker('FLEET AT CAPACITY');
       }, fleet >= cap ? 'FLEET AT CAPACITY — RAISE ANOTHER YARD' :
@@ -7164,7 +7238,7 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     if (!state.hydrogen.A) {
       const T = CONFIG.Tech;
       const canH = state.res.A.supply >= T.HYDROGEN_COST_SUPPLY && state.res.A.favor >= T.HYDROGEN_COST_FAVOR;
-      groups.works.push(menuButton((R.themeSea ? 'DEEP<br>HULLS<b>' : 'UPGRADE<br>HYDROGEN<b>') + T.HYDROGEN_COST_SUPPLY + ' ⚇ + ' + T.HYDROGEN_COST_FAVOR + ' ✦</b>', 0, () => {
+      groups.factory.push(menuButton((R.themeSea ? 'DEEP<br>HULLS<b>' : 'UPGRADE<br>HYDROGEN<b>') + T.HYDROGEN_COST_SUPPLY + ' ⚇ + ' + T.HYDROGEN_COST_FAVOR + ' ✦</b>', 0, () => {
         if (buyHydrogen(state, 'A')) flashTicker(R.themeSea ? 'THE FLEET REFITS WITH DEEP HULLS' : 'THE FLEET REFITS TO HYDROGEN');
       }, canH ? null : 'NEEDS ' + T.HYDROGEN_COST_SUPPLY + ' ⚇ AND ' + T.HYDROGEN_COST_FAVOR + ' ✦', 'hydrogen'));
     }
@@ -7234,14 +7308,14 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
   } else if (isl && plotIdx >= 0) {
     const at = { site: 'plot', islandId: isl.id, plotIdx, cell };
     if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
-      groups.works.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
+      groups.rites.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
     }
     if (isl.owner === 'A') {
       for (const type of ['vane', 'bolt', 'shield', 'yard']) {
         const label = structLabel(type);
         const why = whyNotBuild(state, 'A', type, at);
         const ss = structureStats('A', type);
-        (type === 'shield' ? groups.shield : type === 'yard' ? groups.works : groups.attack)
+        (type === 'shield' ? groups.shield : type === 'yard' ? groups.factory : groups.attack)
           .push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
       }
     }
@@ -7256,14 +7330,14 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
         ? { site: 'plot', islandId: isl.id, plotIdx: -1, cell: [x, z] }
         : { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
       if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
-        groups.works.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
+        groups.rites.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
       }
       if (isl.owner === 'A') {
         for (const type of ['vane', 'bolt', 'shield', 'yard']) {
           const label = structLabel(type);
           const why = whyNotBuild(state, 'A', type, at);
           const ss = structureStats('A', type);
-          (type === 'shield' ? groups.shield : type === 'yard' ? groups.works : groups.attack)
+          (type === 'shield' ? groups.shield : type === 'yard' ? groups.factory : groups.attack)
             .push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
         }
       }
@@ -7271,7 +7345,7 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     // priest travel, hauler purchase at home/yarded islands
     const p = state.priests.A;
     const reachable = p && findNetPath(state, 'A', [Math.round(p.pos[0]), Math.round(p.pos[1])], isl.cells);
-    groups.works.push(menuButton('SEND<br>PRIEST', 0, () => {
+    groups.rites.push(menuButton('SEND<br>PRIEST', 0, () => {
       if (!sendPriest(state, 'A', isl)) flashTicker('NO SUPPORTED ROUTE REACHES IT');
     }, reachable ? null : 'NO SUPPORTED ROUTE REACHES IT', 'priest'));
     const hasYard = isl.role === 'greatTempleA' ||
@@ -7279,7 +7353,7 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     if (hasYard) {
       const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
       const capped = fleet >= fleetCap(state, 'A');
-      groups.works.push(menuButton('BUILD<br>HAULER', CONFIG.Hauler.COST, () => {
+      groups.factory.push(menuButton('BUILD<br>HAULER', CONFIG.Hauler.COST, () => {
         if (!buyHauler(state, 'A')) flashTicker('FLEET AT CAPACITY');
       }, capped ? 'FLEET AT CAPACITY' : (state.res.A.supply < CONFIG.Hauler.COST ? 'NOT ENOUGH SUPPLY' : null), 'hauler'));
     }
@@ -7348,21 +7422,36 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
   bal.innerHTML = '<span style="color:var(--gold)">⚇ ' + Math.floor(state.res.A.supply) +
     '</span> &nbsp;·&nbsp; <span style="color:#d5ecff">✦ ' + Math.floor(state.res.A.favor) + '</span>';
   menu.appendChild(bal);
-  // each category gets a compact label row above its buttons; pathways
-  // stay on the bottom row nearest the thumb
-  const addGroup = (label, items) => {
-    if (!items.length) return;
+  // categories render as COLUMNS side by side — a compact label atop
+  // each stack of buttons (player-directed); pathways stay on the
+  // bottom row nearest the thumb
+  const colsWrap = document.createElement('div');
+  colsWrap.style.cssText = 'display:flex; gap:7px; align-items:flex-start; ' +
+    'flex-wrap:wrap; justify-content:center; flex-basis:100%;';
+  let anyCol = false;
+  for (const key of ['attack', 'shield', 'factory', 'rites', 'favor', 'destroy']) {
+    const items = groups[key];
+    if (!items.length) continue;
+    anyCol = true;
+    const col = document.createElement('div');
+    col.style.cssText = 'display:flex; flex-direction:column; gap:5px; align-items:stretch;';
+    const cap = document.createElement('div');
+    cap.style.cssText = 'font-size:9px; letter-spacing:2.5px; text-align:center; ' +
+      'color:rgba(217,164,65,0.85); border-bottom:1px solid rgba(217,164,65,0.3); padding-bottom:2px;';
+    cap.textContent = GROUP_LABELS[key];
+    col.appendChild(cap);
+    for (const o of items) col.appendChild(o);
+    colsWrap.appendChild(col);
+  }
+  if (anyCol) menu.appendChild(colsWrap);
+  if (pieceOptions.length) {
     const cap = document.createElement('div');
     cap.style.cssText = 'flex-basis:100%; font-size:9px; letter-spacing:2.5px; ' +
       'color:rgba(217,164,65,0.85); margin:3px 0 0 3px; text-align:left;';
-    cap.textContent = label;
+    cap.textContent = 'PATHWAYS';
     menu.appendChild(cap);
-    for (const o of items) menu.appendChild(o);
-  };
-  for (const key of ['attack', 'shield', 'works', 'favor', 'destroy']) {
-    addGroup(GROUP_LABELS[key], groups[key]);
+    for (const o of pieceOptions) menu.appendChild(o);
   }
-  addGroup('PATHWAYS', pieceOptions);
   menu.classList.remove('hidden');
   if (UI.shimmerPending) {
     // the shimmer has now actually been seen — never again
@@ -7394,11 +7483,23 @@ function refreshHUD(state) {
   UI.els.supply.textContent = Math.floor(state.res.A.supply);
   UI.els.favor.textContent = Math.floor(state.res.A.favor);
   const w = state.wave;
+  // the wave chip narrates what is actually happening (player-directed):
+  // "EIGHT SHIPS EN ROUTE" beats a bare countdown
+  const NUMS = ['NO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN', 'TWELVE'];
+  const alive = state.craft.filter(c => !c.dead);
+  let fleetLine = '';
+  if (alive.length) {
+    const engaged = alive.some(c => c.target &&
+      dist2d(c.target.pos[0], c.target.pos[1], c.pos[0], c.pos[1]) <= c.range + 0.3);
+    const n = alive.length <= 12 ? NUMS[alive.length] : alive.length;
+    fleetLine = '<br><span style="color:#7fd4dd">' + n + (alive.length === 1 ? ' SHIP ' : ' SHIPS ') +
+      (engaged ? 'ATTACKING' : 'EN ROUTE') + '</span>';
+  }
   if (state.over) UI.els.waveinfo.textContent = '';
-  else if (w.index >= CONFIG.Waves.COUNT) UI.els.waveinfo.textContent = 'THE LAST TIDE HAS PASSED';
+  else if (w.index >= CONFIG.Waves.COUNT) UI.els.waveinfo.innerHTML = 'THE LAST TIDE HAS PASSED' + fleetLine;
   else {
     const remain = Math.max(0, w.nextAt - state.time);
-    UI.els.waveinfo.textContent = 'WAVE ' + (w.index + 1) + ' IN ' + Math.ceil(remain) + 's';
+    UI.els.waveinfo.innerHTML = 'WAVE ' + (w.index + 1) + ' IN ' + Math.ceil(remain) + 's' + fleetLine;
   }
   // keep the floating confirm row glued to its ghost through pans/zooms
   if (!UI.els.confirm.classList.contains('hidden')) placeConfirmRow();
@@ -7579,8 +7680,10 @@ function exitDemo() {
   document.getElementById('startscreen').classList.remove('hidden');
 }
 
-// ---- the demonstrator: the same naive player the balance sweeps use,
-// plus a camera that drifts between the frontier and any live fight ----
+// ---- the demonstrator: a puppeteer that PLAYS THE REAL UI — opens the
+// context menu where it acts, highlights the button it presses, and
+// walks the ghost -> TURN -> CONFIRM flow a human would; the camera
+// drifts between the frontier and any live fight ----
 function initDemo(state) {
   const gt = state.greatTemple.A.cell;
   const choke = state.map.islands.find(i => i.role === 'chokepoint');
@@ -7592,54 +7695,131 @@ function initDemo(state) {
   };
 }
 
-function demoAct(state) {
+// The demonstrator PLAYS THE UI (player-directed): it opens the real
+// context menu at the spot it acts on, highlights the button it means
+// to press, clicks it, and walks the same ghost -> CONFIRM flow a
+// human would. Returns {cell, key, kind} or null.
+function demoPlan(state) {
   const d = state.demoCtl;
-  const segTouches = (pl) => [...state.segments.values()].some(s => s.owner === 'A' &&
-    ((s.a[0] === pl.x && s.a[1] === pl.z) || (s.b[0] === pl.x && s.b[1] === pl.z)));
   const p = state.priests.A;
-  if (p.state === 'idle' && !d.supply.temple && p.islandId !== d.supply.id) sendPriest(state, 'A', d.supply);
-  else if (p.state === 'idle' && p.islandId === d.supply.id && !d.supply.temple &&
+  // 1. priest toward the supply island (only once a road reaches it —
+  // otherwise fall through and LAY the road), then its temple
+  if (p.state === 'idle' && !d.supply.temple && p.islandId !== d.supply.id &&
+    findNetPath(state, 'A', [Math.round(p.pos[0]), Math.round(p.pos[1])], d.supply.cells)) {
+    // SEND PRIEST lives on the island-BODY menu, not the plot menu
+    const isPlot = ([x, z]) => d.supply.plots.some(pl => pl.x === x && pl.z === z);
+    const c = d.supply.cells.find(cc => !isPlot(cc)) || d.supply.cells[0];
+    return { cell: [c[0], c[1]], key: 'priest', kind: 'instant' };
+  }
+  if (p.state === 'idle' && p.islandId === d.supply.id && !d.supply.temple &&
     state.res.A.supply >= CONFIG.Structures.TEMPLE.COST) {
-    const pi = d.supply.plots.findIndex(pl => !pl.structure && !segTouches(pl) && !plotBlockedByQuarry(d.supply, pl));
-    if (pi >= 0) buildStructure(state, 'A', 'temple', { site: 'plot', islandId: d.supply.id, plotIdx: pi, cell: [d.supply.plots[pi].x, d.supply.plots[pi].z] });
+    const c = d.supply.cells.find(([x, z]) => !structureAt(state, x, z) && !plotBlockedByQuarry(d.supply, { x, z }));
+    if (c) return { cell: [c[0], c[1]], key: 'temple', kind: 'ghost' };
   }
-  const target = d.supply.temple && d.supply.temple.buildProgress >= 1 ? d.choke.center : d.supply.center;
-  const type = state.hand[0];
-  if (state.res.A.favor >= pieceCost(type)) {
-    let bestP = null, bestD = Infinity;
-    for (const sock of getSockets(state, 'A')) {
-      for (const pl of legalPlacements(state, 'A', type, sock)) {
-        const far = pl.segs[pl.segs.length - 1][1];
-        const dd = Math.abs(far[0] - target[0]) + Math.abs(far[1] - target[1]);
-        if (dd < bestD) { bestD = dd; bestP = pl; }
-      }
-    }
-    if (bestP) { placePiece(state, 'A', type, bestP.segs); state.hand[0] = drawPiece(); buildHand(state); }
-  }
+  // 2. one home vane, early
   const home = state.gtA;
-  if (!state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === home.id) &&
-    state.time > 12 && state.res.A.supply >= 7) {
+  if (state.time > 12 && state.res.A.supply >= 12 &&
+    !state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === home.id)) {
     const c = home.cells.find(([x, z]) => !structureAt(state, x, z) && !plotBlockedByQuarry(home, { x, z }));
-    if (c) buildStructure(state, 'A', 'vane', { site: 'plot', islandId: home.id, plotIdx: -1, cell: [c[0], c[1]] });
+    if (c) return { cell: [c[0], c[1]], key: 'vane', kind: 'ghost' };
   }
-  if (state.time - d.lastGun > 40) {
+  // 3. a forward bolt now and then (with a TURN for show)
+  if (state.time - d.lastGun > 45 && state.res.A.supply >= 14) {
     const ends = getSockets(state, 'A').filter(s => s.kind === 'end' && !structureAt(state, s.cell[0], s.cell[1]));
     ends.sort((a, b) =>
       (Math.abs(b.cell[0] - d.gt[0]) + Math.abs(b.cell[1] - d.gt[1])) -
       (Math.abs(a.cell[0] - d.gt[0]) + Math.abs(a.cell[1] - d.gt[1])));
-    if (ends.length && state.res.A.supply >= 10) {
-      if (buildStructure(state, 'A', 'bolt', { site: 'endpoint', cell: ends[0].cell })) d.lastGun = state.time;
-    }
+    if (ends.length) { d.lastGun = state.time; return { cell: ends[0].cell.slice(), key: 'bolt', kind: 'ghost', turns: 1 }; }
   }
-  buyHauler(state, 'A');
+  // 4. a hauler when the fleet has room
+  const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
+  if (fleet < fleetCap(state, 'A') && state.res.A.supply >= CONFIG.Hauler.COST + 10) {
+    // the BUILD HAULER button lives on the island-body menu: pick a
+    // home cell that is NOT a marked plot so that branch opens
+    const isPlot = ([x, z]) => home.plots.some(pl => pl.x === x && pl.z === z);
+    const c = home.cells.find(cc => !isPlot(cc)) || home.cells[0];
+    return { cell: [c[0], c[1]], key: 'hauler', kind: 'instant' };
+  }
+  // 5. otherwise: lay a path toward the objective, through the real menu
+  const target = d.supply.temple && d.supply.temple.buildProgress >= 1 ? d.choke.center : d.supply.center;
+  const type = state.hand[0];
+  if (state.res.A.favor >= pieceCost(type)) {
+    let bestSock = null, bestIdx = 0, bestD = Infinity;
+    for (const sock of getSockets(state, 'A')) {
+      const pls = legalPlacements(state, 'A', type, sock);
+      for (let i = 0; i < pls.length; i++) {
+        const far = pls[i].segs[pls[i].segs.length - 1][1];
+        const dd = Math.abs(far[0] - target[0]) + Math.abs(far[1] - target[1]);
+        if (dd < bestD) { bestD = dd; bestSock = sock; bestIdx = i; }
+      }
+    }
+    if (bestSock) return { cell: bestSock.cell.slice(), key: 'piece-' + type, kind: 'ghost', turns: Math.min(bestIdx, 3) };
+  }
+  return null;
+}
+
+function demoHighlight(sel) {
+  const btn = document.querySelector(sel);
+  if (btn) btn.classList.add('demopress');
+  return btn;
 }
 
 function demoTick(state, dt) {
   const d = state.demoCtl;
   if (!d) return;
-  if (state.time >= d.nextAct) { d.nextAct = state.time + 2.5; demoAct(state); }
-  // camera director: fights first, else the frontier
+  const now = state.time;
+  // ---- staged puppeteering of the real UI ----
+  if (!d.phase) {
+    if (now >= d.nextAct) {
+      const plan = demoPlan(state);
+      if (plan) {
+        d.plan = plan;
+        // open the true context menu at the spot, at its screen position
+        const v = new THREE.Vector3(worldX(plan.cell[0]), 0.4, worldZ(plan.cell[1])).project(R.camera);
+        const px = (v.x + 1) / 2 * window.innerWidth;
+        const py = (-v.y + 1) / 2 * window.innerHeight;
+        openContextMenu(state, plan.cell, px, Math.max(140, py), plan.cell[0], plan.cell[1]);
+        d.phase = 'press';
+        d.phaseAt = now;
+      } else d.nextAct = now + 2;
+    }
+  } else if (d.phase === 'press' && now - d.phaseAt > 0.9) {
+    const btn = demoHighlight('#buildmenu button[data-key="' + d.plan.key + '"]');
+    if (!btn) { hideBuildMenu(); d.phase = null; d.nextAct = now + 1.5; }
+    else { d.phase = 'click'; d.phaseAt = now; }
+  } else if (d.phase === 'click' && now - d.phaseAt > 0.7) {
+    const btn = document.querySelector('#buildmenu button[data-key="' + d.plan.key + '"]');
+    if (btn) btn.click();
+    hideBuildMenu();
+    if (d.plan.kind === 'instant') { d.phase = null; d.nextAct = now + 2.5; }
+    else { d.phase = 'turn'; d.phaseAt = now; d.turnsLeft = d.plan.turns || 0; }
+  } else if (d.phase === 'turn' && now - d.phaseAt > 0.6) {
+    // the press may have failed silently (cost, ground taken): only a
+    // live ghost earns a CONFIRM performance
+    if (UI.mode !== 'placing' && !UI.structMode) { d.phase = null; d.nextAct = now + 1.5; }
+    else if (d.turnsLeft > 0) {
+      const rot = document.getElementById('btn-rotate');
+      if (rot && !rot.classList.contains('hidden')) { rot.classList.add('demopress'); rot.click(); setTimeout(() => rot.classList.remove('demopress'), 400); }
+      d.turnsLeft--;
+      d.phaseAt = now;
+    } else {
+      const ok = demoHighlight('#btn-confirm');
+      d.phase = ok ? 'confirm' : null;
+      d.phaseAt = now;
+      if (!ok) { cancelPlacement(); d.nextAct = now + 1.5; }
+    }
+  } else if (d.phase === 'confirm' && now - d.phaseAt > 0.7) {
+    const ok = document.getElementById('btn-confirm');
+    if (ok) { ok.classList.remove('demopress'); ok.click(); }
+    d.phase = null;
+    d.nextAct = now + 2.2;
+  }
+  // camera director: the spot being acted on while a menu is up,
+  // else fights, else the frontier
   let tx = null, tz = null, tzoom = 1.25;
+  if (d.phase && d.plan) {
+    tx = worldX(d.plan.cell[0]); tz = worldZ(d.plan.cell[1]); tzoom = 1.05;
+  } else {
   const fights = state.craft.filter(c => !c.dead &&
     state.structures.some(st => st.owner === 'A' && st.hp > 0 &&
       Math.hypot(st.cell[0] - c.pos[0], st.cell[1] - c.pos[1]) < 10));
@@ -7654,6 +7834,7 @@ function demoTick(state, dt) {
       if (dd > bd) { bd = dd; best = s; }
     }
     if (best) { tx = worldX((best.cell[0] + d.gt[0]) / 2); tz = worldZ((best.cell[1] + d.gt[1]) / 2); tzoom = 1.4; }
+  }
   }
   if (tx !== null && !(R.userMovingCam && performance.now() - R.userMovingCam < 4000)) {
     d.camX += (tx - d.camX) * dt * 0.8;
@@ -7740,6 +7921,11 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('resetbtn').addEventListener('click', () => {
     startMatch(makeSeedString(), STATE ? STATE.theme : 'air');
+  });
+  document.getElementById('menubtn').addEventListener('click', () => {
+    STATE = null;
+    document.getElementById('endscreen').classList.add('hidden');
+    document.getElementById('startscreen').classList.remove('hidden');
   });
   requestAnimationFrame(frame);
 });

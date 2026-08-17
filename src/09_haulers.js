@@ -72,6 +72,58 @@ function findNetPath(state, side, fromCell, toCells) {
   return null;
 }
 
+// Free hot-air balloons ride ONLY the favorable wind (player-directed:
+// "they can't go against the wind"): route planning closes any open-air
+// leg whose wind multiplier falls below Wind.HAULER_MIN_MULT in its
+// direction of travel, and weights the remaining legs by headwind — so
+// a hauler picks the best channel, or WAITS at its mooring for the
+// wind to shift. Island-ground legs always pass. Hydrogen dirigibles
+// (bow scoops, powered lift) are exempt and beat into any wind.
+function findHaulerPath(state, side, fromCell, toCells) {
+  if (side !== 'A' || state.hydrogen.A) return findNetPath(state, side, fromCell, toCells);
+  const minMult = CONFIG.Wind.HAULER_MIN_MULT;
+  const adj = buildNetGraph(state, side);
+  const start = cellKey(fromCell[0], fromCell[1]);
+  if (!adj.has(start)) return null;
+  const target = new Set(toCells.map(c => cellKey(c[0], c[1])));
+  const dist = new Map([[start, 0]]);
+  const prev = new Map([[start, null]]);
+  const open = [[0, start]];   // small graph: linear-scan "heap" is fine
+  while (open.length) {
+    let bi = 0;
+    for (let i = 1; i < open.length; i++) if (open[i][0] < open[bi][0]) bi = i;
+    const [d, k] = open.splice(bi, 1)[0];
+    if (d > dist.get(k)) continue;
+    if (target.has(k)) {
+      const path = [];
+      let cur = k;
+      while (cur !== null) { path.push(keyCell(cur)); cur = prev.get(cur); }
+      path.reverse();
+      return path;
+    }
+    const [ax, az] = keyCell(k);
+    for (const nk of adj.get(k) || []) {
+      const [bx, bz] = keyCell(nk);
+      const ia = islandAt(state, ax, az), ib = islandAt(state, bx, bz);
+      let cost = 1;
+      if (!(ia && ia === ib)) {         // open-air leg: the wind rules it
+        const dx = bx - ax, dz = bz - az;
+        const len = Math.hypot(dx, dz) || 1;
+        const mult = state.wind.multiplier((ax + bx) / 2, (az + bz) / 2, dx / len, dz / len, true);
+        if (mult < minMult) continue;   // no beating into the wind
+        cost = len / mult;
+      }
+      const nd = d + cost;
+      if (nd < (dist.has(nk) ? dist.get(nk) : Infinity)) {
+        dist.set(nk, nd);
+        prev.set(nk, k);
+        open.push([nd, nk]);
+      }
+    }
+  }
+  return null;
+}
+
 // ---- shared transit-entity movement ----
 // ent: {pos:[fx,fz], path, legIndex, legT, owner, kind}
 function legSpeed(state, ent, a, b) {
@@ -230,7 +282,7 @@ function updateHauler(state, h, dt) {
       h.strandedSince = null;
       const target = pickCollectionTarget(state, side);
       if (target) {
-        const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], target.cells);
+        const path = findHaulerPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], target.cells);
         if (path && path.length > 1) {
           h.targetIsland = target.id;
           h.path = path; h.legIndex = 0; h.legT = 0;
@@ -248,14 +300,22 @@ function updateHauler(state, h, dt) {
     case 'dwelling': {
       h.timer -= dt;
       if (h.timer <= 0) {
-        const isl = state.map.islands[h.targetIsland];
-        const take = Math.min(h.capacity, Math.floor(isl ? isl.stockpile : 0));
-        if (isl) isl.stockpile -= take;
-        h.cargo = take;
         const home = state.greatTemple[side];
-        const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [home.cell]);
-        if (path) { h.path = path; h.legIndex = 0; h.legT = 0; h.state = 'toHome'; }
-        else enterAdrift(state, h);   // road home is gone
+        const path = findHaulerPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [home.cell]);
+        if (path) {
+          // load only on actual departure — a wind-wait must not re-take
+          const isl = state.map.islands[h.targetIsland];
+          const take = Math.min(h.capacity, Math.floor(isl ? isl.stockpile : 0));
+          if (isl) isl.stockpile -= take;
+          h.cargo = take;
+          h.path = path; h.legIndex = 0; h.legT = 0; h.state = 'toHome';
+        }
+        else if (findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [home.cell])) {
+          // the road home exists but the wind is against it: hold at the
+          // mooring and try again shortly — the wind always shifts
+          h.timer = 2;
+        }
+        else enterAdrift(state, h);   // road home is truly gone
       }
       break;
     }
@@ -284,7 +344,7 @@ function updateHauler(state, h, dt) {
       } else if (r === 'rebound') {
         h.state = h.cargo > 0 ? 'toHome' : 'idle';
         if (h.state === 'toHome') {
-          const path = findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [state.greatTemple[side].cell]);
+          const path = findHaulerPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [state.greatTemple[side].cell]);
           if (path) { h.path = path; h.legIndex = 0; h.legT = 0; }
           else h.state = 'idle';
         }

@@ -50,6 +50,7 @@ const CONFIG = Object.freeze({
   Wind: {
     FIELD_W: 6, FIELD_H: 10,
     AIR_MIN: 0.55, AIR_MAX: 1.45,   // sweep-backed (test/opt_headwind.js): wider spread rewards circuit routes; hard one-way lanes rejected (drifting wind would strand fleets)
+    HAULER_MIN_MULT: 0.8,           // hot-air haulers plan only wind-favorable legs (player-directed: "they can't go against the wind"); below this the leg is closed and they wait for the shift. Hydrogen dirigibles exempt.
     SEA_MIN: 0.92, SEA_MAX: 1.08,
     DRIFT_DEGREES: 30, DRIFT_PERIOD: 90.0
   },
@@ -130,7 +131,7 @@ const CONFIG = Object.freeze({
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
     DESTRUCTION_DAMAGE: 50,
-    GUN_VS_SEGMENT_MULT: 0.2   // re-tuned for FIXED-SECTOR guns: no traverse downtime means ~100% uptime, so the old 0.45 ground both networks to dust (496 cuts/match); 0.12-0.3 all healthier in the spot sweep
+    GUN_VS_SEGMENT_MULT: 0.3   // horde-era grid: top cell at ramp 0.1/1.2 (avg 97); 0.45 within noise, 0.65 degenerate under 100% sector-gun uptime
   },
 
   Segments: { AIR_HP: 40, SEA_HP: 55, LEE_SHORE_CELLS: 1 },
