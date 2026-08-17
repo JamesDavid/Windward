@@ -134,7 +134,7 @@ const CONFIG = Object.freeze({
     PORTS_YARD: 0, PORTS_GREAT_TEMPLE: 4, PORTS_ISLAND_TEMPLE: 4,
     PLOTS_PER_ISLAND: 2, PLOTS_PER_TEMPLE: 3,
     DESTRUCTION_DAMAGE: 50,
-    GUN_VS_SEGMENT_MULT: 0.3   // horde-era grid: top cell at ramp 0.1/1.2 (avg 97); 0.45 within noise, 0.65 degenerate under 100% sector-gun uptime
+    GUN_VS_SEGMENT_MULT: 0.45  // re-swept under the bound-channel wind law: the reliable-roads economy is richer, so lanes can bleed faster — top cell 0.45 at ramp 0.10/1.2 (avg 107 vs 96 at 0.3)
   },
 
   Segments: { AIR_HP: 40, SEA_HP: 55, LEE_SHORE_CELLS: 1 },

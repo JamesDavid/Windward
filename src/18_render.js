@@ -456,14 +456,22 @@ function makeSegMesh(seg) {
     post.position.y = -y / 2;
     grp.add(post);
   }
-  if (isAir) {
-    // wind motes drifting along the ribbon — faster where aligned (§21A.5)
+  {
+    // the flow in the channel made VISIBLE (player-directed): elongated
+    // streaks ride every bound channel in the wind's direction — long
+    // and quick where the wind agrees, short and slow where the god
+    // holds the current against it. Sea lanes get foam-bright dashes.
     grp.userData.motes = [];
     for (let i = 0; i < CONFIG.Render.RIBBON_PARTICLES; i++) {
       const mote = new THREE.Mesh(
-        new THREE.SphereGeometry(0.035, 5, 4),
-        new THREE.MeshBasicMaterial({ color: 0xfff6dd, transparent: true, opacity: 0.9 }));
-      mote.position.y = 0.06;
+        new THREE.BoxGeometry(0.26, 0.028, 0.05),
+        new THREE.MeshBasicMaterial({
+          // gold on ivory ribbon, foam-cyan on dark lane — the streak
+          // must contrast with its own channel, not the water below
+          color: isAir ? 0xffc95e : 0x9fe8ef,
+          transparent: true, opacity: 0.9
+        }));
+      mote.position.y = isAir ? 0.07 : 0.045;
       grp.add(mote);
       grp.userData.motes.push({ mesh: mote, phase: i / CONFIG.Render.RIBBON_PARTICLES });
     }
@@ -493,6 +501,7 @@ function syncSegments(state) {
     mesh.visible = segVis !== 'hidden';
     const mat = mesh.userData.mat;
     const isAir = mesh.userData.isAir;
+    mesh.userData.dim = segVis === 'dim';
     if (segVis === 'dim') {
       mat.color.setHex(0x3a4d52);
       mat.emissiveIntensity = 0.05;
@@ -727,21 +736,31 @@ function renderTick(state, dt) {
     s.mesh.material.opacity = 0.32 * (1 - s.phase);
     s.mesh.scale.setScalar(0.7 + s.phase * 1.6);
   }
-  // wind motes ride the corridors, faster where the wind agrees
+  // the channel flow, visible: streaks ride every corridor in the
+  // wind's direction — length and speed say how strongly it agrees
   for (const mesh of R.segMeshes.values()) {
     const md = mesh.userData;
     if (!md.motes || !mesh.visible) continue;
+    if (md.dim) {   // a remembered lane must not betray the live wind
+      for (const m of md.motes) m.mesh.material.opacity = 0;
+      continue;
+    }
     const s = md.seg;
     const dx = s.b[0] - s.a[0], dz = s.b[1] - s.a[1];
     const w = state.wind.at((s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2);
     const align = (dx * w.x + dz * w.z) / (Math.hypot(dx, dz) || 1);
-    const speed = 0.25 + Math.abs(align) * 0.6;
+    const speed = 0.3 + Math.abs(align) * 0.9;
     const dir = align >= 0 ? 1 : -1;
     const active = s.supportState === 'SUPPORTED';
+    // strong agreement = long fast streaks; held-against = short stubs
+    const stretch = 0.55 + Math.min(1, Math.abs(align)) * 1.5;
     for (const m of md.motes) {
       m.phase = (m.phase + dir * speed * dt + 1) % 1;
       m.mesh.position.x = (m.phase - 0.5) * md.len;
-      m.mesh.material.opacity = active ? 0.5 + 0.4 * Math.sin((m.phase + state.time * 0.3) * Math.PI * 2) : 0.08;
+      m.mesh.scale.x = stretch;
+      // fade in/out at the ends so wraps never pop
+      const endFade = Math.min(1, Math.min(m.phase, 1 - m.phase) * 6);
+      m.mesh.material.opacity = active ? (0.35 + Math.min(1, Math.abs(align)) * 0.55) * endFade : 0.06;
     }
   }
   // pulse the placement affordances so they are unmissable
