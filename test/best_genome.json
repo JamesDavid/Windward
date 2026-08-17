@@ -1,0 +1,59 @@
+{
+  "genome": [
+    0.4578569564130157,
+    0.16684618475846946,
+    0.9620358855742961,
+    0.26868454612791537,
+    0.39207568764686584,
+    0,
+    0.21114991477690637,
+    0.6994219983555376,
+    0.5886388577520847,
+    0.699960560305044,
+    0.08770972630009055,
+    0.27489328354597087,
+    0.17524898380972448,
+    0
+  ],
+  "scaled": {
+    "vaneTime": 30.182132602715864,
+    "gunEvery": 24.17654016171582,
+    "gunReserve": 43.48143542297184,
+    "junctionBonus": 1.0747381845116615,
+    "expandBias": 0.39207568764686584,
+    "offenseAt": 60,
+    "defVanes": 0.6313382451829501,
+    "shieldUse": 0.6994219983555376,
+    "wallUse": 0.5886388577520847,
+    "tailwindUse": 0.699960560305044,
+    "hydrogenAt": 26.13968084100634,
+    "haulerTarget": 2.3744664177298542,
+    "templeBudget": 22.061453255247326,
+    "pushSpacing": 20
+  },
+  "fitness": 1755.0833333333383,
+  "outs": [
+    "w127",
+    "w145",
+    "w168",
+    "w99",
+    "w214",
+    "w237"
+  ],
+  "geneKeys": [
+    "vaneTime",
+    "gunEvery",
+    "gunReserve",
+    "junctionBonus",
+    "expandBias",
+    "offenseAt",
+    "defVanes",
+    "shieldUse",
+    "wallUse",
+    "tailwindUse",
+    "hydrogenAt",
+    "haulerTarget",
+    "templeBudget",
+    "pushSpacing"
+  ]
+}

@@ -8136,11 +8136,17 @@ function initDemo(state) {
 // are the champion genome's scaled values; the shape of play they
 // drive: claim a temple chain toward his corner, defend what is held,
 // then drive lanes at his Great Temple and gun it from range.
+// Champion of 14 generations x 18 genomes (~800 headless matches),
+// validated 6-for-6 WINS on holdout seeds (127s-237s) including the
+// fortress seeds that used to stalemate. The evolved doctrine is a
+// BLITZ: offense from the first minute, a fat gun reserve, relentless
+// kill-shot spacing, a lean fleet, early refit - and almost no island
+// defense, because the best defense turned out to be tempo.
 const DEMO_STRAT = {
-  vaneTime: 12, gunEvery: 45, gunReserve: 14, junctionBonus: 1.5,
-  expandBias: 0.5, offenseAt: 180, defVanes: 1, shieldUse: 1,
-  wallUse: 1, tailwindUse: 1, hydrogenAt: 45, haulerTarget: 3,
-  templeBudget: 24, pushSpacing: 30
+  vaneTime: 30.2, gunEvery: 24.2, gunReserve: 43.5, junctionBonus: 1.07,
+  expandBias: 0.39, offenseAt: 60, defVanes: 0.63, shieldUse: 0.7,
+  wallUse: 0.59, tailwindUse: 0.7, hydrogenAt: 26.1, haulerTarget: 2.37,
+  templeBudget: 22.1, pushSpacing: 20
 };
 
 // The demonstrator PLAYS THE UI (player-directed): it opens the real
@@ -8355,9 +8361,9 @@ function demoTick(state, dt) {
         openContextMenu(state, plan.cell, px, Math.max(140, py), plan.cell[0], plan.cell[1]);
         d.phase = 'press';
         d.phaseAt = now;
-      } else d.nextAct = now + 2;
+      } else d.nextAct = now + 1.2;
     }
-  } else if (d.phase === 'press' && now - d.phaseAt > 0.9) {
+  } else if (d.phase === 'press' && now - d.phaseAt > 0.45) {
     const btn = document.querySelector('#buildmenu button[data-key="' + d.plan.key + '"]');
     if (!btn || btn.dataset.refused) {
       // absent or refused: never press it — blacklist and move on
@@ -8367,13 +8373,13 @@ function demoTick(state, dt) {
       d.nextAct = now + 1.2;
     }
     else { btn.classList.add('demopress'); d.phase = 'click'; d.phaseAt = now; }
-  } else if (d.phase === 'click' && now - d.phaseAt > 0.7) {
+  } else if (d.phase === 'click' && now - d.phaseAt > 0.35) {
     const btn = document.querySelector('#buildmenu button[data-key="' + d.plan.key + '"]');
     if (btn) btn.click();
     hideBuildMenu();
-    if (d.plan.kind === 'instant') { d.phase = null; d.nextAct = now + 2.5; }
+    if (d.plan.kind === 'instant') { d.phase = null; d.nextAct = now + 1.0; }
     else { d.phase = 'turn'; d.phaseAt = now; d.turnsLeft = d.plan.turns || 0; }
-  } else if (d.phase === 'turn' && now - d.phaseAt > 0.6) {
+  } else if (d.phase === 'turn' && now - d.phaseAt > 0.3) {
     // the press may have failed silently (cost, ground taken): only a
     // live ghost earns a CONFIRM performance — and the failure is
     // blacklisted so the demonstrator never loops on it
@@ -8394,11 +8400,11 @@ function demoTick(state, dt) {
       d.phaseAt = now;
       if (!ok) { cancelPlacement(); d.nextAct = now + 1.5; }
     }
-  } else if (d.phase === 'confirm' && now - d.phaseAt > 0.7) {
+  } else if (d.phase === 'confirm' && now - d.phaseAt > 0.35) {
     const ok = document.getElementById('btn-confirm');
     if (ok) { ok.classList.remove('demopress'); ok.click(); }
     d.phase = null;
-    d.nextAct = now + 2.2;
+    d.nextAct = now + 0.9;
   }
   // camera director: the spot being acted on while a menu is up,
   // else fights, else the frontier
