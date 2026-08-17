@@ -63,10 +63,29 @@
   #banner.poseidon .title { color: #7fd4dd; }
   #tutorial {
     position: absolute; top: calc(var(--topsafe) + 40px);
-    left: 12px; right: 12px; text-align: center;
-    pointer-events: none; font-size: 15px; font-style: italic; color: var(--ivory);
+    left: 50%; transform: translateX(-50%);
+    max-width: min(92vw, 360px); text-align: center;
+    pointer-events: none; font-size: 14px; font-style: italic; color: var(--ivory);
+    /* readable over any water or fog: a proper dark pill */
+    background: rgba(10, 15, 20, 0.88);
+    border: 1px solid rgba(242, 232, 207, 0.35);
+    border-radius: 12px; padding: 9px 14px;
     text-shadow: 0 1px 4px #000; opacity: 0; transition: opacity 0.35s;
   }
+  /* the tutorial's pointing hand: a pulsing gold ring + finger */
+  #tuthand { position: fixed; z-index: 45; width: 52px; height: 52px; pointer-events: none; }
+  #tuthand .ring {
+    position: absolute; inset: 0; border: 3px solid var(--gold);
+    border-radius: 50%; animation: handpulse 1.1s ease-in-out infinite;
+    box-shadow: 0 0 12px rgba(217,164,65,0.7);
+  }
+  #tuthand .finger {
+    position: absolute; left: 14px; top: 30px; font-size: 26px;
+    animation: handbob 1.1s ease-in-out infinite;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.7));
+  }
+  @keyframes handpulse { 0%, 100% { transform: scale(0.8); opacity: 0.9; } 50% { transform: scale(1.15); opacity: 0.5; } }
+  @keyframes handbob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
   #tutorial.show { opacity: 1; pointer-events: auto; cursor: pointer; }
   #banner.show { pointer-events: auto; cursor: pointer; }
   #ticker.show { pointer-events: auto; cursor: pointer; }
@@ -3302,6 +3321,10 @@ function updateCraft(state, c, dt) {
 function wavesTick(state, dt) {
   const W = CONFIG.Waves;
   const w = state.wave;
+  // the guided first-play tutorial holds the tide back: the schedule
+  // slides forward while it runs (browser-only; headless sims never
+  // create state.tut, so nothing changes for tests and sweeps)
+  if (state.tut && state.tut.active) w.nextAt += dt;
   if (w.index < W.COUNT) {
     if (!w.telegraphed && state.time >= w.nextAt - W.TELEGRAPH) {
       w.telegraphed = true;
@@ -3754,38 +3777,100 @@ function castWindWall(state, cell) {
 // already exist; nothing here interrupts play.
 // ================================================================
 
-// A REAL first-play tutorial (player-directed): five plain lines that
-// teach the whole loop — pathways, mining, temples, the two coins.
-// Each shows once EVER; SKIP TUTORIAL silences the lot.
-const TUTORIAL_SCRIPT = [
-  { at: 1, key: 'tu1', text: 'Tap a glowing spot on your island and lay path pieces — pathways are how everything moves.' },
-  { at: 10, key: 'tu2', text: 'Every island your pathways touch is mined. Haulers carry the ore home — that is your coin ⚇.' },
-  { at: 20, key: 'tu3', text: 'Coin builds guns, shields, yards and ships. Send your priest to an island to consecrate a temple and claim it.' },
-  { at: 30, key: 'tu4', text: 'Temples earn Favor ✦ — your god\'s regard. Favor lays pathways and buys divine aid: speed for the fleet, a wall against harm.' },
-  { at: 40, key: 'tu5', text: 'Cap open path ends with guns: severed paths unbind. The first tide is nearly here.' }
+// GUIDED first-play tutorial (player-directed: "show them where to
+// touch"): a pointing hand marks the exact spot, each step advances on
+// the REAL action, and the tide holds until the lesson is done. Runs
+// once ever; SKIP TUTORIAL exits and releases the waves.
+const TUT_STEPS = [
+  {
+    key: 'path', done: 'piecePlaced',
+    text: () => 'Tap the glowing spot the hand points at. Pick a path piece from the menu, turn it if you like, then CONFIRM.',
+    target: (state) => {
+      const s = getSockets(state, 'A').find(k => k.kind === 'island');
+      return s ? s.cell : null;
+    }
+  },
+  {
+    key: 'mine', done: 'delivery', timeout: 45,
+    text: () => 'Every island your paths touch is mined for you — see the gems glitter. Your hauler carries the ore home; the coin ⚇ lands when it moors.',
+    target: (state) => {
+      const isl = state.map.islands.find(i => i.role === 'supplyA');
+      return isl ? isl.cells[0] : null;
+    }
+  },
+  {
+    key: 'temple', done: 'consecrationStarted',
+    text: () => 'Tap the far island and SEND PRIEST. When he lands, tap the island again and raise a TEMPLE — temples claim ground and earn Favor ✦.',
+    target: (state) => {
+      const isl = state.map.islands.find(i => i.role === 'supplyA');
+      return isl ? [Math.round(isl.center[0]), Math.round(isl.center[1])] : null;
+    }
+  },
+  {
+    key: 'yard', done: 'yardBuilt',
+    text: () => 'Tap any empty square on your home island and raise a ' + (R.themeSea ? 'SHIPYARD' : 'MOORING YARD') + ' — it moors two more haulers.',
+    target: (state) => {
+      const isl = state.gtA;
+      const c = isl.cells.find(([x, z]) => !structureAt(state, x, z) && !plotBlockedByQuarry(isl, { x, z }));
+      return c || null;
+    }
+  },
+  {
+    key: 'gun', done: 'gunBuilt',
+    text: () => 'Now arm yourself: tap an open path end for a ' + (R.themeSea ? 'LANCE BATTERY' : 'BOLT BATTERY') + ' (aim it with TURN), or any island square for a ' + (R.themeSea ? 'STORM DRUM' : 'CHAIN VANE') + '.',
+    target: (state) => {
+      const e = getSockets(state, 'A').find(k => k.kind === 'end' && !structureAt(state, k.cell[0], k.cell[1]));
+      if (e) return e.cell;
+      const isl = state.gtA;
+      const c = isl.cells.find(([x, z]) => !structureAt(state, x, z) && !plotBlockedByQuarry(isl, { x, z }));
+      return c || null;
+    }
+  },
+  {
+    key: 'done', timeout: 7,
+    text: () => 'You know the loop: paths, ore, temples, guns — and Favor for your god\'s aid in the thumb menu. The tide comes nine times. Hold.',
+    target: () => null
+  }
 ];
 
 // (Poseidon's tide titles and grievances retired from mid-match banners
 // by player direction — his voice lives on the intro screen only.)
 
 function initFlow(state) {
-  state.flow = { tutorialIdx: 0, skipped: false, waveOneAnnounced: false };
+  state.flow = { skipped: false };
   const skipBtn = document.getElementById('skipbtn');
-  skipBtn.classList.remove('hidden');
-  skipBtn.onclick = () => {
-    state.flow.skipped = true;
-    state.flow.tutorialIdx = TUTORIAL_SCRIPT.length;
-    for (const item of TUTORIAL_SCRIPT) markSeen(item.key);
-    markSeen('wave1lore');
+  const seenTut = seenLines().has('guidedTut');
+  state.tut = { active: !seenTut, step: 0, stepAt: 0 };
+  skipBtn.classList.toggle('hidden', !state.tut.active);
+  const endTut = () => {
+    state.tut.active = false;
+    markSeen('guidedTut');
     hideTutorialLine();
     skipBtn.classList.add('hidden');
-    try { localStorage.setItem('windward-skip', '1'); } catch (e) { }
+    const hand = document.getElementById('tuthand');
+    if (hand) hand.style.display = 'none';
   };
-  if ((() => { try { return localStorage.getItem('windward-skip') === '1'; } catch (e) { return false; } })()) {
-    state.flow.skipped = true;
-    state.flow.tutorialIdx = TUTORIAL_SCRIPT.length;
-    skipBtn.classList.add('hidden');
-  }
+  state.tut.end = endTut;
+  skipBtn.onclick = endTut;
+
+  // each step completes on the REAL action it teaches
+  const advance = (doneKey) => {
+    if (!state.tut.active) return;
+    const step = TUT_STEPS[state.tut.step];
+    if (step && step.done === doneKey) {
+      state.tut.step++;
+      state.tut.stepAt = state.time;
+      if (state.tut.step >= TUT_STEPS.length) endTut();
+    }
+  };
+  Events.on('piecePlaced', ({ side }) => { if (side === 'A') advance('piecePlaced'); });
+  Events.on('delivery', ({ side }) => { if (side === 'A') advance('delivery'); });
+  Events.on('consecrationStarted', ({ side }) => { if (side === 'A') advance('consecrationStarted'); });
+  Events.on('structureBuilt', ({ st }) => {
+    if (st.owner !== 'A') return;
+    if (st.type === 'yard') advance('yardBuilt');
+    if (st.type === 'vane' || st.type === 'bolt') advance('gunBuilt');
+  });
 
   // No mid-match theatre (player-directed): Poseidon's grievance lives on
   // the intro screen only. Waves announce themselves through the HUD
@@ -3803,15 +3888,39 @@ function initFlow(state) {
 }
 
 function flowTick(state) {
-  // tutorial lines on the clock, one at a time (§23)
   const f = state.flow;
-  if (!f.skipped && f.tutorialIdx < TUTORIAL_SCRIPT.length) {
-    const item = TUTORIAL_SCRIPT[f.tutorialIdx];
-    if (state.time >= item.at) {
-      showTutorialLine(item.text, 4200, item.key);   // shown once EVER
-      f.tutorialIdx++;
-      if (f.tutorialIdx === TUTORIAL_SCRIPT.length) {
-        setTimeout(() => document.getElementById('skipbtn').classList.add('hidden'), 6000);
+  // ---- the guided tutorial: persistent instruction + pointing hand ----
+  if (state.tut && state.tut.active) {
+    const step = TUT_STEPS[state.tut.step];
+    if (step) {
+      if (step.timeout && state.time - state.tut.stepAt > step.timeout) {
+        state.tut.step++;
+        state.tut.stepAt = state.time;
+        if (state.tut.step >= TUT_STEPS.length) state.tut.end();
+      }
+      const cur = TUT_STEPS[state.tut.step];
+      if (cur) {
+        // instruction stays up for the whole step (re-shown every frame)
+        const el = document.getElementById('tutorial');
+        if (el) { el.innerHTML = cur.text(); el.classList.add('show'); }
+        // the pointing hand marks the exact spot to touch
+        let hand = document.getElementById('tuthand');
+        if (!hand) {
+          hand = document.createElement('div');
+          hand.id = 'tuthand';
+          hand.innerHTML = '<div class="ring"></div><div class="finger">👆</div>';
+          document.body.appendChild(hand);
+        }
+        const target = cur.target(state);
+        if (target) {
+          const v = new THREE.Vector3(worldX(target[0]), 0.5, worldZ(target[1])).project(R.camera);
+          const px = (v.x + 1) / 2 * window.innerWidth;
+          const py = (-v.y + 1) / 2 * window.innerHeight;
+          const on = v.z < 1 && px > 10 && px < window.innerWidth - 10 && py > 60 && py < window.innerHeight - 60;
+          hand.style.display = on ? 'block' : 'none';
+          hand.style.left = (px - 26) + 'px';
+          hand.style.top = (py - 26) + 'px';
+        } else hand.style.display = 'none';
       }
     }
   }

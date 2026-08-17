@@ -324,6 +324,10 @@ function updateCraft(state, c, dt) {
 function wavesTick(state, dt) {
   const W = CONFIG.Waves;
   const w = state.wave;
+  // the guided first-play tutorial holds the tide back: the schedule
+  // slides forward while it runs (browser-only; headless sims never
+  // create state.tut, so nothing changes for tests and sweeps)
+  if (state.tut && state.tut.active) w.nextAt += dt;
   if (w.index < W.COUNT) {
     if (!w.telegraphed && state.time >= w.nextAt - W.TELEGRAPH) {
       w.telegraphed = true;
