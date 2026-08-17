@@ -492,7 +492,10 @@ window.addEventListener('DOMContentLoaded', () => {
     startMatch(seed, theme);
   };
   document.getElementById('startbtn').addEventListener('click', () => begin('air'));
-  document.getElementById('startsea').addEventListener('click', () => begin('sea'));
+  // RIDE THE WAVES is de-scoped from the front door (player-directed);
+  // the sea theme still works when the button exists (dev shells)
+  const seaBtn = document.getElementById('startsea');
+  if (seaBtn) seaBtn.addEventListener('click', () => begin('sea'));
   document.getElementById('startdemo').addEventListener('click', () => {
     audioInit();
     startMatch(makeSeedString(), 'air', true);
@@ -508,7 +511,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // refuse Zeus's verdict (player-directed): the tides resume and only
   // a fallen Great Temple ends the matter now
   document.getElementById('fightonbtn').addEventListener('click', () => {
-    if (!STATE || STATE.over !== 'arbitration') return;
+    if (!STATE || (STATE.over !== 'arbitration' && STATE.over !== 'arbitrationLoss')) return;
     STATE.over = null;
     STATE.arbitrationDeclined = true;
     document.getElementById('endscreen').classList.add('hidden');

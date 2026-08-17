@@ -186,16 +186,29 @@ function flowTick(state) {
 
   // (wave-1 lore line removed with the rest of his mid-match voice)
 
-  // Zeus's arbitration (set in wavesTick): the survivor's verdict
-  if (state.over === 'arbitration' && !f.arbShown) {
+  // Zeus's arbitration (set in wavesTick): he weighed the board —
+  // temples, roads, fleets, treasury — and the ruling can go either way
+  if ((state.over === 'arbitration' || state.over === 'arbitrationLoss') && !f.arbShown) {
     f.arbShown = true;
     const sea = state.theme === 'sea';
-    endScreen('ZEUS RULES IN YOUR FAVOR',
-      sea ? 'Victory. Nine tides of the sky and all its fury after — your lanes still stand. The matter is settled; the sky withdraws.'
-          : 'Victory. Nine tides and his wrath behind them — your roads still stand. The matter is settled; the sea withdraws.', state);
-    // the verdict may be refused (player-directed): fight to the end
+    const d = (state.arbitration && state.arbitration.detail) || null;
+    const scales = d ? ' The scales: temples ' + d.temples.a + '–' + d.temples.p +
+      ', roads ' + d.segments.a + '–' + d.segments.p +
+      ', fleets ' + d.units.a + '–' + d.units.p +
+      ', treasury ' + Math.round(d.treasury.a) + '–' + Math.round(d.treasury.p) + '.' : '';
+    if (state.over === 'arbitration') {
+      endScreen('ZEUS RULES IN YOUR FAVOR',
+        (sea ? 'Victory. Nine tides of the sky and all its fury after — your claim proved the stronger.'
+             : 'Victory. Nine tides and his wrath behind them — your claim proved the stronger.') + scales, state);
+      audioPlay('victory');
+    } else {
+      endScreen('ZEUS RULES AGAINST YOU',
+        (sea ? 'The sky’s claim proved the stronger, and the lanes are called home.'
+             : 'The sea’s claim proved the stronger, and the winds are called home.') + scales, state);
+      audioPlay('defeat');
+    }
+    // either verdict may be refused (player-directed): fight to the end
     document.getElementById('fightonbtn').classList.remove('hidden');
-    audioPlay('victory');
   }
   // win / lose (§28) — worded for whichever god you served
   if (!state.over) {

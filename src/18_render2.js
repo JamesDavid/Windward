@@ -1173,23 +1173,27 @@ function fxTick(state, dt) {
           new THREE.MeshBasicMaterial({ color: 0xb8c4c6, transparent: true, opacity: 0.25 }));
       } else if (f.kind === 'windwall') {
         // the wall is a BOUNDARY, not a dome — a dome hid everything it
-        // sheltered (player report). A bright ground ring marks the
-        // protected radius and leaves the contents fully visible.
+        // sheltered (player report). Second report: the painted ring
+        // still covered lanes and units sitting at its height, and it
+        // always wore Aeolus ivory even for Poseidon's Breakwater. Now
+        // it GLOWS (additive — nothing behind it is ever hidden) in the
+        // caster's theme, with shorter, dimmer rim posts.
         const RW = CONFIG.Powers.WIND_WALL.RADIUS;
+        const wallColor = R.themeSea ? 0x7fd4dd : 0xfff3cf;
         mesh = new THREE.Group();
         const ring = new THREE.Mesh(
           new THREE.RingGeometry(RW - 0.14, RW, 36),
-          new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
+          new THREE.MeshBasicMaterial({ color: wallColor, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 0.09;
         mesh.add(ring);
         // low shimmer posts on the rim, swirling — the wall reads as wind
         for (let i = 0; i < 8; i++) {
           const post = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.03, 0.045, 0.5, 5),
-            new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.5 }));
+            new THREE.CylinderGeometry(0.03, 0.045, 0.3, 5),
+            new THREE.MeshBasicMaterial({ color: wallColor, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
           const a = (i / 8) * Math.PI * 2;
-          post.position.set(Math.cos(a) * (RW - 0.07), 0.3, Math.sin(a) * (RW - 0.07));
+          post.position.set(Math.cos(a) * (RW - 0.07), 0.18, Math.sin(a) * (RW - 0.07));
           mesh.add(post);
         }
         mesh.userData.spin = true;

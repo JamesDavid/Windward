@@ -212,6 +212,12 @@ const CONFIG = Object.freeze({
     WRATH_TIDE_INTERVAL: 30.0,                            // overtime, not a second act
     WRATH_STRENGTH_STEP: 0.15, WRATH_STRENGTH_CAP: 1.8,   // census-tuned: 0.06/40s let full-HP turtles shrug off two tides and still stalemate
     ARBITRATION_WRATH_TIDES: 5,                           // weather the ninth tide AND five full wrath tides and Zeus rules the matter settled — every match ENDS (census: fortress players survived 25 waves untouched; they deserve a verdict, not a fizzle)
+    // Zeus WEIGHS THE BOARD (player-directed: he once ruled for a temple
+    // on the verge of falling): temple health, islands held, standing
+    // road segments, living units, and treasury (coin + favor), each
+    // side's share weighted below. The stronger claim wins the ruling —
+    // which can go AGAINST the player.
+    ARBITRATION_WEIGHTS: { GT: 3, TEMPLES: 2, SEGMENTS: 2, UNITS: 1, TREASURY: 1 },
     AI_REROUTE_DELAY: 2.0, AI_REROUTE_COOLDOWN: 20.0,
     // authored composition per wave: [transports, siphons, heavies]
     // horde-tuned (player-directed): transports come in numbers

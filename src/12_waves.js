@@ -6,6 +6,36 @@
 // player structure. Wave 8 is the Age of Wrath.
 // ================================================================
 
+// Zeus's scales: each category is a side's share of the whole, weighted
+// per CONFIG. Returns { shareA, detail } — shareA > 0.5 favors the player.
+function arbitrationTally(state) {
+  const segs = (side) => [...state.segments.values()].filter(s => s.owner === side && s.supportState === 'SUPPORTED').length;
+  const temples = (side) => state.map.islands.filter(i => i.temple && i.temple.owner === side && i.temple.hp > 0).length;
+  const units = (side) => state.haulers.filter(h => h.owner === side && h.state !== 'dead').length +
+    ((state.priests[side] && state.priests[side].state !== 'dead') ? 1 : 0) +
+    (side === 'P' ? state.craft.filter(c => !c.dead).length : 0);
+  const treasury = (side) => state.res[side].supply + state.res[side].favor;
+  const gtFrac = (side) => Math.max(0, state.greatTemple[side].hp) / CONFIG.Claim.GREAT_TEMPLE_HP;
+  const Wt = CONFIG.Waves.ARBITRATION_WEIGHTS;
+  const cats = {
+    gt: [gtFrac('A'), gtFrac('P'), Wt.GT],
+    temples: [temples('A'), temples('P'), Wt.TEMPLES],
+    segments: [segs('A'), segs('P'), Wt.SEGMENTS],
+    units: [units('A'), units('P'), Wt.UNITS],
+    treasury: [treasury('A'), treasury('P'), Wt.TREASURY]
+  };
+  let num = 0, den = 0;
+  const detail = {};
+  for (const k of Object.keys(cats)) {
+    const [a, p, wgt] = cats[k];
+    const share = (a + p) > 0 ? a / (a + p) : 0.5;
+    num += share * wgt;
+    den += wgt;
+    detail[k] = { a: Math.round(a * 100) / 100, p: Math.round(p * 100) / 100 };
+  }
+  return { shareA: num / den, detail };
+}
+
 function waveInterval(index) {
   const W = CONFIG.Waves;
   if (index >= W.COUNT) return W.WRATH_TIDE_INTERVAL;   // the sea does not tire
@@ -354,11 +384,16 @@ function wavesTick(state, dt) {
   // match drifts on without a verdict
   // (a player may REFUSE the verdict — then the tides simply continue
   // until one Great Temple actually falls)
+  // ...and Zeus WEIGHS THE BOARD (player report: he once ruled for a
+  // temple on the verge of falling): temple health, islands held,
+  // standing roads, living units, treasury. The stronger claim wins —
+  // which can be Poseidon's.
   if (!state.over && !state.arbitrationDeclined &&
-      w.index >= W.COUNT + W.ARBITRATION_WRATH_TIDES &&
-      state.greatTemple.A.hp > 0) {
-    state.over = 'arbitration';
-    Events.emit('arbitration', {});
+      w.index >= W.COUNT + W.ARBITRATION_WRATH_TIDES) {
+    const t = arbitrationTally(state);
+    state.arbitration = t;
+    state.over = t.shareA > 0.5 ? 'arbitration' : 'arbitrationLoss';
+    Events.emit('arbitration', t);
   }
   for (const c of state.craft) updateCraft(state, c, dt);
   state.craft = state.craft.filter(c => !c.dead);

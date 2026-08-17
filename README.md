@@ -104,9 +104,9 @@ Cinema that never takes the controls: low stylized clouds drift on the wind fiel
 
 <img src="screenshots/cinematic.png" width="300">
 
-### 11. Choose your god *(done — player-directed)*
+### 11. One god at the front door *(revised — player-directed focus cut)*
 
-Two calls to action: **BIND THE AIR** or **RIDE THE WAVES**. Playing Poseidon mirrors the entire presentation — your network becomes sea-lanes lying dark on the water, your fleet becomes triremes, your temples wear the teal, and the enemy becomes the Air Guild with ivory sky-roads and balloons — while the underlying, sweep-tuned match stays identical, so both sides play a game that is proven fair. A five-line first-play tutorial teaches the loop (pathways, mining and haulers, temples and Favor, coin for arms, Favor for divine aid) once ever, with SKIP TUTORIAL for returners.
+The prototype's call to action is **BIND THE AIR** — one side, one tight loop. A complete Poseidon presentation mirror still lives in the code (sea-lanes lying dark on the water, triremes, teal temples, the Air Guild as the enemy — the same sweep-tuned simulation underneath), built and screenshotted below, but its RIDE THE WAVES button is de-scoped from the title screen for the prototype: a playtest showed the second side diluted the first-session focus. The guided first-play tutorial (a pointing hand at every touch) teaches the loop once ever, with SKIP TUTORIAL for returners.
 
 <img src="screenshots/poseidon_side.png" width="300">
 
@@ -128,7 +128,7 @@ Haulers route on the best channel the wind favors and never travel opposite the 
 
 ### 15. Every match ends *(done — funness audit)*
 
-An 8-seed census caught half of all matches fizzling: the ninth tide passes, nothing forces a conclusion, and a full-health player just drifts. Now the tide never stops — past the authored nine, **wrath tides** come every 30 seconds at the final horde composition, escalating (+0.15 strength per tide toward a 1.8 cap) until something breaks. And for the fortress player nothing can break (census seeds survived 25 waves untouched), there is a verdict instead of a void: weather nine tides *and* five full wrath tides with your Great Temple standing, and **ZEUS RULES IN YOUR FAVOR** — plainly worded as the victory it is. Prefer the kill? A gold **REFUSE — FIGHT ON** button declines the verdict: the tides resume permanently, and only a fallen Great Temple ends the matter. Re-census after the change: 0/8 timeouts; every match ends with a screen, never a shrug.
+An 8-seed census caught half of all matches fizzling: the ninth tide passes, nothing forces a conclusion, and a full-health player just drifts. Now the tide never stops — past the authored nine, **wrath tides** come every 30 seconds at the final horde composition, escalating (+0.15 strength per tide toward a 1.8 cap) until something breaks. And if nothing breaks, **Zeus weighs the whole board** — temple health, islands held, standing road segments, living fleets, and treasury (coin *and* Favor), each weighted — and rules for the stronger claim. The verdict screen shows his scales ("temples 1–2, roads 43–83, fleets 3–31…"), it is plainly worded as the win or loss it is, and it can go *against* you: holding your keep while Poseidon owns the archipelago is not victory (a playtest caught the old rule crowning a player on the verge of losing). Either way, a gold **REFUSE — FIGHT ON** button declines the ruling: the tides resume permanently, and only a fallen Great Temple ends the matter. Census: 0/8 timeouts; every match ends with a screen, never a shrug.
 
 <img src="screenshots/wrath.png" width="300"> <img src="screenshots/zeus.png" width="300">
 

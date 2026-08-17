@@ -9,7 +9,7 @@ Genre: Tower Defense & Strategy
 *Keep this list current. Re-read it at the start of every session. When a decision changes, edit it here AND note the change in that session's entry.*
 
 ### Scope
-- Two factions only: Aeolus (player, air) and Poseidon (AI, sea). Gaia and Zeus are future state.
+- Two factions only: Aeolus (player, air) and Poseidon (AI, sea). Gaia and Zeus are future state. **Amended (Session 3, player-directed):** the RIDE-THE-WAVES CTA (Poseidon presentation mirror) is de-scoped from the title screen for focus; the mirror remains in code, unexposed.
 - One map **template** on a 12 × 20 portrait grid, nine islands, corner opposition — **deterministically generated per match from a seed** (spec §20A supersedes the earlier "one handcrafted map" decision; changed in Session 1). Free-form procedural maps remain cut; generation is zone-constrained and validated.
 - Target session: ~7 minutes, nine waves.
 - Single-player, portrait, Three.js, fully offline.

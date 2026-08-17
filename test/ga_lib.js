@@ -235,6 +235,7 @@ function runMatch(G, seed, genome, maxT) {
 function fitness(r) {
   if (r.outcome === 'win') return 1000 + (720 - r.t) + r.gtA;
   if (r.outcome === 'arbitration') return 700 + (200 - r.gtP);
+  if (r.outcome === 'arbitrationLoss') return 150 + (200 - r.gtP);
   let s = (200 - r.gtP) * 2 + r.temples * 15 + r.waves * 5;
   if (r.outcome === 'lose') s -= 100;
   return s;

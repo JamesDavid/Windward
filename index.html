@@ -279,15 +279,17 @@
     <p id="lorepara" style="max-width:340px; font-style: italic; line-height:1.5;">When the
       shipwrights discovered lift, the Air Guild harnessed Odysseus' lost winds into roads of
       bound air — and cargo began crossing without paying the sea. Poseidon is passed
-      over, and his forces are rising to collect. Choose your side.</p>
+      over, and his forces are rising to collect. The Guild needs a Windwright. Bind the air.</p>
     <div class="seedrow">SEED <input id="seedinput" maxlength="8" autocomplete="off"></div>
     <div style="display:flex; gap:12px;">
       <button id="startbtn">BIND THE AIR</button>
-      <button id="startsea">RIDE THE WAVES</button>
+      <!-- RIDE THE WAVES (the Poseidon presentation mirror) lives in the
+           code but is de-scoped from the front door (player-directed:
+           one tight loop for the prototype) -->
     </div>
     <button id="startdemo" style="background:none; color:var(--ivory); border:1px solid rgba(242,232,207,0.4); font-size:13px; padding:8px 18px;">WATCH A MATCH</button>
     <button id="resumebtn" class="hidden" style="background:none; color:var(--gold); border:1px solid var(--gold); font-size:13px; padding:8px 18px;">RESUME YOUR MATCH</button>
-    <div style="position:absolute; bottom:calc(env(safe-area-inset-bottom, 0px) + 6px); right:10px; font-size:9px; letter-spacing:1px; opacity:0.4;">BUILD 2026-08-17 17:37 UTC</div>
+    <div style="position:absolute; bottom:calc(env(safe-area-inset-bottom, 0px) + 6px); right:10px; font-size:9px; letter-spacing:1px; opacity:0.4;">BUILD 2026-08-17 18:03 UTC</div>
   </div>
   <div id="endscreen" class="screen hidden">
     <h1 id="endtitle"></h1>
@@ -522,6 +524,12 @@ const CONFIG = Object.freeze({
     WRATH_TIDE_INTERVAL: 30.0,                            // overtime, not a second act
     WRATH_STRENGTH_STEP: 0.15, WRATH_STRENGTH_CAP: 1.8,   // census-tuned: 0.06/40s let full-HP turtles shrug off two tides and still stalemate
     ARBITRATION_WRATH_TIDES: 5,                           // weather the ninth tide AND five full wrath tides and Zeus rules the matter settled — every match ENDS (census: fortress players survived 25 waves untouched; they deserve a verdict, not a fizzle)
+    // Zeus WEIGHS THE BOARD (player-directed: he once ruled for a temple
+    // on the verge of falling): temple health, islands held, standing
+    // road segments, living units, and treasury (coin + favor), each
+    // side's share weighted below. The stronger claim wins the ruling —
+    // which can go AGAINST the player.
+    ARBITRATION_WEIGHTS: { GT: 3, TEMPLES: 2, SEGMENTS: 2, UNITS: 1, TREASURY: 1 },
     AI_REROUTE_DELAY: 2.0, AI_REROUTE_COOLDOWN: 20.0,
     // authored composition per wave: [transports, siphons, heavies]
     // horde-tuned (player-directed): transports come in numbers
@@ -3165,6 +3173,36 @@ function combatTick(state, dt) {
 // player structure. Wave 8 is the Age of Wrath.
 // ================================================================
 
+// Zeus's scales: each category is a side's share of the whole, weighted
+// per CONFIG. Returns { shareA, detail } — shareA > 0.5 favors the player.
+function arbitrationTally(state) {
+  const segs = (side) => [...state.segments.values()].filter(s => s.owner === side && s.supportState === 'SUPPORTED').length;
+  const temples = (side) => state.map.islands.filter(i => i.temple && i.temple.owner === side && i.temple.hp > 0).length;
+  const units = (side) => state.haulers.filter(h => h.owner === side && h.state !== 'dead').length +
+    ((state.priests[side] && state.priests[side].state !== 'dead') ? 1 : 0) +
+    (side === 'P' ? state.craft.filter(c => !c.dead).length : 0);
+  const treasury = (side) => state.res[side].supply + state.res[side].favor;
+  const gtFrac = (side) => Math.max(0, state.greatTemple[side].hp) / CONFIG.Claim.GREAT_TEMPLE_HP;
+  const Wt = CONFIG.Waves.ARBITRATION_WEIGHTS;
+  const cats = {
+    gt: [gtFrac('A'), gtFrac('P'), Wt.GT],
+    temples: [temples('A'), temples('P'), Wt.TEMPLES],
+    segments: [segs('A'), segs('P'), Wt.SEGMENTS],
+    units: [units('A'), units('P'), Wt.UNITS],
+    treasury: [treasury('A'), treasury('P'), Wt.TREASURY]
+  };
+  let num = 0, den = 0;
+  const detail = {};
+  for (const k of Object.keys(cats)) {
+    const [a, p, wgt] = cats[k];
+    const share = (a + p) > 0 ? a / (a + p) : 0.5;
+    num += share * wgt;
+    den += wgt;
+    detail[k] = { a: Math.round(a * 100) / 100, p: Math.round(p * 100) / 100 };
+  }
+  return { shareA: num / den, detail };
+}
+
 function waveInterval(index) {
   const W = CONFIG.Waves;
   if (index >= W.COUNT) return W.WRATH_TIDE_INTERVAL;   // the sea does not tire
@@ -3513,11 +3551,16 @@ function wavesTick(state, dt) {
   // match drifts on without a verdict
   // (a player may REFUSE the verdict — then the tides simply continue
   // until one Great Temple actually falls)
+  // ...and Zeus WEIGHS THE BOARD (player report: he once ruled for a
+  // temple on the verge of falling): temple health, islands held,
+  // standing roads, living units, treasury. The stronger claim wins —
+  // which can be Poseidon's.
   if (!state.over && !state.arbitrationDeclined &&
-      w.index >= W.COUNT + W.ARBITRATION_WRATH_TIDES &&
-      state.greatTemple.A.hp > 0) {
-    state.over = 'arbitration';
-    Events.emit('arbitration', {});
+      w.index >= W.COUNT + W.ARBITRATION_WRATH_TIDES) {
+    const t = arbitrationTally(state);
+    state.arbitration = t;
+    state.over = t.shareA > 0.5 ? 'arbitration' : 'arbitrationLoss';
+    Events.emit('arbitration', t);
   }
   for (const c of state.craft) updateCraft(state, c, dt);
   state.craft = state.craft.filter(c => !c.dead);
@@ -4258,16 +4301,29 @@ function flowTick(state) {
 
   // (wave-1 lore line removed with the rest of his mid-match voice)
 
-  // Zeus's arbitration (set in wavesTick): the survivor's verdict
-  if (state.over === 'arbitration' && !f.arbShown) {
+  // Zeus's arbitration (set in wavesTick): he weighed the board —
+  // temples, roads, fleets, treasury — and the ruling can go either way
+  if ((state.over === 'arbitration' || state.over === 'arbitrationLoss') && !f.arbShown) {
     f.arbShown = true;
     const sea = state.theme === 'sea';
-    endScreen('ZEUS RULES IN YOUR FAVOR',
-      sea ? 'Victory. Nine tides of the sky and all its fury after — your lanes still stand. The matter is settled; the sky withdraws.'
-          : 'Victory. Nine tides and his wrath behind them — your roads still stand. The matter is settled; the sea withdraws.', state);
-    // the verdict may be refused (player-directed): fight to the end
+    const d = (state.arbitration && state.arbitration.detail) || null;
+    const scales = d ? ' The scales: temples ' + d.temples.a + '–' + d.temples.p +
+      ', roads ' + d.segments.a + '–' + d.segments.p +
+      ', fleets ' + d.units.a + '–' + d.units.p +
+      ', treasury ' + Math.round(d.treasury.a) + '–' + Math.round(d.treasury.p) + '.' : '';
+    if (state.over === 'arbitration') {
+      endScreen('ZEUS RULES IN YOUR FAVOR',
+        (sea ? 'Victory. Nine tides of the sky and all its fury after — your claim proved the stronger.'
+             : 'Victory. Nine tides and his wrath behind them — your claim proved the stronger.') + scales, state);
+      audioPlay('victory');
+    } else {
+      endScreen('ZEUS RULES AGAINST YOU',
+        (sea ? 'The sky’s claim proved the stronger, and the lanes are called home.'
+             : 'The sea’s claim proved the stronger, and the winds are called home.') + scales, state);
+      audioPlay('defeat');
+    }
+    // either verdict may be refused (player-directed): fight to the end
     document.getElementById('fightonbtn').classList.remove('hidden');
-    audioPlay('victory');
   }
   // win / lose (§28) — worded for whichever god you served
   if (!state.over) {
@@ -6645,23 +6701,27 @@ function fxTick(state, dt) {
           new THREE.MeshBasicMaterial({ color: 0xb8c4c6, transparent: true, opacity: 0.25 }));
       } else if (f.kind === 'windwall') {
         // the wall is a BOUNDARY, not a dome — a dome hid everything it
-        // sheltered (player report). A bright ground ring marks the
-        // protected radius and leaves the contents fully visible.
+        // sheltered (player report). Second report: the painted ring
+        // still covered lanes and units sitting at its height, and it
+        // always wore Aeolus ivory even for Poseidon's Breakwater. Now
+        // it GLOWS (additive — nothing behind it is ever hidden) in the
+        // caster's theme, with shorter, dimmer rim posts.
         const RW = CONFIG.Powers.WIND_WALL.RADIUS;
+        const wallColor = R.themeSea ? 0x7fd4dd : 0xfff3cf;
         mesh = new THREE.Group();
         const ring = new THREE.Mesh(
           new THREE.RingGeometry(RW - 0.14, RW, 36),
-          new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
+          new THREE.MeshBasicMaterial({ color: wallColor, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 0.09;
         mesh.add(ring);
         // low shimmer posts on the rim, swirling — the wall reads as wind
         for (let i = 0; i < 8; i++) {
           const post = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.03, 0.045, 0.5, 5),
-            new THREE.MeshBasicMaterial({ color: 0xfff3cf, transparent: true, opacity: 0.5 }));
+            new THREE.CylinderGeometry(0.03, 0.045, 0.3, 5),
+            new THREE.MeshBasicMaterial({ color: wallColor, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
           const a = (i / 8) * Math.PI * 2;
-          post.position.set(Math.cos(a) * (RW - 0.07), 0.3, Math.sin(a) * (RW - 0.07));
+          post.position.set(Math.cos(a) * (RW - 0.07), 0.18, Math.sin(a) * (RW - 0.07));
           mesh.add(post);
         }
         mesh.userData.spin = true;
@@ -8517,7 +8577,10 @@ window.addEventListener('DOMContentLoaded', () => {
     startMatch(seed, theme);
   };
   document.getElementById('startbtn').addEventListener('click', () => begin('air'));
-  document.getElementById('startsea').addEventListener('click', () => begin('sea'));
+  // RIDE THE WAVES is de-scoped from the front door (player-directed);
+  // the sea theme still works when the button exists (dev shells)
+  const seaBtn = document.getElementById('startsea');
+  if (seaBtn) seaBtn.addEventListener('click', () => begin('sea'));
   document.getElementById('startdemo').addEventListener('click', () => {
     audioInit();
     startMatch(makeSeedString(), 'air', true);
@@ -8533,7 +8596,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // refuse Zeus's verdict (player-directed): the tides resume and only
   // a fallen Great Temple ends the matter now
   document.getElementById('fightonbtn').addEventListener('click', () => {
-    if (!STATE || STATE.over !== 'arbitration') return;
+    if (!STATE || (STATE.over !== 'arbitration' && STATE.over !== 'arbitrationLoss')) return;
     STATE.over = null;
     STATE.arbitrationDeclined = true;
     document.getElementById('endscreen').classList.add('hidden');

@@ -279,11 +279,13 @@
     <p id="lorepara" style="max-width:340px; font-style: italic; line-height:1.5;">When the
       shipwrights discovered lift, the Air Guild harnessed Odysseus' lost winds into roads of
       bound air — and cargo began crossing without paying the sea. Poseidon is passed
-      over, and his forces are rising to collect. Choose your side.</p>
+      over, and his forces are rising to collect. The Guild needs a Windwright. Bind the air.</p>
     <div class="seedrow">SEED <input id="seedinput" maxlength="8" autocomplete="off"></div>
     <div style="display:flex; gap:12px;">
       <button id="startbtn">BIND THE AIR</button>
-      <button id="startsea">RIDE THE WAVES</button>
+      <!-- RIDE THE WAVES (the Poseidon presentation mirror) lives in the
+           code but is de-scoped from the front door (player-directed:
+           one tight loop for the prototype) -->
     </div>
     <button id="startdemo" style="background:none; color:var(--ivory); border:1px solid rgba(242,232,207,0.4); font-size:13px; padding:8px 18px;">WATCH A MATCH</button>
     <button id="resumebtn" class="hidden" style="background:none; color:var(--gold); border:1px solid var(--gold); font-size:13px; padding:8px 18px;">RESUME YOUR MATCH</button>
