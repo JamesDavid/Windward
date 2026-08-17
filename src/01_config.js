@@ -50,16 +50,16 @@ const CONFIG = Object.freeze({
   Wind: {
     FIELD_W: 6, FIELD_H: 10,
     AIR_MIN: 0.55, AIR_MAX: 1.45,   // sweep-backed (test/opt_headwind.js): wider spread rewards circuit routes; hard one-way lanes rejected (drifting wind would strand fleets)
-    HAULER_MIN_FRAC: 0.28,          // haulers on BOTH sides plan only current-favorable legs (player-directed): a leg is closed below this fraction of the side's wind band (air 0.55-1.45 -> 0.80; sea 0.92-1.08 -> 0.96) and the fleet waits for the shift. Hydrogen / Deep Hulls exempt.
+    HAULER_MIN_FRAC: 0.4,           // haulers on BOTH sides plan only current-favorable legs (player-directed); a leg is closed below this fraction of the side's wind band. Sweep (test/opt_windlaw.js): stricter closure beats laxer on every floor setting — the wind SHOULD bite. Hydrogen / Deep Hulls exempt.
     TACK_AFTER: 20,                 // safety valve: after this many seconds with no favorable channel the fleet tacks the least-adverse path anyway...
     TACK_SPEED_MULT: 0.55,          // ...with adverse legs at this extra speed penalty on top of the real headwind multiplier. Struggle, not deadlock.
-    BOUND_CHANNEL_FRAC: 0.4,        // player-directed: a side's OWN channels carry bound current — effective multiplier is floored at this fraction of the band (air 0.91, sea 0.98) even against the prevailing wind, so roads work but a true tailwind channel is visibly faster. Raw wind rules everything unbound (headless proof: without this, a drifting wind starved the reference seed for a whole match).
+    BOUND_CHANNEL_FRAC: 0.25,       // player-directed: a side's OWN channels carry bound current — effective multiplier floored at this fraction of the band (air 0.775, sea 0.96). Sweep (test/opt_windlaw.js): a WEAK floor + strict closure is the fun optimum (avg 116 vs 106) — adverse roads wait or tack (the valve makes it tension, not the deadlock that once starved the reference seed); 0.55 floors flatten the wind out of the game entirely (88 across the row).
     SEA_MIN: 0.92, SEA_MAX: 1.08,
     DRIFT_DEGREES: 30, DRIFT_PERIOD: 90.0
   },
 
   Economy: {
-    START_SUPPLY: 100, START_FAVOR: 100,
+    START_SUPPLY: 100, START_FAVOR: 100,   // 16-cell sweep (test/opt_start.js): exactly this is the grid optimum (109); 70-supply starts crater to 70-73 (opening temple + first gun misalign) and richer starts plateau lower — more money is not more fun
     TEMPLE_SUPPLY_PER_10S: 3, TEMPLE_FAVOR_PER_10S: 6,   // sweep-derived floor: rebuild insurance when territory is lost
     INCOME_TICK_SECONDS: 10.0,
     REROLL_FAVOR: 1
@@ -71,17 +71,17 @@ const CONFIG = Object.freeze({
     SEGMENT_FAVOR: 1         // Favor returned per unbuilt route segment
   },
   Bounty: {                  // death pleases the gods: paid to the killer's side
-    CRAFT_FAVOR: { transport: 2, siphon: 3, heavy: 5 },
+    CRAFT_FAVOR: { transport: 4, siphon: 6, heavy: 10 },   // sweep (test/opt_bounty.js): x2 is neutral on 2 seeds and rescues the third (favor from kills rebuilds the road net, 36->63 segments); x0.5 starves it
     STRUCTURE_SUPPLY_FRACTION: 0.25
   },
 
   Mining: {
-    RATE_PER_SECOND: 2,
+    RATE_PER_SECOND: 2,   // sweep (test/opt_tempo.js): 2 and 3 tie, 1.5 starves (84); extra starting haulers change nothing
     RESERVE_MIN: 500, RESERVE_MAX: 1500   // every ore island draws in this band
   },
 
   Hauler: {
-    DWELL_SECONDS: 4.0, UNLOAD_SECONDS: 2.0,
+    DWELL_SECONDS: 4.0, UNLOAD_SECONDS: 2.0,   // dwell swept (test/opt_tempo.js): 4s optimal (109), 2s frantic (94), 6s sluggish (80)
     HOTAIR_CAPACITY: 12, HYDROGEN_CAPACITY: 24,   // sweep-optimized (test/opt_capacity.js): 24+ floods supply with 500-1500 reserves
     COST: 5, BUILD_SECONDS: 6,   // sweep-optimized (test/opt_costs.js): cheap haulers = more logistics on the board, better on every seed
     START_COUNT: 1,
@@ -229,7 +229,7 @@ const CONFIG = Object.freeze({
     SHELTER_DETOUR_MAX: 1.5,      // prefers sheltered lanes below this detour factor
     MAST_INTERVAL: 30.0,          // tries to raise a siphon mast this often
     TEMPLE_PRIORITY_OVERLAP: true,
-    DECISION_INTERVAL: 2.0,
+    DECISION_INTERVAL: 2.0,   // swept (test/opt_tempo.js): sharply peaked at 2s (116); 1.2s AI over-churns (71), 3.5s sleepy (93)
     PRIEST_AVOIDS_GUNS: true
   },
 
