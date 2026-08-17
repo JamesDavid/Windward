@@ -368,6 +368,7 @@ function placeConfirmRow(anchorCell) {
 
 // ---- taps on the world ----
 function onTap(state, e) {
+  if (state.demo) { exitDemo(); return; }
   if (state.over) return;
   const cell = pickCell(e.clientX, e.clientY);
   // float grid coords, for forgiving snap at this oblique perspective
@@ -608,7 +609,10 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
   const [x, z] = cell;
   const menu = UI.els.buildmenu;
   menu.innerHTML = '';
-  const options = [];
+  // compact category rows above the buttons (player-directed):
+  // ATTACK / SHIELD / WORKS / FAVOR / DESTROY / PATHWAYS
+  const groups = { attack: [], shield: [], works: [], favor: [], destroy: [] };
+  const GROUP_LABELS = { attack: 'ATTACK', shield: 'SHIELD', works: 'WORKS', favor: 'FAVOR', destroy: 'DESTROY' };
   const isl = islandAt(state, x, z);
   const plotIdx = isl ? isl.plots.findIndex(p => p.x === x && p.z === z) : -1;
   const deg = nodeDegrees(state, 'A').get(cellKey(x, z)) || 0;
@@ -624,7 +628,7 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
   if (yardMenu) {
     const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
     const cap = fleetCap(state, 'A');
-    options.push(menuButton('BUILD<br>HAULER<br><i style="font-size:9px">' + fleet + ' / ' + cap + ' MOORED</i>',
+    groups.works.push(menuButton('BUILD<br>HAULER<br><i style="font-size:9px">' + fleet + ' / ' + cap + ' MOORED</i>',
       CONFIG.Hauler.COST, () => {
         if (!buyHauler(state, 'A')) flashTicker('FLEET AT CAPACITY');
       }, fleet >= cap ? 'FLEET AT CAPACITY — RAISE ANOTHER YARD' :
@@ -632,7 +636,7 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     if (!state.hydrogen.A) {
       const T = CONFIG.Tech;
       const canH = state.res.A.supply >= T.HYDROGEN_COST_SUPPLY && state.res.A.favor >= T.HYDROGEN_COST_FAVOR;
-      options.push(menuButton((R.themeSea ? 'DEEP<br>HULLS<b>' : 'UPGRADE<br>HYDROGEN<b>') + T.HYDROGEN_COST_SUPPLY + ' ⚇ + ' + T.HYDROGEN_COST_FAVOR + ' ✦</b>', 0, () => {
+      groups.works.push(menuButton((R.themeSea ? 'DEEP<br>HULLS<b>' : 'UPGRADE<br>HYDROGEN<b>') + T.HYDROGEN_COST_SUPPLY + ' ⚇ + ' + T.HYDROGEN_COST_FAVOR + ' ✦</b>', 0, () => {
         if (buyHydrogen(state, 'A')) flashTicker(R.themeSea ? 'THE FLEET REFITS WITH DEEP HULLS' : 'THE FLEET REFITS TO HYDROGEN');
       }, canH ? null : 'NEEDS ' + T.HYDROGEN_COST_SUPPLY + ' ⚇ AND ' + T.HYDROGEN_COST_FAVOR + ' ✦', 'hydrogen'));
     }
@@ -696,19 +700,21 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
       const label = structLabel(type);
       const why = whyNotBuild(state, 'A', type, at);
       const ss = structureStats('A', type);
-        options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
+      (type === 'shield' ? groups.shield : groups.attack)
+        .push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
     }
   } else if (isl && plotIdx >= 0) {
     const at = { site: 'plot', islandId: isl.id, plotIdx, cell };
     if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
-      options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
+      groups.works.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
     }
     if (isl.owner === 'A') {
       for (const type of ['vane', 'bolt', 'shield', 'yard']) {
         const label = structLabel(type);
         const why = whyNotBuild(state, 'A', type, at);
         const ss = structureStats('A', type);
-        options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
+        (type === 'shield' ? groups.shield : type === 'yard' ? groups.works : groups.attack)
+          .push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
       }
     }
   } else if (isl) {
@@ -722,21 +728,22 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
         ? { site: 'plot', islandId: isl.id, plotIdx: -1, cell: [x, z] }
         : { site: 'plot', islandId: isl.id, plotIdx: freeIdx, cell: [isl.plots[freeIdx].x, isl.plots[freeIdx].z] };
       if (!isl.role.startsWith('greatTemple') && (!isl.temple || isl.temple.hp <= 0)) {
-        options.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
+        groups.works.push(menuButton('TEMPLE', CONFIG.Structures.TEMPLE.COST, tryBuild('temple', at), whyNotBuild(state, 'A', 'temple', at), 'temple', CONFIG.Structures.TEMPLE.FAVOR));
       }
       if (isl.owner === 'A') {
         for (const type of ['vane', 'bolt', 'shield', 'yard']) {
-        const label = structLabel(type);
+          const label = structLabel(type);
           const why = whyNotBuild(state, 'A', type, at);
           const ss = structureStats('A', type);
-        options.push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
+          (type === 'shield' ? groups.shield : type === 'yard' ? groups.works : groups.attack)
+            .push(menuButton(label, ss.cost, tryBuild(type, at), why, type, ss.favor));
         }
       }
     }
     // priest travel, hauler purchase at home/yarded islands
     const p = state.priests.A;
     const reachable = p && findNetPath(state, 'A', [Math.round(p.pos[0]), Math.round(p.pos[1])], isl.cells);
-    options.push(menuButton('SEND<br>PRIEST', 0, () => {
+    groups.works.push(menuButton('SEND<br>PRIEST', 0, () => {
       if (!sendPriest(state, 'A', isl)) flashTicker('NO SUPPORTED ROUTE REACHES IT');
     }, reachable ? null : 'NO SUPPORTED ROUTE REACHES IT', 'priest'));
     const hasYard = isl.role === 'greatTempleA' ||
@@ -744,7 +751,7 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     if (hasYard) {
       const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
       const capped = fleet >= fleetCap(state, 'A');
-      options.push(menuButton('BUILD<br>HAULER', CONFIG.Hauler.COST, () => {
+      groups.works.push(menuButton('BUILD<br>HAULER', CONFIG.Hauler.COST, () => {
         if (!buyHauler(state, 'A')) flashTicker('FLEET AT CAPACITY');
       }, capped ? 'FLEET AT CAPACITY' : (state.res.A.supply < CONFIG.Hauler.COST ? 'NOT ENOUGH SUPPLY' : null), 'hauler'));
     }
@@ -772,14 +779,14 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
       wwBtn.classList.add('shimmer');
       UI.shimmerPending = true;
     }
-    options.push(twBtn, wwBtn);
+    groups.favor.push(twBtn, wwBtn);
   }
 
   // salvage (player-directed, NetStorm-style): reclaim what stands here
   const stHere = structureAt(state, x, z);
   if (stHere && stHere.owner === 'A' && stHere.hp > 0) {
     const refund = Math.floor(structureStats('A', stHere.type).cost * CONFIG.Salvage.STRUCTURE_REFUND);
-    options.push(menuButton('SALVAGE<br>+' + refund + ' ⚇', 0, () => {
+    groups.destroy.push(menuButton('SALVAGE<br>+' + refund + ' ⚇', 0, () => {
       salvageStructure(state, 'A', stHere);
       hideBuildMenu();
       flashTicker('SALVAGED +' + refund + ' ⚇');
@@ -788,7 +795,7 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     const touchesOwn = [...state.segments.values()].some(s => s.owner === 'A' &&
       ((s.a[0] === x && s.a[1] === z) || (s.b[0] === x && s.b[1] === z)));
     if (touchesOwn) {
-      options.push(menuButton('UNBUILD<br>+' + CONFIG.Salvage.SEGMENT_FAVOR + ' ✦', 0, () => {
+      groups.destroy.push(menuButton('UNBUILD<br>+' + CONFIG.Salvage.SEGMENT_FAVOR + ' ✦', 0, () => {
         salvageSegmentAt(state, 'A', cell);
         hideBuildMenu();
         flashTicker('SEGMENT UNBOUND +' + CONFIG.Salvage.SEGMENT_FAVOR + ' ✦');
@@ -796,7 +803,8 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     }
   }
 
-  if (!options.length && !pieceOptions.length && !unitIdent && !ident) return;
+  const optionCount = Object.values(groups).reduce((n, g) => n + g.length, 0);
+  if (!optionCount && !pieceOptions.length && !unitIdent && !ident) return;
   // identity header: the tapped ship and/or the ground itself
   if (unitIdent || ident) {
     const head = document.createElement('div');
@@ -812,15 +820,21 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
   bal.innerHTML = '<span style="color:var(--gold)">⚇ ' + Math.floor(state.res.A.supply) +
     '</span> &nbsp;·&nbsp; <span style="color:#d5ecff">✦ ' + Math.floor(state.res.A.favor) + '</span>';
   menu.appendChild(bal);
-  // buildings on the upper rows, route pieces on the bottom row by the thumb
-  for (const o of options) menu.appendChild(o);
-  if (options.length && pieceOptions.length) {
-    const brk = document.createElement('div');
-    brk.style.flexBasis = '100%';
-    brk.style.height = '0';
-    menu.appendChild(brk);
+  // each category gets a compact label row above its buttons; pathways
+  // stay on the bottom row nearest the thumb
+  const addGroup = (label, items) => {
+    if (!items.length) return;
+    const cap = document.createElement('div');
+    cap.style.cssText = 'flex-basis:100%; font-size:9px; letter-spacing:2.5px; ' +
+      'color:rgba(217,164,65,0.85); margin:3px 0 0 3px; text-align:left;';
+    cap.textContent = label;
+    menu.appendChild(cap);
+    for (const o of items) menu.appendChild(o);
+  };
+  for (const key of ['attack', 'shield', 'works', 'favor', 'destroy']) {
+    addGroup(GROUP_LABELS[key], groups[key]);
   }
-  for (const o of pieceOptions) menu.appendChild(o);
+  addGroup('PATHWAYS', pieceOptions);
   menu.classList.remove('hidden');
   if (UI.shimmerPending) {
     // the shimmer has now actually been seen — never again
