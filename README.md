@@ -10,11 +10,11 @@ A portrait mobile web prototype for the Meta Horizon Creator Competition (Tower 
 
 ---
 
-## A full match in ninety seconds
+## Watch the game beat Poseidon
 
-A complete match on seed `optc` (the balance suite's best-scoring seed), filmed at ~10× speed with the same scripted player the sweeps score — junction pieces, Wind Walls at every telegraph, Tailwinds on loaded convoys, the hydrogen refit. Fourteen waves: nine authored tides, then Poseidon's wrath tides grinding both networks to stubs, and the new ending — the temple holds, and **ZEUS CALLS THE MATTER SETTLED**:
+A full match played by the **genetically-evolved champion strategy** (the same one that drives WATCH A MATCH mode), filmed on the reference seed and shown at speed: temple chains toward Poseidon's corner, aimed bolt batteries at his doorstep, Wind Walls at every telegraph, the hydrogen refit — then nine tides and his wrath weathered with the temple standing, and the verdict: **ZEUS RULES IN YOUR FAVOR**, with REFUSE — FIGHT ON offered on screen:
 
-**▶ [Watch the full-match timelapse (mp4, ~1.5 min)](docs/media/match_timelapse.mp4)**
+**▶ [Watch the full match (mp4, ~1.75 min)](docs/media/match_timelapse.mp4)**
 
 <img src="screenshots/match_teaser.gif" width="220">
 
@@ -24,7 +24,7 @@ A complete match on seed `optc` (the balance suite's best-scoring seed), filmed 
 
 Open `index.html` in a browser (portrait phone, or a narrow browser window). No server or network needed.
 
-- **Tap anywhere gold markers glow** — island coasts, route ends, structure ports. A context menu opens at your thumb, its options grouped in labelled category columns (ATTACK · SHIELD · FACTORY · RITES · FAVOR · DESTROY, with PATHWAYS on the row nearest your thumb): the route pieces in your hand that fit there, every building valid at that spot (each explained in a line), the divine powers (Tailwind anywhere; the Wall shelters the very spot you tapped), salvage, and a Favor-priced reroll. The bottom bar is empty by design — the whole screen belongs to the map.
+- **Tap anywhere gold markers glow** — island coasts, route ends, structure ports. A context menu opens at your thumb, its options grouped in labelled category columns (ATTACK · SHIELD · FACTORY · RITES · FAVOR · DESTROY, with PATHWAYS on the row nearest your thumb, and a ✕ to dismiss): the route pieces in your hand that fit there, every building valid at that spot (each explained in a line), the divine powers (Tailwind anywhere; the Wall shelters the very spot you tapped), salvage, and a Favor-priced reroll. A ghost's wind readout tells you what you're binding — TAILWIND, FAIR WIND, or HEADWIND — before you CONFIRM. The bottom bar is empty by design — the whole screen belongs to the map. And you can leave anytime: the match saves itself when the page loses focus and offers RESUME on your return.
 - **Route pieces cost Favor (✦), flat rate**; buildings and haulers cost Supply (⚇), hauled home as ore.
 - **Tap the ghost to turn it, CONFIRM to bind.** The confirm button quotes the wind multiplier the new corridor would ride.
 - **Tap an island** to send your priest; ten seconds of his presence consecrates a Temple and claims the island.
@@ -114,9 +114,9 @@ Two calls to action: **BIND THE AIR** or **RIDE THE WAVES**. Playing Poseidon mi
 
 Ten parameter-sweep harnesses (`test/opt_*.js`) run scripted full matches across seeds and score match quality — arc length, pressure survived, engagement, economies alive, no degenerate spam. The trial player exercises the whole game: it plays branchers and hubs (the wind law rewards loops), casts Wind Wall at telegraphs and Tailwind on loaded convoys, and buys the hydrogen refit. Every tunable in the config now carries either a sweep citation or a player-directive note: piece prices, temple income, hauler capacity/cost/dwell, difficulty ramp and gun-vs-road damage, starting currency (100/100 turned out to be the exact 16-cell grid optimum — richer starts plateau *lower*), kill bounties (×2 rescues comeback rebuilding), the wind-law fractions, mining rate, and the AI's decision cadence (sharply peaked at 2s). Sweeps that would have scored noise — salvage refunds, and power prices beyond "5✦+ tailwind is uniformly worse" — are honestly marked judgment-tuned.
 
-### 13. A demonstrator that plays the real UI *(done — player-directed)*
+### 13. A demonstrator that plays the real UI — and wins *(done — player-directed, genetically evolved)*
 
-**WATCH A MATCH** on the title screen hands the controls to a demonstrator that plays exactly the way you would: it opens the true context menu at the spot it's acting on, the button it means to press lights gold and pulses, the press fires the same handler your thumb would, and ghost placements walk the same TURN → CONFIRM flow. Priest voyages, temple foundings, haulers, guns, and every road piece all go through the visible menus — so watching one demo teaches the entire interface. The wave chip narrates the assault as it happens ("TWO SHIPS EN ROUTE" → "ATTACKING"), waves arrive as real hordes (up to eight transports with siphons and heavies behind), and any tap returns you to the title. The end screen now offers both **AGAIN** and **BACK TO MENU**.
+**WATCH A MATCH** hands the controls to a demonstrator that plays exactly the way you would: it opens the true context menu at the spot it's acting on, the button it means to press lights gold and pulses, and ghost placements walk the same TURN → CONFIRM flow — priest voyages, temples, guns aimed with visible TURN presses, shields, both divine powers, the hydrogen refit through the yard dialog. And it is *good*: its strategy is the champion of a **genetic search** (14 genes, 14 generations × 18 genomes, ~800 headless matches against the real Poseidon AI) that wins all six holdout seeds. The doctrine evolution discovered is a blitz — offense from the first minute, relentless kill-shot spacing, a fat gun reserve, a lean fleet, and almost no static defense, because tempo *is* defense. Live, through the menus, it wins the reference seed by assault in ~3 minutes; on maps whose corner it can't crack, it consolidates and takes Zeus's verdict instead. The wave chip narrates the assault ("TWO SHIPS EN ROUTE" → "ATTACKING"), and any tap returns you to the title. The whole harness ships in `test/` (`ga_lib.js`, `opt_evolve.js`) and re-runs with one command after any balance change.
 
 <img src="screenshots/demo_menu.png" width="300">
 
@@ -128,7 +128,13 @@ Haulers route on the best channel the wind favors and never travel opposite the 
 
 ### 15. Every match ends *(done — funness audit)*
 
-An 8-seed census caught half of all matches fizzling: the ninth tide passes, nothing forces a conclusion, and a full-health player just drifts. Now the tide never stops — past the authored nine, **wrath tides** come every 30 seconds at the final horde composition, escalating (+0.15 strength per tide toward a 1.8 cap) until something breaks. And for the fortress player nothing can break (census seeds survived 25 waves untouched), there is a verdict instead of a void: weather nine tides *and* five full wrath tides with your Great Temple standing, and **ZEUS CALLS THE MATTER SETTLED** — the arbitration victory, worded for whichever god you served. Re-census after the change: 0/8 timeouts; the longest possible match now ends inside ~11 minutes with a screen, never a shrug.
+An 8-seed census caught half of all matches fizzling: the ninth tide passes, nothing forces a conclusion, and a full-health player just drifts. Now the tide never stops — past the authored nine, **wrath tides** come every 30 seconds at the final horde composition, escalating (+0.15 strength per tide toward a 1.8 cap) until something breaks. And for the fortress player nothing can break (census seeds survived 25 waves untouched), there is a verdict instead of a void: weather nine tides *and* five full wrath tides with your Great Temple standing, and **ZEUS RULES IN YOUR FAVOR** — plainly worded as the victory it is. Prefer the kill? A gold **REFUSE — FIGHT ON** button declines the verdict: the tides resume permanently, and only a fallen Great Temple ends the matter. Re-census after the change: 0/8 timeouts; every match ends with a screen, never a shrug.
 
 <img src="screenshots/wrath.png" width="300"> <img src="screenshots/zeus.png" width="300">
+
+### 16. Life happens — save & resume *(done — player-directed: "this is a mobile game")*
+
+Lock your phone, switch apps, lose the tab mid-siege: the moment the page loses focus, the full match state snapshots to local storage — resources, every road with its support state, structures, haulers mid-flight with cargo and paths, priests, enemy craft, the wave clock, fog exploration, quarry reserves. The map itself regenerates from the seed. On your next visit the title screen offers **RESUME YOUR MATCH — WAVE N · seed**; restoring re-links everything and recalculates support, influence, and fog. Demo matches never save; a decided match clears its save. The whole round trip is a permanent Playwright test in the battery (`test/test_resume.js`): save on hide, offer on reload, exact restore, resumed match proven alive. A build stamp on the title corner settles which-version-am-I-running questions at a glance.
+
+<img src="screenshots/resume.png" width="300">
 
