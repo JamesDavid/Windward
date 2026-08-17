@@ -123,16 +123,21 @@ function demoPlan(state) {
     const c = d.supply.cells.find(cc => !isPlot(cc)) || d.supply.cells[0];
     return { cell: [c[0], c[1]], key: 'priest', kind: 'instant' };
   }
+  // a cell is only worth tapping if the build would actually be legal
+  // there — whyNotBuild knows about the Great Temple's own footprint,
+  // quarries, and every other refusal that used to flash OCCUPIED
+  const buildableCell = (isl, type) => isl.cells.find(([x, z]) =>
+    !whyNotBuild(state, 'A', type, { site: 'plot', islandId: isl.id, plotIdx: -1, cell: [x, z] }));
   if (p.state === 'idle' && p.islandId === d.supply.id && !d.supply.temple &&
     state.res.A.supply >= CONFIG.Structures.TEMPLE.COST) {
-    const c = d.supply.cells.find(([x, z]) => !structureAt(state, x, z) && !plotBlockedByQuarry(d.supply, { x, z }));
+    const c = buildableCell(d.supply, 'temple');
     if (c) return { cell: [c[0], c[1]], key: 'temple', kind: 'ghost' };
   }
   // 2. one home vane, early
   const home = state.gtA;
   if (state.time > 12 && state.res.A.supply >= 12 &&
     !state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === home.id)) {
-    const c = home.cells.find(([x, z]) => !structureAt(state, x, z) && !plotBlockedByQuarry(home, { x, z }));
+    const c = buildableCell(home, 'vane');
     if (c) return { cell: [c[0], c[1]], key: 'vane', kind: 'ghost' };
   }
   // 3. a forward bolt now and then (with a TURN for show)

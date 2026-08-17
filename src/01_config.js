@@ -50,7 +50,10 @@ const CONFIG = Object.freeze({
   Wind: {
     FIELD_W: 6, FIELD_H: 10,
     AIR_MIN: 0.55, AIR_MAX: 1.45,   // sweep-backed (test/opt_headwind.js): wider spread rewards circuit routes; hard one-way lanes rejected (drifting wind would strand fleets)
-    HAULER_MIN_MULT: 0.8,           // hot-air haulers plan only wind-favorable legs (player-directed: "they can't go against the wind"); below this the leg is closed and they wait for the shift. Hydrogen dirigibles exempt.
+    HAULER_MIN_FRAC: 0.28,          // haulers on BOTH sides plan only current-favorable legs (player-directed): a leg is closed below this fraction of the side's wind band (air 0.55-1.45 -> 0.80; sea 0.92-1.08 -> 0.96) and the fleet waits for the shift. Hydrogen / Deep Hulls exempt.
+    TACK_AFTER: 20,                 // safety valve: after this many seconds with no favorable channel the fleet tacks the least-adverse path anyway...
+    TACK_SPEED_MULT: 0.55,          // ...with adverse legs at this extra speed penalty on top of the real headwind multiplier. Struggle, not deadlock.
+    BOUND_CHANNEL_FRAC: 0.4,        // player-directed: a side's OWN channels carry bound current — effective multiplier is floored at this fraction of the band (air 0.91, sea 0.98) even against the prevailing wind, so roads work but a true tailwind channel is visibly faster. Raw wind rules everything unbound (headless proof: without this, a drifting wind starved the reference seed for a whole match).
     SEA_MIN: 0.92, SEA_MAX: 1.08,
     DRIFT_DEGREES: 30, DRIFT_PERIOD: 90.0
   },

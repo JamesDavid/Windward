@@ -72,16 +72,32 @@ function findNetPath(state, side, fromCell, toCells) {
   return null;
 }
 
-// Free hot-air balloons ride ONLY the favorable wind (player-directed:
-// "they can't go against the wind"): route planning closes any open-air
-// leg whose wind multiplier falls below Wind.HAULER_MIN_MULT in its
-// direction of travel, and weights the remaining legs by headwind — so
-// a hauler picks the best channel, or WAITS at its mooring for the
-// wind to shift. Island-ground legs always pass. Hydrogen dirigibles
-// (bow scoops, powered lift) are exempt and beat into any wind.
+// The wind law of the roads (player-directed, three rulings): fleets
+// ride the best favorable channel, never travel opposite the air in a
+// channel — and "we have the air god on our side": a side's OWN bound
+// channels carry a held current (effective multiplier floored at
+// BOUND_CHANNEL_FRAC of the band) so roads always work, while routing
+// weights by the RAW prevailing wind so naturally favorable channels
+// win. Build a loop and the flow becomes a loop: out along the
+// with-wind arc, home along the other. Raw wind rules anything
+// unbound; the fleet refit (hydrogen scoops / Deep Hulls) is exempt.
+function boundLegMult(state, side, ax, az, bx, bz, isAir) {
+  const dx = bx - ax, dz = bz - az;
+  const len = Math.hypot(dx, dz) || 1;
+  const raw = state.wind.multiplier((ax + bx) / 2, (az + bz) / 2, dx / len, dz / len, isAir);
+  const seg = state.segments.get(side + ':' + segKey(ax, az, bx, bz));
+  if (!seg || seg.supportState !== 'SUPPORTED') return { raw, eff: raw };
+  const W = CONFIG.Wind;
+  const lo = isAir ? W.AIR_MIN : W.SEA_MIN, hi = isAir ? W.AIR_MAX : W.SEA_MAX;
+  return { raw, eff: Math.max(raw, lo + W.BOUND_CHANNEL_FRAC * (hi - lo)) };
+}
+
 function findHaulerPath(state, side, fromCell, toCells) {
-  if (side !== 'A' || state.hydrogen.A) return findNetPath(state, side, fromCell, toCells);
-  const minMult = CONFIG.Wind.HAULER_MIN_MULT;
+  if (state.hydrogen[side]) return findNetPath(state, side, fromCell, toCells);
+  const W = CONFIG.Wind;
+  const isAir = side === 'A';
+  const lo = isAir ? W.AIR_MIN : W.SEA_MIN, hi = isAir ? W.AIR_MAX : W.SEA_MAX;
+  const minMult = lo + W.HAULER_MIN_FRAC * (hi - lo);
   const adj = buildNetGraph(state, side);
   const start = cellKey(fromCell[0], fromCell[1]);
   if (!adj.has(start)) return null;
@@ -106,12 +122,12 @@ function findHaulerPath(state, side, fromCell, toCells) {
       const [bx, bz] = keyCell(nk);
       const ia = islandAt(state, ax, az), ib = islandAt(state, bx, bz);
       let cost = 1;
-      if (!(ia && ia === ib)) {         // open-air leg: the wind rules it
-        const dx = bx - ax, dz = bz - az;
-        const len = Math.hypot(dx, dz) || 1;
-        const mult = state.wind.multiplier((ax + bx) / 2, (az + bz) / 2, dx / len, dz / len, true);
-        if (mult < minMult) continue;   // no beating into the wind
-        cost = len / mult;
+      if (!(ia && ia === ib)) {         // open leg: the wind rules it
+        const m = boundLegMult(state, side, ax, az, bx, bz, isAir);
+        if (m.eff < minMult) continue;  // no beating into unbound wind
+        // weight by the RAW wind so naturally favorable channels win —
+        // this is what makes a loop circulate
+        cost = Math.hypot(bx - ax, bz - az) / Math.max(0.05, m.raw);
       }
       const nd = d + cost;
       if (nd < (dist.has(nk) ? dist.get(nk) : Infinity)) {
@@ -130,7 +146,16 @@ function legSpeed(state, ent, a, b) {
   const isAir = ent.owner === 'A';
   const dx = b[0] - a[0], dz = b[1] - a[1];
   const len = Math.hypot(dx, dz) || 1;
-  let mult = state.wind.multiplier((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, dx / len, dz / len, isAir);
+  // travel feels the BOUND current: the side's own channels are floored
+  // by the god's held wind, so speed never drops below the binding
+  let mult = boundLegMult(state, ent.owner, a[0], a[1], b[0], b[1], isAir).eff;
+  // a tacking hauler is forcing a road with no favorable channel at
+  // all: adverse legs cost extra on top of the honest multiplier
+  if (ent.tacking) {
+    const W = CONFIG.Wind;
+    const lo = isAir ? W.AIR_MIN : W.SEA_MIN, hi = isAir ? W.AIR_MAX : W.SEA_MAX;
+    if (mult < lo + W.HAULER_MIN_FRAC * (hi - lo)) mult *= W.TACK_SPEED_MULT;
+  }
   const base = ent.kind === 'priest' ? CONFIG.Priest.SPEED : (ent.speed || CONFIG.Hauler.SPEED);
   if (ent.owner === 'A' && state.time < state.powers.tailwindUntil) mult *= CONFIG.Powers.TAILWIND.SPEED_MULT;
   return base * mult;
@@ -282,8 +307,20 @@ function updateHauler(state, h, dt) {
       h.strandedSince = null;
       const target = pickCollectionTarget(state, side);
       if (target) {
-        const path = findHaulerPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], target.cells);
+        const from = [Math.round(h.pos[0]), Math.round(h.pos[1])];
+        let path = findHaulerPath(state, side, from, target.cells);
+        let tack = false;
+        if (!path) {
+          // no favorable channel: wait for the shift, then tack anyway
+          if (!h.windWaitSince) h.windWaitSince = state.time;
+          if (state.time - h.windWaitSince > CONFIG.Wind.TACK_AFTER) {
+            path = findNetPath(state, side, from, target.cells);
+            tack = true;
+          }
+        }
         if (path && path.length > 1) {
+          h.windWaitSince = null;
+          h.tacking = tack;
           h.targetIsland = target.id;
           h.path = path; h.legIndex = 0; h.legT = 0;
           h.state = 'toIsland';
@@ -301,21 +338,28 @@ function updateHauler(state, h, dt) {
       h.timer -= dt;
       if (h.timer <= 0) {
         const home = state.greatTemple[side];
-        const path = findHaulerPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [home.cell]);
-        if (path) {
-          // load only on actual departure — a wind-wait must not re-take
-          const isl = state.map.islands[h.targetIsland];
-          const take = Math.min(h.capacity, Math.floor(isl ? isl.stockpile : 0));
-          if (isl) isl.stockpile -= take;
-          h.cargo = take;
-          h.path = path; h.legIndex = 0; h.legT = 0; h.state = 'toHome';
+        const from = [Math.round(h.pos[0]), Math.round(h.pos[1])];
+        let path = findHaulerPath(state, side, from, [home.cell]);
+        let tack = false;
+        if (!path) {
+          const plain = findNetPath(state, side, from, [home.cell]);
+          if (plain) {
+            // road home exists but the wind is against it: hold at the
+            // mooring for the shift, then tack home under penalty
+            if (!h.windWaitSince) h.windWaitSince = state.time;
+            if (state.time - h.windWaitSince > CONFIG.Wind.TACK_AFTER) { path = plain; tack = true; }
+            else { h.timer = 2; break; }
+          }
+          else { enterAdrift(state, h); break; }   // road home is truly gone
         }
-        else if (findNetPath(state, side, [Math.round(h.pos[0]), Math.round(h.pos[1])], [home.cell])) {
-          // the road home exists but the wind is against it: hold at the
-          // mooring and try again shortly — the wind always shifts
-          h.timer = 2;
-        }
-        else enterAdrift(state, h);   // road home is truly gone
+        // load only on actual departure — a wind-wait must not re-take
+        h.windWaitSince = null;
+        h.tacking = tack;
+        const isl = state.map.islands[h.targetIsland];
+        const take = Math.min(h.capacity, Math.floor(isl ? isl.stockpile : 0));
+        if (isl) isl.stockpile -= take;
+        h.cargo = take;
+        h.path = path; h.legIndex = 0; h.legT = 0; h.state = 'toHome';
       }
       break;
     }
