@@ -101,11 +101,23 @@ function initDemo(state) {
   const choke = state.map.islands.find(i => i.role === 'chokepoint');
   const supply = state.map.islands.find(i => i.role === 'supplyA');
   state.demoCtl = {
-    nextAct: 1, lastGun: -99,
+    nextAct: 1, lastGun: -99, lastPush: -99, lastWall: -99,
     camX: worldX(gt[0]), camZ: worldZ(gt[1]), zoom: 1.15,
     gt, choke, supply
   };
 }
+
+// The demonstrator's STRATEGY — evolved by genetic search against the
+// real Poseidon AI (test/opt_evolve.js; ~750 headless matches). These
+// are the champion genome's scaled values; the shape of play they
+// drive: claim a temple chain toward his corner, defend what is held,
+// then drive lanes at his Great Temple and gun it from range.
+const DEMO_STRAT = {
+  vaneTime: 12, gunEvery: 45, gunReserve: 14, junctionBonus: 1.5,
+  expandBias: 0.5, offenseAt: 180, defVanes: 1, shieldUse: 1,
+  wallUse: 1, tailwindUse: 1, hydrogenAt: 45, haulerTarget: 3,
+  templeBudget: 24, pushSpacing: 30
+};
 
 // The demonstrator PLAYS THE UI (player-directed): it opens the real
 // context menu at the spot it acts on, highlights the button it means
@@ -114,6 +126,10 @@ function initDemo(state) {
 function demoPlan(state) {
   const d = state.demoCtl;
   const p = state.priests.A;
+  const S = DEMO_STRAT;
+  const res = state.res.A;
+  const gtP = state.greatTemple.P.cell;
+  const dEnemy = (c) => Math.abs(c[0] - gtP[0]) + Math.abs(c[1] - gtP[1]);
   // a refused or failed action is blacklisted for a while so the
   // demonstrator moves on instead of looping (player report: it kept
   // pressing a refused CHAIN VANE)
@@ -123,80 +139,170 @@ function demoPlan(state) {
     const until = d.bad.get(plan.key + '@' + plan.cell.join(','));
     return until && state.time < until ? null : plan;
   };
-  // 1. priest toward the supply island (only once a road reaches it —
-  // otherwise fall through and LAY the road), then its temple
-  if (p.state === 'idle' && !d.supply.temple && p.islandId !== d.supply.id &&
-    findNetPath(state, 'A', [Math.round(p.pos[0]), Math.round(p.pos[1])], d.supply.cells)) {
-    // SEND PRIEST lives on the island-BODY menu, not the plot menu
-    const isPlot = ([x, z]) => d.supply.plots.some(pl => pl.x === x && pl.z === z);
-    const c = d.supply.cells.find(cc => !isPlot(cc)) || d.supply.cells[0];
-    const pl = ok({ cell: [c[0], c[1]], key: 'priest', kind: 'instant' });
-    if (pl) return pl;
-  }
-  // a cell is only worth tapping if the build would actually be legal
-  // there — whyNotBuild knows about the Great Temple's own footprint,
-  // quarries, and every other refusal that used to flash OCCUPIED
+  const bodyCell = (isl) => {
+    const isPlot = ([x, z]) => isl.plots.some(pl => pl.x === x && pl.z === z);
+    return isl.cells.find(cc => !isPlot(cc)) || isl.cells[0];
+  };
   const buildableCell = (isl, type) => isl.cells.find(([x, z]) =>
     !whyNotBuild(state, 'A', type, { site: 'plot', islandId: isl.id, plotIdx: -1, cell: [x, z] }));
-  if (p.state === 'idle' && p.islandId === d.supply.id && !d.supply.temple &&
-    state.res.A.supply >= CONFIG.Structures.TEMPLE.COST) {
-    const c = buildableCell(d.supply, 'temple');
-    const pl = c && ok({ cell: [c[0], c[1]], key: 'temple', kind: 'ghost' });
-    if (pl) return pl;
+  // signed TURN presses that swing the default facing onto a target
+  const aimTurns = (cell) => {
+    let tgt = gtP, bd = Infinity;
+    for (const st of state.structures) {
+      if (st.owner !== 'P' || st.hp <= 0) continue;
+      const dd = Math.abs(st.cell[0] - cell[0]) + Math.abs(st.cell[1] - cell[1]);
+      if (dd < bd) { bd = dd; tgt = st.cell; }
+    }
+    const want = Math.atan2(tgt[1] - cell[1], tgt[0] - cell[0]);
+    const def = defaultFacing(state, 'A', cell);
+    let delta = want - def;
+    while (delta > Math.PI) delta -= 2 * Math.PI;
+    while (delta < -Math.PI) delta += 2 * Math.PI;
+    return Math.max(-3, Math.min(3, Math.round(delta / (Math.PI / 4))));
+  };
+
+  // 1. priest: temple where he stands, else claim the best next island
+  // (value = ore vs toward-his-corner, per the evolved expandBias)
+  if (p.state === 'idle') {
+    const here = p.islandId !== null ? state.map.islands[p.islandId] : null;
+    if (here && !here.role.startsWith('greatTemple') &&
+      (!here.temple || here.temple.hp <= 0) &&
+      res.supply >= CONFIG.Structures.TEMPLE.COST &&
+      res.favor >= (CONFIG.Structures.TEMPLE.FAVOR || 0)) {
+      const c = buildableCell(here, 'temple');
+      const pl = c && ok({ cell: [c[0], c[1]], key: 'temple', kind: 'ghost' });
+      if (pl) return pl;
+    }
+    let bestIsl = null, bs = -Infinity;
+    const normD = dEnemy(d.gt) || 1;
+    for (const isl of state.map.islands) {
+      if (isl.role.startsWith('greatTemple')) continue;
+      if (isl.temple && isl.temple.hp > 0) continue;
+      if (islandClosedTo(state, isl, 'A')) continue;
+      if (!findNetPath(state, 'A', [Math.round(p.pos[0]), Math.round(p.pos[1])], isl.cells)) continue;
+      const toward = 1 - dEnemy([Math.round(isl.center[0]), Math.round(isl.center[1])]) / normD;
+      const ore = Math.min(1, (isl.reserve || 0) / 1500);
+      const sc = S.expandBias * toward + (1 - S.expandBias) * ore;
+      if (sc > bs) { bs = sc; bestIsl = isl; }
+    }
+    if (bestIsl && (p.islandId === null || bestIsl.id !== p.islandId)) {
+      const c = bodyCell(bestIsl);
+      const pl = ok({ cell: [c[0], c[1]], key: 'priest', kind: 'instant' });
+      if (pl) return pl;
+    }
   }
-  // 2. one home vane, early
+  // 2. defense: home vane first, then one per claimed island (defVanes)
   const home = state.gtA;
-  if (state.time > 12 && state.res.A.supply >= 12 &&
-    !state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === home.id)) {
+  const vanesOn = (isl) => state.structures.filter(s => s.owner === 'A' && s.type === 'vane' && s.islandId === isl.id && s.hp > 0).length;
+  if (state.time > S.vaneTime && res.supply >= 12 && vanesOn(home) < 1) {
     const c = buildableCell(home, 'vane');
     const pl = c && ok({ cell: [c[0], c[1]], key: 'vane', kind: 'ghost' });
     if (pl) return pl;
   }
-  // 2b. a mooring yard BEFORE any hauler purchase — the Great Temple
-  // itself moors two, so buying early is legal, but the demo must show
-  // where haulers come from (player report: a hauler bought "without
-  // having a mooring")
-  if (state.time > 20 && state.res.A.supply >= CONFIG.Yard.COST + CONFIG.Hauler.COST &&
-    !state.structures.some(s => s.owner === 'A' && s.type === 'yard')) {
+  if (res.supply >= 7 + S.gunReserve) {
+    for (const isl of state.map.islands) {
+      if (isl.owner !== 'A' || isl.role.startsWith('greatTemple')) continue;
+      if (vanesOn(isl) >= Math.floor(S.defVanes)) continue;
+      const c = buildableCell(isl, 'vane');
+      const pl = c && ok({ cell: [c[0], c[1]], key: 'vane', kind: 'ghost' });
+      if (pl) return pl;
+    }
+  }
+  // 2b. a mooring yard BEFORE any hauler purchase; more yards when the
+  // evolved fleet target outgrows the moorings
+  const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
+  const yardAny = state.structures.some(s => s.owner === 'A' && s.type === 'yard' && s.hp > 0);
+  const yardUp = state.structures.some(s => s.owner === 'A' && s.type === 'yard' && s.hp > 0 && s.buildProgress >= 1);
+  const needYard = (!yardAny && state.time > 20) ||
+    (yardUp && fleet >= fleetCap(state, 'A') && fleet < Math.round(S.haulerTarget));
+  if (needYard && res.supply >= CONFIG.Yard.COST + CONFIG.Hauler.COST) {
     const c = buildableCell(home, 'yard');
     const pl = c && ok({ cell: [c[0], c[1]], key: 'yard', kind: 'ghost' });
     if (pl) return pl;
   }
-  // 3. a forward bolt now and then (with a TURN for show)
-  if (state.time - d.lastGun > 45 && state.res.A.supply >= 14) {
-    const ends = getSockets(state, 'A').filter(s => s.kind === 'end' && !structureAt(state, s.cell[0], s.cell[1]));
-    ends.sort((a, b) =>
-      (Math.abs(b.cell[0] - d.gt[0]) + Math.abs(b.cell[1] - d.gt[1])) -
-      (Math.abs(a.cell[0] - d.gt[0]) + Math.abs(a.cell[1] - d.gt[1])));
-    const pl = ends.length && ok({ cell: ends[0].cell.slice(), key: 'bolt', kind: 'ghost', turns: 1 });
+  // 3. forward bolts on cadence — and the KILL SHOT: any open end within
+  // range of his Great Temple gets a gun aimed square at it, now
+  const ends = getSockets(state, 'A').filter(s => s.kind === 'end' && !structureAt(state, s.cell[0], s.cell[1]));
+  if (state.time >= S.offenseAt && state.time - d.lastPush > S.pushSpacing && res.supply >= 10) {
+    const range = CONFIG.Structures.BOLT_DIR.RANGE;
+    const kill = ends.filter(s => dist2d(s.cell[0], s.cell[1], gtP[0], gtP[1]) <= range + 1);
+    if (kill.length) {
+      const pl = ok({ cell: kill[0].cell.slice(), key: 'bolt', kind: 'ghost', turns: aimTurns(kill[0].cell) });
+      if (pl) { d.lastPush = state.time; return pl; }
+    }
+  }
+  if (state.time - d.lastGun > S.gunEvery && res.supply >= 10 + S.gunReserve) {
+    const sorted = ends.slice().sort((a, b) => dEnemy(a.cell) - dEnemy(b.cell));
+    const pl = sorted.length && ok({ cell: sorted[0].cell.slice(), key: 'bolt', kind: 'ghost', turns: aimTurns(sorted[0].cell) });
     if (pl) { d.lastGun = state.time; return pl; }
   }
-  // 4. a hauler when the fleet has room — but only after the yard
-  // stands, so the audience sees the mooring before the balloon
-  const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
-  const yardUp = state.structures.some(s => s.owner === 'A' && s.type === 'yard' && s.hp > 0 && s.buildProgress >= 1);
-  if (yardUp && fleet < fleetCap(state, 'A') && state.res.A.supply >= CONFIG.Hauler.COST + 10) {
-    // the BUILD HAULER button lives on the island-body menu: pick a
-    // home cell that is NOT a marked plot so that branch opens
-    const isPlot = ([x, z]) => home.plots.some(pl => pl.x === x && pl.z === z);
-    const c = home.cells.find(cc => !isPlot(cc)) || home.cells[0];
+  // 3b. shield the forward gun (evolved: worth the coin)
+  if (S.shieldUse > 0.5 && res.supply >= 12 + S.gunReserve && res.favor >= 4) {
+    const guns = state.structures.filter(s => s.owner === 'A' && s.type === 'bolt' && s.site === 'endpoint' && s.hp > 0)
+      .sort((a, b) => dEnemy(a.cell) - dEnemy(b.cell));
+    const fwd = guns[0];
+    if (fwd && !state.structures.some(s => s.owner === 'A' && s.type === 'shield' && s.hp > 0 &&
+      dist2d(s.cell[0], s.cell[1], fwd.cell[0], fwd.cell[1]) <= CONFIG.Structures.SHIELD_COVER_RADIUS)) {
+      const near = ends.filter(s => dist2d(s.cell[0], s.cell[1], fwd.cell[0], fwd.cell[1]) <= CONFIG.Structures.SHIELD_COVER_RADIUS);
+      const pl = near.length && ok({ cell: near[0].cell.slice(), key: 'shield', kind: 'ghost' });
+      if (pl) return pl;
+    }
+  }
+  // 4. divine aid and the refit, all through the menus
+  const P = CONFIG.Powers;
+  if (S.wallUse > 0.5 && state.wave.telegraphed && res.favor >= P.WIND_WALL.FAVOR + 4 && state.time - (d.lastWall || -99) > 20) {
+    let fwd = null, fd = -1;
+    for (const st of state.structures) {
+      if (st.owner !== 'A' || st.hp <= 0) continue;
+      const dd = Math.abs(st.cell[0] - d.gt[0]) + Math.abs(st.cell[1] - d.gt[1]);
+      if (dd > fd) { fd = dd; fwd = st; }
+    }
+    if (fwd) {
+      const pl = ok({ cell: fwd.cell.slice(), key: 'windwall', kind: 'instant' });
+      if (pl) { d.lastWall = state.time; return pl; }
+    }
+  }
+  if (S.tailwindUse > 0.5 && res.favor >= P.TAILWIND.FAVOR + 10 && state.time >= state.powers.tailwindUntil &&
+    state.haulers.some(x => x.owner === 'A' && x.state === 'toHome' && x.cargo > 0)) {
+    const pl = ok({ cell: bodyCell(home), key: 'tailwind', kind: 'instant' });
+    if (pl) return pl;
+  }
+  if (!state.hydrogen.A && res.supply >= S.hydrogenAt && res.favor >= CONFIG.Tech.HYDROGEN_COST_FAVOR + 6) {
+    // the refit lives in the yard dialog: tap the yard itself
+    const yard = state.structures.find(s => s.owner === 'A' && s.type === 'yard' && s.hp > 0 && s.buildProgress >= 1);
+    if (yard) {
+      const pl = ok({ cell: yard.cell.slice(), key: 'hydrogen', kind: 'instant' });
+      if (pl) return pl;
+    }
+  }
+  // 5. haulers to the evolved fleet target (after the yard lesson)
+  if (yardUp && fleet < Math.min(Math.round(S.haulerTarget), fleetCap(state, 'A')) &&
+    res.supply >= CONFIG.Hauler.COST + 10) {
+    const c = bodyCell(home);
     const pl = ok({ cell: [c[0], c[1]], key: 'hauler', kind: 'instant' });
     if (pl) return pl;
   }
-  // 5. otherwise: lay a path toward the objective, through the real menu
-  const target = d.supply.temple && d.supply.temple.buildProgress >= 1 ? d.choke.center : d.supply.center;
-  const type = state.hand[0];
-  if (state.res.A.favor >= pieceCost(type)) {
-    let bestSock = null, bestIdx = 0, bestD = Infinity;
-    for (const sock of getSockets(state, 'A')) {
-      const pls = legalPlacements(state, 'A', type, sock);
-      for (let i = 0; i < pls.length; i++) {
-        const far = pls[i].segs[pls[i].segs.length - 1][1];
-        const dd = Math.abs(far[0] - target[0]) + Math.abs(far[1] - target[1]);
-        if (dd < bestD) { bestD = dd; bestSock = sock; bestIdx = i; }
+  // 6. lay road: supply island -> chokepoint -> HIS CORNER
+  let target = d.supply.center;
+  if (d.supply.temple && d.supply.temple.buildProgress >= 1) {
+    target = state.time >= S.offenseAt ? gtP : d.choke.center;
+  }
+  {
+    let bestSock = null, bestIdx = 0, bestType = null, bestScore = -Infinity;
+    for (let slot = 0; slot < state.hand.length; slot++) {
+      const type = state.hand[slot];
+      if (res.favor < pieceCost(type)) continue;
+      for (const sock of getSockets(state, 'A')) {
+        const pls = legalPlacements(state, 'A', type, sock);
+        for (let i = 0; i < pls.length; i++) {
+          const far = pls[i].segs[pls[i].segs.length - 1][1];
+          const dd = Math.abs(far[0] - target[0]) + Math.abs(far[1] - target[1]);
+          const sc = -dd + (piecePlugs(type) - 1) * S.junctionBonus;
+          if (sc > bestScore) { bestScore = sc; bestSock = sock; bestIdx = i; bestType = type; }
+        }
       }
     }
-    const pl = bestSock && ok({ cell: bestSock.cell.slice(), key: 'piece-' + type, kind: 'ghost', turns: Math.min(bestIdx, 3) });
+    const pl = bestSock && ok({ cell: bestSock.cell.slice(), key: 'piece-' + bestType, kind: 'ghost', turns: Math.min(bestIdx, 3) });
     if (pl) return pl;
   }
   return null;
@@ -252,10 +358,11 @@ function demoTick(state, dt) {
       d.phase = null;
       d.nextAct = now + 1.5;
     }
-    else if (d.turnsLeft > 0) {
-      const rot = document.getElementById('btn-rotate');
+    else if (d.turnsLeft !== 0) {
+      // signed turns: negative swings left, positive swings right
+      const rot = document.getElementById(d.turnsLeft > 0 ? 'btn-rotate' : 'btn-rotate-l');
       if (rot && !rot.classList.contains('hidden')) { rot.classList.add('demopress'); rot.click(); setTimeout(() => rot.classList.remove('demopress'), 400); }
-      d.turnsLeft--;
+      d.turnsLeft -= Math.sign(d.turnsLeft);
       d.phaseAt = now;
     } else {
       const ok = demoHighlight('#btn-confirm');
