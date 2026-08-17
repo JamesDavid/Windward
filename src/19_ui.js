@@ -926,7 +926,11 @@ function refreshHUD(state) {
     const name = w.index >= CONFIG.Waves.COUNT
       ? 'WRATH TIDE IN ' + Math.ceil(remain) + 's'   // past nine, the sea does not tire
       : 'WAVE ' + (w.index + 1) + ' IN ' + Math.ceil(remain) + 's';
-    UI.els.waveinfo.innerHTML = name + fleetLine;
+    // Poseidon's TEMPER (player-directed): the live ladder tier, always
+    // visible so you know how he is playing at every stage
+    const mood = CONFIG.AI.LADDER[state.aiTier !== undefined ? state.aiTier : 1].name;
+    const moodLine = '<br><span style="font-size:10px; letter-spacing:2px; color:#7fd4dd; opacity:0.85">POSEIDON IS ' + mood + '</span>';
+    UI.els.waveinfo.innerHTML = name + fleetLine + moodLine;
   }
   // keep the floating confirm row glued to its ghost through pans/zooms
   if (!UI.els.confirm.classList.contains('hidden')) placeConfirmRow();
