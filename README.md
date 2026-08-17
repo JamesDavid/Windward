@@ -10,11 +10,11 @@ A portrait mobile web prototype for the Meta Horizon Creator Competition (Tower 
 
 ---
 
-## A full match in one minute
+## A full match in ninety seconds
 
-A nine-wave match on seed `simtest1` (the balance suite's reference seed), filmed at ~7× speed with a scripted player — every wave telegraphed, fought, and survived:
+A complete match on seed `optc` (the balance suite's best-scoring seed), filmed at ~10× speed with the same scripted player the sweeps score — junction pieces, Wind Walls at every telegraph, Tailwinds on loaded convoys, the hydrogen refit. Fourteen waves: nine authored tides, then Poseidon's wrath tides grinding both networks to stubs, and the new ending — the temple holds, and **ZEUS CALLS THE MATTER SETTLED**:
 
-**▶ [Watch the full-match timelapse (mp4, ~1 min)](docs/media/match_timelapse.mp4)**
+**▶ [Watch the full-match timelapse (mp4, ~1.5 min)](docs/media/match_timelapse.mp4)**
 
 <img src="screenshots/match_teaser.gif" width="220">
 
@@ -112,7 +112,7 @@ Two calls to action: **BIND THE AIR** or **RIDE THE WAVES**. Playing Poseidon mi
 
 ### 12. Tuned by simulation *(done)*
 
-Three parameter-sweep harnesses (`test/opt_favor.js`, `opt_income.js`, `opt_capacity.js`) run scripted full matches across seeds and score match quality — arc length, pressure survived, engagement, economies alive, no degenerate spam. They set the flat Favor price of route pieces, the temple-income baseline and divisor, and hauler capacity (12/24 — larger loads flood the economy now that every connected island mines). The match video above is the reference seed those sweeps optimise.
+Ten parameter-sweep harnesses (`test/opt_*.js`) run scripted full matches across seeds and score match quality — arc length, pressure survived, engagement, economies alive, no degenerate spam. The trial player exercises the whole game: it plays branchers and hubs (the wind law rewards loops), casts Wind Wall at telegraphs and Tailwind on loaded convoys, and buys the hydrogen refit. Every tunable in the config now carries either a sweep citation or a player-directive note: piece prices, temple income, hauler capacity/cost/dwell, difficulty ramp and gun-vs-road damage, starting currency (100/100 turned out to be the exact 16-cell grid optimum — richer starts plateau *lower*), kill bounties (×2 rescues comeback rebuilding), the wind-law fractions, mining rate, and the AI's decision cadence (sharply peaked at 2s). Sweeps that would have scored noise — salvage refunds, and power prices beyond "5✦+ tailwind is uniformly worse" — are honestly marked judgment-tuned.
 
 ### 13. A demonstrator that plays the real UI *(done — player-directed)*
 
@@ -122,7 +122,13 @@ Three parameter-sweep harnesses (`test/opt_favor.js`, `opt_income.js`, `opt_capa
 
 ### 14. The wind rules the roads *(done — player-directed, three rulings)*
 
-Haulers route on the best channel the wind favors and never travel opposite the air in a channel — but "we have the air god on our side": a side's own bound channels carry a held current (effective speed floored at the binding, ~0.91× for air, ~0.98× for Poseidon's dredged lanes), so your roads always work, while route planning weighs the *raw* prevailing wind so naturally favorable channels win. The emergent payoff: **build a loop and the airflow becomes a loop** — the fleet rides out along the with-wind arc and home along the other. Raw wind rules anything unbound; if no favorable channel exists at all, a fleet holds at its mooring for the shift, then tacks under a heavy penalty rather than deadlock. The hydrogen refit (bow scoops, powered lift) is exempt, a genuine second reason to buy it. Headless proof drove the design: a strict no-adverse-legs rule starved the reference seed for an entire match — the bound-channel floor restored the economy (63 deliveries) with routing still visibly wind-shaped. **And the flow is visible**: gold streaks ride every air ribbon and foam-cyan dashes ride every sea lane, always in the wind's true direction — long and quick where the wind agrees, short stubs where the god holds the current — so you can read which way a channel wants your fleet to travel at a glance (remembered enemy lanes under fog show no live flow; that would leak the wind). The difficulty grid was re-swept under the wind-law economy (`gun-vs-road 0.45`, same ramp).
+Haulers route on the best channel the wind favors and never travel opposite the air in a channel — but "we have the air god on our side": a side's own bound channels carry a held current (effective speed floored at the binding, ~0.91× for air, ~0.98× for Poseidon's dredged lanes), so your roads always work, while route planning weighs the *raw* prevailing wind so naturally favorable channels win. The emergent payoff: **build a loop and the airflow becomes a loop** — the fleet rides out along the with-wind arc and home along the other. Raw wind rules anything unbound; if no favorable channel exists at all, a fleet holds at its mooring for the shift, then tacks under a heavy penalty rather than deadlock. The hydrogen refit (bow scoops, powered lift) is exempt, a genuine second reason to buy it. Headless proof drove the design: a strict no-adverse-legs rule starved the reference seed for an entire match — the bound-channel floor restored the economy (63 deliveries) with routing still visibly wind-shaped. **And the flow is visible**: gold streaks ride every air ribbon and foam-cyan dashes ride every sea lane, always in the wind's true direction — long and quick where the wind agrees, short stubs where the god holds the current — so you can read which way a channel wants your fleet to travel at a glance (remembered enemy lanes under fog show no live flow; that would leak the wind). Waits are legible too: the ticker says "THE WIND SETS AGAINST THE ROAD — THE FLEET WAITS" (or "NO FAIR WIND — THE FLEET CLAWS FORWARD" when tacking), and tapping a hauler shows its state. The difficulty grid was re-swept under the wind-law economy (`gun-vs-road 0.45`, same ramp).
 
-<img src="screenshots/channel_flow.png" width="300">
+<img src="screenshots/channel_flow.png" width="300"> <img src="screenshots/windwait.png" width="300">
+
+### 15. Every match ends *(done — funness audit)*
+
+An 8-seed census caught half of all matches fizzling: the ninth tide passes, nothing forces a conclusion, and a full-health player just drifts. Now the tide never stops — past the authored nine, **wrath tides** come every 30 seconds at the final horde composition, escalating (+0.15 strength per tide toward a 1.8 cap) until something breaks. And for the fortress player nothing can break (census seeds survived 25 waves untouched), there is a verdict instead of a void: weather nine tides *and* five full wrath tides with your Great Temple standing, and **ZEUS CALLS THE MATTER SETTLED** — the arbitration victory, worded for whichever god you served. Re-census after the change: 0/8 timeouts; the longest possible match now ends inside ~11 minutes with a screen, never a shrug.
+
+<img src="screenshots/wrath.png" width="300"> <img src="screenshots/zeus.png" width="300">
 
