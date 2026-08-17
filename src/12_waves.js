@@ -36,12 +36,13 @@ function arbitrationTally(state) {
   return { shareA: num / den, detail };
 }
 
-function waveInterval(index) {
+function waveInterval(state, index) {
   const W = CONFIG.Waves;
-  if (index >= W.COUNT) return W.WRATH_TIDE_INTERVAL;   // the sea does not tire
-  if (index + 1 >= W.LATE_FROM_WAVE) return W.INTERVAL_LATE;
-  if (index + 1 >= W.MID_FROM_WAVE) return W.INTERVAL_MID;
-  return W.INTERVAL_EARLY;
+  const m = (state.aiCfg && state.aiCfg.WAVE_INTERVAL_MULT) || 1;
+  if (index >= W.COUNT) return W.WRATH_TIDE_INTERVAL * m;   // the sea does not tire
+  if (index + 1 >= W.LATE_FROM_WAVE) return W.INTERVAL_LATE * m;
+  if (index + 1 >= W.MID_FROM_WAVE) return W.INTERVAL_MID * m;
+  return W.INTERVAL_EARLY * m;
 }
 
 // Poseidon's standing complete island temples
@@ -59,7 +60,8 @@ function waveStrength(state) {
   const wrathTides = Math.max(0, state.wave.index - (W.COUNT - 1));
   const cap = wrathTides > 0 ? W.WRATH_STRENGTH_CAP : W.STRENGTH_MAX;
   return clamp(W.STRENGTH_BASE + W.STRENGTH_PER_TEMPLE * poseidonTempleCount(state) +
-    W.WRATH_STRENGTH_STEP * wrathTides, W.STRENGTH_MIN, cap);
+    W.WRATH_STRENGTH_STEP * wrathTides, W.STRENGTH_MIN, cap) *
+    ((state.aiCfg && state.aiCfg.WAVE_STRENGTH_MULT) || 1);
 }
 
 // the player's most forward holding (largest distance from their temple)
@@ -369,6 +371,15 @@ function wavesTick(state, dt) {
     if (!w.telegraphed && state.time >= w.nextAt - W.TELEGRAPH) {
       w.telegraphed = true;
       w.origin = waveOrigin(state);
+      // dynamic skill matching (player-directed): at each telegraph
+      // Zeus's own scales read the board — a player who owns it faces
+      // a sterner Poseidon next tide; one who is drowning gets grace.
+      // Silent, one rung at a time, real matches only (state.dda).
+      if (state.dda && w.index >= CONFIG.AI.DDA_FROM_WAVE) {
+        const share = arbitrationTally(state).shareA;
+        if (share > CONFIG.AI.DDA_UP) applyAiTier(state, state.aiTier + 1);
+        else if (share < CONFIG.AI.DDA_DOWN) applyAiTier(state, state.aiTier - 1);
+      }
       Events.emit('waveTelegraph', { index: w.index, origin: w.origin });
     }
     if (state.time >= w.nextAt) {
@@ -376,7 +387,7 @@ function wavesTick(state, dt) {
       w.index++;
       w.telegraphed = false;
       w.origin = null;
-      w.nextAt += waveInterval(w.index);
+      w.nextAt += waveInterval(state, w.index);
     }
   }
   // Zeus arbitrates: weather the ninth tide and five full wrath tides

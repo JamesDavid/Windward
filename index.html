@@ -290,7 +290,7 @@
     </div>
     <button id="startdemo" style="background:none; color:var(--ivory); border:1px solid rgba(242,232,207,0.4); font-size:13px; padding:8px 18px;">WATCH A MATCH</button>
     <button id="resumebtn" class="hidden" style="background:none; color:var(--gold); border:1px solid var(--gold); font-size:13px; padding:8px 18px;">RESUME YOUR MATCH</button>
-    <div style="position:absolute; bottom:calc(env(safe-area-inset-bottom, 0px) + 6px); right:10px; font-size:9px; letter-spacing:1px; opacity:0.4;">BUILD 2026-08-17 18:20 UTC</div>
+    <div style="position:absolute; bottom:calc(env(safe-area-inset-bottom, 0px) + 6px); right:10px; font-size:9px; letter-spacing:1px; opacity:0.4;">BUILD 2026-08-17 18:36 UTC</div>
   </div>
   <div id="endscreen" class="screen hidden">
     <h1 id="endtitle"></h1>
@@ -555,6 +555,30 @@ const CONFIG = Object.freeze({
     SHELTER_DETOUR_MAX: 1.5,      // prefers sheltered lanes below this detour factor
     MAST_INTERVAL: 30.0,          // tries to raise a siphon mast this often
     TEMPLE_PRIORITY_OVERLAP: true,
+    // ---- tierable knobs (read through state.aiCfg so a difficulty
+    // ladder / dynamic skill matching can override them per match) ----
+    GARRISON_DRUMS: 4,            // plot drums he keeps standing
+    GARRISON_LANCES: 3,           // endpoint lances he keeps standing
+    GUN_CADENCE: 45.0,            // seconds between forward-gun attempts
+    GUN_NEAR: 14,                 // how close to strike waters a gun site must be
+    TOWARD_PLAYER_BIAS: 0.1,      // island scoring: pull toward the player's corner
+    ORE_BIAS: 1.0,                // island scoring: weight on reserves
+    WAVE_STRENGTH_MULT: 1.0,      // multiplier on computed wave strength (0.75-1.35 sane)
+    WAVE_INTERVAL_MULT: 1.0,      // multiplier on wave intervals (lower = faster tides)
+    // ---- the difficulty LADDER (player-directed): four Poseidon
+    // parameter sets graded by evolution against the champion Aeolus
+    // (test/opt_evolve_p.js -> opt_ladder.js). PROVISIONAL hand values
+    // until the evolved ladder is baked; FAIR = shipped defaults. ----
+    LADDER: [
+      { name: 'GENTLE', overrides: { GARRISON_DRUMS: 2, GARRISON_LANCES: 1, GUN_CADENCE: 65, DECISION_INTERVAL: 3.0, WAVE_STRENGTH_MULT: 0.8, WAVE_INTERVAL_MULT: 1.15 } },
+      { name: 'FAIR', overrides: {} },
+      { name: 'STERN', overrides: { GARRISON_DRUMS: 5, GARRISON_LANCES: 4, GUN_CADENCE: 32, DECISION_INTERVAL: 1.6, WAVE_STRENGTH_MULT: 1.12, WAVE_INTERVAL_MULT: 0.95 } },
+      { name: 'CRUEL', overrides: { GARRISON_DRUMS: 6, GARRISON_LANCES: 5, GUN_CADENCE: 24, DECISION_INTERVAL: 1.3, TOWARD_PLAYER_BIAS: 0.25, WAVE_STRENGTH_MULT: 1.3, WAVE_INTERVAL_MULT: 0.88 } }
+    ],
+    // dynamic skill matching: at each telegraph, Zeus's scales decide —
+    // a player who owns the board faces a harder Poseidon, silently
+    DDA_FROM_WAVE: 2,
+    DDA_UP: 0.62, DDA_DOWN: 0.38,
     DECISION_INTERVAL: 2.0,   // swept (test/opt_tempo.js): sharply peaked at 2s (116); 1.2s AI over-churns (71), 3.5s sleepy (93)
     PRIEST_AVOIDS_GUNS: true
   },
@@ -3204,12 +3228,13 @@ function arbitrationTally(state) {
   return { shareA: num / den, detail };
 }
 
-function waveInterval(index) {
+function waveInterval(state, index) {
   const W = CONFIG.Waves;
-  if (index >= W.COUNT) return W.WRATH_TIDE_INTERVAL;   // the sea does not tire
-  if (index + 1 >= W.LATE_FROM_WAVE) return W.INTERVAL_LATE;
-  if (index + 1 >= W.MID_FROM_WAVE) return W.INTERVAL_MID;
-  return W.INTERVAL_EARLY;
+  const m = (state.aiCfg && state.aiCfg.WAVE_INTERVAL_MULT) || 1;
+  if (index >= W.COUNT) return W.WRATH_TIDE_INTERVAL * m;   // the sea does not tire
+  if (index + 1 >= W.LATE_FROM_WAVE) return W.INTERVAL_LATE * m;
+  if (index + 1 >= W.MID_FROM_WAVE) return W.INTERVAL_MID * m;
+  return W.INTERVAL_EARLY * m;
 }
 
 // Poseidon's standing complete island temples
@@ -3227,7 +3252,8 @@ function waveStrength(state) {
   const wrathTides = Math.max(0, state.wave.index - (W.COUNT - 1));
   const cap = wrathTides > 0 ? W.WRATH_STRENGTH_CAP : W.STRENGTH_MAX;
   return clamp(W.STRENGTH_BASE + W.STRENGTH_PER_TEMPLE * poseidonTempleCount(state) +
-    W.WRATH_STRENGTH_STEP * wrathTides, W.STRENGTH_MIN, cap);
+    W.WRATH_STRENGTH_STEP * wrathTides, W.STRENGTH_MIN, cap) *
+    ((state.aiCfg && state.aiCfg.WAVE_STRENGTH_MULT) || 1);
 }
 
 // the player's most forward holding (largest distance from their temple)
@@ -3537,6 +3563,15 @@ function wavesTick(state, dt) {
     if (!w.telegraphed && state.time >= w.nextAt - W.TELEGRAPH) {
       w.telegraphed = true;
       w.origin = waveOrigin(state);
+      // dynamic skill matching (player-directed): at each telegraph
+      // Zeus's own scales read the board — a player who owns it faces
+      // a sterner Poseidon next tide; one who is drowning gets grace.
+      // Silent, one rung at a time, real matches only (state.dda).
+      if (state.dda && w.index >= CONFIG.AI.DDA_FROM_WAVE) {
+        const share = arbitrationTally(state).shareA;
+        if (share > CONFIG.AI.DDA_UP) applyAiTier(state, state.aiTier + 1);
+        else if (share < CONFIG.AI.DDA_DOWN) applyAiTier(state, state.aiTier - 1);
+      }
       Events.emit('waveTelegraph', { index: w.index, origin: w.origin });
     }
     if (state.time >= w.nextAt) {
@@ -3544,7 +3579,7 @@ function wavesTick(state, dt) {
       w.index++;
       w.telegraphed = false;
       w.origin = null;
-      w.nextAt += waveInterval(w.index);
+      w.nextAt += waveInterval(state, w.index);
     }
   }
   // Zeus arbitrates: weather the ninth tide and five full wrath tides
@@ -3578,7 +3613,20 @@ function wavesTick(state, dt) {
 // cooldown) when the player cuts him. Waves are authored separately.
 // ================================================================
 
+// Apply a ladder tier: effective params = defaults + tier overrides.
+// Called at match start (persistent skill) and silently at telegraphs
+// by the dynamic matcher.
+function applyAiTier(state, tier) {
+  const L = CONFIG.AI.LADDER;
+  state.aiTier = Math.max(0, Math.min(L.length - 1, tier));
+  state.aiCfg = Object.assign({}, CONFIG.AI, L[state.aiTier].overrides);
+}
+
 function initAI(state) {
+  // effective AI parameters: defaults from CONFIG.AI, overridable by
+  // the difficulty ladder / dynamic skill matching (state.aiCfg)
+  state.aiCfg = Object.assign({}, CONFIG.AI);
+  state.aiTier = 1;   // FAIR until a tier is applied
   state.ai = {
     plan: null,                // list of cells toward the objective
     objectiveIsland: null,
@@ -3635,7 +3683,7 @@ function aiScoreIsland(state, isl) {
   // worth a nudge — but only a nudge, or he rushes the player's own corner
   // instead of consolidating the middle
   const dPlayer = dist2d(isl.center[0], isl.center[1], state.greatTemple.A.cell[0], state.greatTemple.A.cell[1]);
-  score += Math.max(0, 22 - dPlayer) * 0.1;
+  score += Math.max(0, 22 - dPlayer) * ((state.aiCfg && state.aiCfg.TOWARD_PLAYER_BIAS) || 0.1);
   // uncontested ground his temple would newly cover
   let overlap = 0;
   for (let dz = -CONFIG.Influence.TEMPLE_RADIUS; dz <= CONFIG.Influence.TEMPLE_RADIUS; dz++) {
@@ -3647,7 +3695,7 @@ function aiScoreIsland(state, isl) {
     }
   }
   score += overlap * (CONFIG.AI.TEMPLE_PRIORITY_OVERLAP ? 0.8 : 0.2);
-  score += Math.min(isl.reserve / 20, 8);
+  score += Math.min(isl.reserve / 20, 8) * ((state.aiCfg && state.aiCfg.ORE_BIAS) || 1);
   const d = dist2d(isl.center[0], isl.center[1], state.greatTemple.P.cell[0], state.greatTemple.P.cell[1]);
   score += Math.max(0, 14 - d) * 0.5;
   return score;
@@ -3744,7 +3792,7 @@ function aiTick(state, dt) {
   const ai = state.ai;
   if (state.over) return;
   if (state.time < ai.decideAt) return;
-  ai.decideAt = state.time + CONFIG.AI.DECISION_INTERVAL;
+  ai.decideAt = state.time + state.aiCfg.DECISION_INTERVAL;
 
   const res = state.res.P;
 
@@ -3811,7 +3859,7 @@ function aiTick(state, dt) {
     // budget discipline: while he holds few temples, keep the temple fund
     // intact — lanes are worthless if he can never consecrate their ends
     if (ai.plan && res.favor >= pieceCost('SHORT')) {
-      if (aiPlaceNext(state)) ai.placeAt = state.time + CONFIG.AI.PLACE_INTERVAL;
+      if (aiPlaceNext(state)) ai.placeAt = state.time + state.aiCfg.PLACE_INTERVAL;
     }
   }
 
@@ -3838,7 +3886,7 @@ function aiTick(state, dt) {
   // (22 structures, 496 segments destroyed in one sim) — he guards,
   // he does not blanket the map
   const drumCount = state.structures.filter(s => s.owner === 'P' && s.type === 'vane' && s.site === 'plot' && s.hp > 0).length;
-  if (drumCount < 4 && res.supply >= structureStats('P', 'vane').cost + 14) {
+  if (drumCount < state.aiCfg.GARRISON_DRUMS && res.supply >= structureStats('P', 'vane').cost + 14) {
     for (const isl of state.map.islands) {
       if (isl.owner !== 'P' || isl.role.startsWith('greatTemple')) continue;
       const hasGun = state.structures.some(s => s.owner === 'P' && s.islandId === isl.id && (s.dps || 0) > 0 && s.hp > 0);
@@ -3851,8 +3899,8 @@ function aiTick(state, dt) {
     }
   }
   const lanceCount = state.structures.filter(s => s.owner === 'P' && s.type === 'bolt' && s.site === 'endpoint' && s.hp > 0).length;
-  if (lanceCount < 3 && state.time >= (ai.gunAt || 0) && res.supply >= structureStats('P', 'bolt').cost + 20) {
-    ai.gunAt = state.time + 45;
+  if (lanceCount < state.aiCfg.GARRISON_LANCES && state.time >= (ai.gunAt || 0) && res.supply >= structureStats('P', 'bolt').cost + 20) {
+    ai.gunAt = state.time + state.aiCfg.GUN_CADENCE;
     const targets = aiAttackTargets(state);
     if (targets.size) {
       // (player-directed) an endpoint gun SEALS its cell, so it must
@@ -3913,7 +3961,7 @@ function aiTick(state, dt) {
         if (junction && !bestJunction) { bd = d; best = e; bestJunction = true; }
         else if (junction === bestJunction && d < bd) { bd = d; best = e; }
       }
-      if (best && bd < 14) {
+      if (best && bd < state.aiCfg.GUN_NEAR) {
         buildStructure(state, 'P', 'bolt', { site: 'endpoint', cell: best.cell });
       } else if (tip && tipD < 12 && res.favor >= pieceCost('T')) {
         // fork the front: the T's stem keeps the lane running toward
@@ -3953,7 +4001,7 @@ function aiTick(state, dt) {
 
   // 4. masts along contested straits (§33C.6), between waves
   if (state.time >= ai.mastAt && res.supply >= structureStats('P', 'mast').cost) {
-    ai.mastAt = state.time + CONFIG.AI.MAST_INTERVAL;
+    ai.mastAt = state.time + state.aiCfg.MAST_INTERVAL;
     // his supported endpoint nearest a player air segment over water
     const airSegs = [...state.segments.values()].filter(s => s.owner === 'A' && s.overWater);
     if (airSegs.length) {
@@ -4372,6 +4420,30 @@ function initCodex(state) { }
 // ================================================================
 
 const SAVE_KEY = 'windward-resume';
+const SKILL_KEY = 'windward-skill';
+
+// ---- persistent skill rating (player-directed dynamic matching) ----
+// A float 0..3 across sessions; a match starts Poseidon at the nearest
+// ladder rung, and the outcome nudges the rating.
+function loadSkillRating() {
+  try {
+    const v = parseFloat(localStorage.getItem(SKILL_KEY));
+    return isNaN(v) ? 1 : Math.max(0, Math.min(3, v));
+  } catch (e) { return 1; }
+}
+function saveSkillRating(v) {
+  try { localStorage.setItem(SKILL_KEY, String(Math.max(0, Math.min(3, v)))); } catch (e) { }
+}
+// outcome nudges: decisive results move a half rung, judgments a quarter
+function updateSkillRating(state) {
+  const cur = loadSkillRating();
+  const nudge = state.over === 'win' ? 0.5
+    : state.over === 'arbitration' ? 0.25
+    : state.over === 'arbitrationLoss' ? -0.25
+    : state.over === 'lose' ? -0.5 : 0;
+  // anchor on the tier actually played at the end, then nudge
+  saveSkillRating((state.aiTier !== undefined ? state.aiTier : cur) + nudge);
+}
 
 // Entities are stored as plain field copies; object references
 // (island temples, plot occupancy, craft targets) are re-linked or
@@ -4406,6 +4478,7 @@ function snapshotMatch(state) {
     hydrogen: state.hydrogen,
     hand: state.hand.slice(),
     arbitrationDeclined: !!state.arbitrationDeclined,
+    aiTier: state.aiTier !== undefined ? state.aiTier : 1,
     wave: {
       index: state.wave.index, nextAt: state.wave.nextAt,
       telegraphed: false, wrath: state.wave.wrath
@@ -4454,6 +4527,7 @@ function applySnapshot(state, snap) {
   state.hydrogen = snap.hydrogen;
   state.hand = snap.hand.slice();
   state.arbitrationDeclined = !!snap.arbitrationDeclined;
+  applyAiTier(state, snap.aiTier !== undefined ? snap.aiTier : 1);
   Object.assign(state.wave, snap.wave, { origin: null });
   state.greatTemple.A.hp = snap.gtHp.A;
   state.greatTemple.P.hp = snap.gtHp.P;
@@ -8132,6 +8206,14 @@ function startMatch(seedStr, theme, demo) {
   }
 
   initAI(STATE);
+  // dynamic skill matching (player-directed): real matches start at the
+  // persistent rating's rung and adjust silently at telegraphs; the
+  // demo plays FAIR, fixed
+  if (demo) applyAiTier(STATE, 1);
+  else {
+    STATE.dda = true;
+    applyAiTier(STATE, Math.round(loadSkillRating()));
+  }
   initFlow(STATE);
   initFxEvents(STATE);
   wireAudio();
@@ -8620,6 +8702,7 @@ window.addEventListener('DOMContentLoaded', () => {
     audioInit();
     startMatch(snap.seed, snap.theme);
     applySnapshot(STATE, snap);
+    STATE.dda = true;
     // no re-tutorial mid-match, and ids must not collide with restored ones
     if (STATE.tut) { STATE.tut.active = false; }
     document.getElementById('skipbtn').classList.add('hidden');
@@ -8636,7 +8719,11 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
   window.addEventListener('pagehide', persist);
   setInterval(() => {
-    if (STATE && STATE.over) clearSavedMatch();
+    if (STATE && STATE.over) {
+      clearSavedMatch();
+      // a decided real match nudges the persistent skill rating, once
+      if (STATE.dda && !STATE._ratingSaved) { STATE._ratingSaved = true; updateSkillRating(STATE); }
+    }
     if (!STATE) offerResume();   // back at the title: refresh the offer
   }, 2000);
 

@@ -5,7 +5,20 @@
 // cooldown) when the player cuts him. Waves are authored separately.
 // ================================================================
 
+// Apply a ladder tier: effective params = defaults + tier overrides.
+// Called at match start (persistent skill) and silently at telegraphs
+// by the dynamic matcher.
+function applyAiTier(state, tier) {
+  const L = CONFIG.AI.LADDER;
+  state.aiTier = Math.max(0, Math.min(L.length - 1, tier));
+  state.aiCfg = Object.assign({}, CONFIG.AI, L[state.aiTier].overrides);
+}
+
 function initAI(state) {
+  // effective AI parameters: defaults from CONFIG.AI, overridable by
+  // the difficulty ladder / dynamic skill matching (state.aiCfg)
+  state.aiCfg = Object.assign({}, CONFIG.AI);
+  state.aiTier = 1;   // FAIR until a tier is applied
   state.ai = {
     plan: null,                // list of cells toward the objective
     objectiveIsland: null,
@@ -62,7 +75,7 @@ function aiScoreIsland(state, isl) {
   // worth a nudge — but only a nudge, or he rushes the player's own corner
   // instead of consolidating the middle
   const dPlayer = dist2d(isl.center[0], isl.center[1], state.greatTemple.A.cell[0], state.greatTemple.A.cell[1]);
-  score += Math.max(0, 22 - dPlayer) * 0.1;
+  score += Math.max(0, 22 - dPlayer) * ((state.aiCfg && state.aiCfg.TOWARD_PLAYER_BIAS) || 0.1);
   // uncontested ground his temple would newly cover
   let overlap = 0;
   for (let dz = -CONFIG.Influence.TEMPLE_RADIUS; dz <= CONFIG.Influence.TEMPLE_RADIUS; dz++) {
@@ -74,7 +87,7 @@ function aiScoreIsland(state, isl) {
     }
   }
   score += overlap * (CONFIG.AI.TEMPLE_PRIORITY_OVERLAP ? 0.8 : 0.2);
-  score += Math.min(isl.reserve / 20, 8);
+  score += Math.min(isl.reserve / 20, 8) * ((state.aiCfg && state.aiCfg.ORE_BIAS) || 1);
   const d = dist2d(isl.center[0], isl.center[1], state.greatTemple.P.cell[0], state.greatTemple.P.cell[1]);
   score += Math.max(0, 14 - d) * 0.5;
   return score;
@@ -171,7 +184,7 @@ function aiTick(state, dt) {
   const ai = state.ai;
   if (state.over) return;
   if (state.time < ai.decideAt) return;
-  ai.decideAt = state.time + CONFIG.AI.DECISION_INTERVAL;
+  ai.decideAt = state.time + state.aiCfg.DECISION_INTERVAL;
 
   const res = state.res.P;
 
@@ -238,7 +251,7 @@ function aiTick(state, dt) {
     // budget discipline: while he holds few temples, keep the temple fund
     // intact — lanes are worthless if he can never consecrate their ends
     if (ai.plan && res.favor >= pieceCost('SHORT')) {
-      if (aiPlaceNext(state)) ai.placeAt = state.time + CONFIG.AI.PLACE_INTERVAL;
+      if (aiPlaceNext(state)) ai.placeAt = state.time + state.aiCfg.PLACE_INTERVAL;
     }
   }
 
@@ -265,7 +278,7 @@ function aiTick(state, dt) {
   // (22 structures, 496 segments destroyed in one sim) — he guards,
   // he does not blanket the map
   const drumCount = state.structures.filter(s => s.owner === 'P' && s.type === 'vane' && s.site === 'plot' && s.hp > 0).length;
-  if (drumCount < 4 && res.supply >= structureStats('P', 'vane').cost + 14) {
+  if (drumCount < state.aiCfg.GARRISON_DRUMS && res.supply >= structureStats('P', 'vane').cost + 14) {
     for (const isl of state.map.islands) {
       if (isl.owner !== 'P' || isl.role.startsWith('greatTemple')) continue;
       const hasGun = state.structures.some(s => s.owner === 'P' && s.islandId === isl.id && (s.dps || 0) > 0 && s.hp > 0);
@@ -278,8 +291,8 @@ function aiTick(state, dt) {
     }
   }
   const lanceCount = state.structures.filter(s => s.owner === 'P' && s.type === 'bolt' && s.site === 'endpoint' && s.hp > 0).length;
-  if (lanceCount < 3 && state.time >= (ai.gunAt || 0) && res.supply >= structureStats('P', 'bolt').cost + 20) {
-    ai.gunAt = state.time + 45;
+  if (lanceCount < state.aiCfg.GARRISON_LANCES && state.time >= (ai.gunAt || 0) && res.supply >= structureStats('P', 'bolt').cost + 20) {
+    ai.gunAt = state.time + state.aiCfg.GUN_CADENCE;
     const targets = aiAttackTargets(state);
     if (targets.size) {
       // (player-directed) an endpoint gun SEALS its cell, so it must
@@ -340,7 +353,7 @@ function aiTick(state, dt) {
         if (junction && !bestJunction) { bd = d; best = e; bestJunction = true; }
         else if (junction === bestJunction && d < bd) { bd = d; best = e; }
       }
-      if (best && bd < 14) {
+      if (best && bd < state.aiCfg.GUN_NEAR) {
         buildStructure(state, 'P', 'bolt', { site: 'endpoint', cell: best.cell });
       } else if (tip && tipD < 12 && res.favor >= pieceCost('T')) {
         // fork the front: the T's stem keeps the lane running toward
@@ -380,7 +393,7 @@ function aiTick(state, dt) {
 
   // 4. masts along contested straits (§33C.6), between waves
   if (state.time >= ai.mastAt && res.supply >= structureStats('P', 'mast').cost) {
-    ai.mastAt = state.time + CONFIG.AI.MAST_INTERVAL;
+    ai.mastAt = state.time + state.aiCfg.MAST_INTERVAL;
     // his supported endpoint nearest a player air segment over water
     const airSegs = [...state.segments.values()].filter(s => s.owner === 'A' && s.overWater);
     if (airSegs.length) {

@@ -6,6 +6,30 @@
 // ================================================================
 
 const SAVE_KEY = 'windward-resume';
+const SKILL_KEY = 'windward-skill';
+
+// ---- persistent skill rating (player-directed dynamic matching) ----
+// A float 0..3 across sessions; a match starts Poseidon at the nearest
+// ladder rung, and the outcome nudges the rating.
+function loadSkillRating() {
+  try {
+    const v = parseFloat(localStorage.getItem(SKILL_KEY));
+    return isNaN(v) ? 1 : Math.max(0, Math.min(3, v));
+  } catch (e) { return 1; }
+}
+function saveSkillRating(v) {
+  try { localStorage.setItem(SKILL_KEY, String(Math.max(0, Math.min(3, v)))); } catch (e) { }
+}
+// outcome nudges: decisive results move a half rung, judgments a quarter
+function updateSkillRating(state) {
+  const cur = loadSkillRating();
+  const nudge = state.over === 'win' ? 0.5
+    : state.over === 'arbitration' ? 0.25
+    : state.over === 'arbitrationLoss' ? -0.25
+    : state.over === 'lose' ? -0.5 : 0;
+  // anchor on the tier actually played at the end, then nudge
+  saveSkillRating((state.aiTier !== undefined ? state.aiTier : cur) + nudge);
+}
 
 // Entities are stored as plain field copies; object references
 // (island temples, plot occupancy, craft targets) are re-linked or
@@ -40,6 +64,7 @@ function snapshotMatch(state) {
     hydrogen: state.hydrogen,
     hand: state.hand.slice(),
     arbitrationDeclined: !!state.arbitrationDeclined,
+    aiTier: state.aiTier !== undefined ? state.aiTier : 1,
     wave: {
       index: state.wave.index, nextAt: state.wave.nextAt,
       telegraphed: false, wrath: state.wave.wrath
@@ -88,6 +113,7 @@ function applySnapshot(state, snap) {
   state.hydrogen = snap.hydrogen;
   state.hand = snap.hand.slice();
   state.arbitrationDeclined = !!snap.arbitrationDeclined;
+  applyAiTier(state, snap.aiTier !== undefined ? snap.aiTier : 1);
   Object.assign(state.wave, snap.wave, { origin: null });
   state.greatTemple.A.hp = snap.gtHp.A;
   state.greatTemple.P.hp = snap.gtHp.P;

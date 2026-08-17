@@ -46,6 +46,14 @@ function startMatch(seedStr, theme, demo) {
   }
 
   initAI(STATE);
+  // dynamic skill matching (player-directed): real matches start at the
+  // persistent rating's rung and adjust silently at telegraphs; the
+  // demo plays FAIR, fixed
+  if (demo) applyAiTier(STATE, 1);
+  else {
+    STATE.dda = true;
+    applyAiTier(STATE, Math.round(loadSkillRating()));
+  }
   initFlow(STATE);
   initFxEvents(STATE);
   wireAudio();
@@ -534,6 +542,7 @@ window.addEventListener('DOMContentLoaded', () => {
     audioInit();
     startMatch(snap.seed, snap.theme);
     applySnapshot(STATE, snap);
+    STATE.dda = true;
     // no re-tutorial mid-match, and ids must not collide with restored ones
     if (STATE.tut) { STATE.tut.active = false; }
     document.getElementById('skipbtn').classList.add('hidden');
@@ -550,7 +559,11 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
   window.addEventListener('pagehide', persist);
   setInterval(() => {
-    if (STATE && STATE.over) clearSavedMatch();
+    if (STATE && STATE.over) {
+      clearSavedMatch();
+      // a decided real match nudges the persistent skill rating, once
+      if (STATE.dda && !STATE._ratingSaved) { STATE._ratingSaved = true; updateSkillRating(STATE); }
+    }
     if (!STATE) offerResume();   // back at the title: refresh the offer
   }, 2000);
 

@@ -36,8 +36,45 @@ function scale(genome) {
 
 function randomGenome(rng) { return GENE_KEYS.map(() => rng()); }
 
-// One full match: scripted-A (genome) vs the real AI. Returns stats.
-function runMatch(G, seed, genome, maxT) {
+// ---- Poseidon's genome (player-directed: evolve him against the
+// evolved Aeolus, keep a LADDER of skill tiers). Genes map onto the
+// state.aiCfg overrides the difficulty system applies. ----
+const P_RANGES = {
+  DECISION_INTERVAL: [1.2, 4],
+  PLACE_INTERVAL: [0.8, 3],
+  GARRISON_DRUMS: [1, 6.99],
+  GARRISON_LANCES: [1, 5.99],
+  GUN_CADENCE: [20, 70],
+  GUN_NEAR: [8, 18],
+  MAST_INTERVAL: [15, 60],
+  TOWARD_PLAYER_BIAS: [0, 0.35],
+  ORE_BIAS: [0.3, 2],
+  WAVE_STRENGTH_MULT: [0.75, 1.35],
+  WAVE_INTERVAL_MULT: [0.85, 1.2]
+};
+const P_KEYS = Object.keys(P_RANGES);
+function scaleP(genome) {
+  const o = {};
+  P_KEYS.forEach((k, i) => {
+    const [lo, hi] = P_RANGES[k];
+    o[k] = lo + Math.min(1, Math.max(0, genome[i])) * (hi - lo);
+  });
+  o.GARRISON_DRUMS = Math.floor(o.GARRISON_DRUMS);
+  o.GARRISON_LANCES = Math.floor(o.GARRISON_LANCES);
+  return o;
+}
+// Poseidon's fitness: fell the player's temple, or win Zeus's scales.
+function fitnessP(r) {
+  if (r.outcome === 'lose') return 1000 + (720 - r.t);
+  if (r.outcome === 'arbitrationLoss') return 700 + (200 - r.gtA);
+  if (r.outcome === 'arbitration') return 150 + (200 - r.gtA);
+  if (r.outcome === 'win') return Math.max(0, 200 - r.gtA);
+  return 250 + (200 - r.gtA);
+}
+
+// One full match: scripted-A (genome) vs the real AI (optionally with
+// aiCfg overrides — an evolved / tiered Poseidon). Returns stats.
+function runMatch(G, seed, genome, maxT, aiOverrides) {
   const g = scale(genome);
   const state = G.newGameState(seed);
   G.recalcSupport(state, 'A'); G.recalcSupport(state, 'P');
@@ -45,6 +82,7 @@ function runMatch(G, seed, genome, maxT) {
   G.spawnPriest(state, 'A'); G.spawnPriest(state, 'P');
   G.spawnHauler(state, 'A'); G.spawnHauler(state, 'P');
   G.initAI(state);
+  if (aiOverrides) Object.assign(state.aiCfg, aiOverrides);
   G.fogTick(state, 1);
 
   const gtP = state.greatTemple.P.cell;
@@ -241,4 +279,4 @@ function fitness(r) {
   return s;
 }
 
-module.exports = { GENE_KEYS, GENOME_RANGES, scale, randomGenome, runMatch, fitness, loadPatched };
+module.exports = { GENE_KEYS, GENOME_RANGES, scale, randomGenome, runMatch, fitness, loadPatched, P_RANGES, P_KEYS, scaleP, fitnessP };

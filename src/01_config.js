@@ -242,6 +242,30 @@ const CONFIG = Object.freeze({
     SHELTER_DETOUR_MAX: 1.5,      // prefers sheltered lanes below this detour factor
     MAST_INTERVAL: 30.0,          // tries to raise a siphon mast this often
     TEMPLE_PRIORITY_OVERLAP: true,
+    // ---- tierable knobs (read through state.aiCfg so a difficulty
+    // ladder / dynamic skill matching can override them per match) ----
+    GARRISON_DRUMS: 4,            // plot drums he keeps standing
+    GARRISON_LANCES: 3,           // endpoint lances he keeps standing
+    GUN_CADENCE: 45.0,            // seconds between forward-gun attempts
+    GUN_NEAR: 14,                 // how close to strike waters a gun site must be
+    TOWARD_PLAYER_BIAS: 0.1,      // island scoring: pull toward the player's corner
+    ORE_BIAS: 1.0,                // island scoring: weight on reserves
+    WAVE_STRENGTH_MULT: 1.0,      // multiplier on computed wave strength (0.75-1.35 sane)
+    WAVE_INTERVAL_MULT: 1.0,      // multiplier on wave intervals (lower = faster tides)
+    // ---- the difficulty LADDER (player-directed): four Poseidon
+    // parameter sets graded by evolution against the champion Aeolus
+    // (test/opt_evolve_p.js -> opt_ladder.js). PROVISIONAL hand values
+    // until the evolved ladder is baked; FAIR = shipped defaults. ----
+    LADDER: [
+      { name: 'GENTLE', overrides: { GARRISON_DRUMS: 2, GARRISON_LANCES: 1, GUN_CADENCE: 65, DECISION_INTERVAL: 3.0, WAVE_STRENGTH_MULT: 0.8, WAVE_INTERVAL_MULT: 1.15 } },
+      { name: 'FAIR', overrides: {} },
+      { name: 'STERN', overrides: { GARRISON_DRUMS: 5, GARRISON_LANCES: 4, GUN_CADENCE: 32, DECISION_INTERVAL: 1.6, WAVE_STRENGTH_MULT: 1.12, WAVE_INTERVAL_MULT: 0.95 } },
+      { name: 'CRUEL', overrides: { GARRISON_DRUMS: 6, GARRISON_LANCES: 5, GUN_CADENCE: 24, DECISION_INTERVAL: 1.3, TOWARD_PLAYER_BIAS: 0.25, WAVE_STRENGTH_MULT: 1.3, WAVE_INTERVAL_MULT: 0.88 } }
+    ],
+    // dynamic skill matching: at each telegraph, Zeus's scales decide —
+    // a player who owns the board faces a harder Poseidon, silently
+    DDA_FROM_WAVE: 2,
+    DDA_UP: 0.62, DDA_DOWN: 0.38,
     DECISION_INTERVAL: 2.0,   // swept (test/opt_tempo.js): sharply peaked at 2s (116); 1.2s AI over-churns (71), 3.5s sleepy (93)
     PRIEST_AVOIDS_GUNS: true
   },
