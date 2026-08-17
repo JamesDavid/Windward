@@ -751,15 +751,23 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     const P = CONFIG.Powers;
     const twName = R.themeSea ? 'FOLLOWING<br>SEA' : 'TAILWIND';
     const twBusy = state.time < state.powers.tailwindUntil;
-    options.push(menuButton(twName, 0, () => {
+    const twBtn = menuButton(twName, 0, () => {
       if (castTailwind(state)) flashTicker(R.themeSea ? 'A FOLLOWING SEA RISES' : 'THE TAILWIND ANSWERS');
     }, twBusy ? 'ALREADY BLOWING' : (state.res.A.favor < P.TAILWIND.FAVOR ? 'NOT ENOUGH FAVOR' : null),
-      'tailwind', P.TAILWIND.FAVOR));
+      'tailwind', P.TAILWIND.FAVOR);
     const wwName = R.themeSea ? 'BREAKWATER<br>HERE' : 'WIND WALL<br>HERE';
-    options.push(menuButton(wwName, 0, () => {
+    const wwBtn = menuButton(wwName, 0, () => {
       if (castWindWall(state, cell)) flashTicker(R.themeSea ? 'THE BREAKWATER HOLDS THIS GROUND' : 'THE WALL STANDS OVER THIS GROUND');
     }, state.res.A.favor < P.WIND_WALL.FAVOR ? 'NOT ENOUGH FAVOR' : null,
-      'windwall', P.WIND_WALL.FAVOR));
+      'windwall', P.WIND_WALL.FAVOR);
+    // first-discovery shimmer, once EVER: the powers moved off the HUD,
+    // so their new home glints the first time a menu shows them
+    if (!seenLines().has('powShimmer')) {
+      twBtn.classList.add('shimmer');
+      wwBtn.classList.add('shimmer');
+      UI.shimmerPending = true;
+    }
+    options.push(twBtn, wwBtn);
   }
 
   // salvage (player-directed, NetStorm-style): reclaim what stands here
@@ -809,6 +817,11 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
   }
   for (const o of pieceOptions) menu.appendChild(o);
   menu.classList.remove('hidden');
+  if (UI.shimmerPending) {
+    // the shimmer has now actually been seen — never again
+    markSeen('powShimmer');
+    UI.shimmerPending = false;
+  }
 
   // anchor the menu just above the thumb, clamped to the screen
   if (tapX !== undefined) {
