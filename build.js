@@ -18,6 +18,10 @@ for (const f of files) {
   code += `// ============================================================\n\n${body}\n`;
 }
 
-const out = shell.replace('/* @INJECT_GAME_CODE */', () => code);
+// a visible build stamp settles "which version is my phone running"
+// questions instantly (stale Pages caches have mimicked fixed bugs)
+const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+const out = shell.replace('/* @INJECT_GAME_CODE */', () => code)
+  .replace('@BUILDSTAMP', stamp);
 fs.writeFileSync(path.join(root, 'index.html'), out);
-console.log(`built index.html (${(out.length / 1024).toFixed(1)} KB) from ${files.length} src files`);
+console.log(`built index.html (${(out.length / 1024).toFixed(1)} KB) from ${files.length} src files, stamp ${stamp}`);

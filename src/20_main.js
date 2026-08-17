@@ -378,7 +378,17 @@ function demoTick(state, dt) {
     }
   } else if (d.phase === 'confirm' && now - d.phaseAt > 0.35) {
     const ok = document.getElementById('btn-confirm');
+    const structsBefore = state.structures.length;
+    const segsBefore = state.segments.size;
     if (ok) { ok.classList.remove('demopress'); ok.click(); }
+    // a confirm that changed NOTHING failed (the flash said why):
+    // blacklist it so the demonstrator never retries the same spot
+    const isStruct = ['vane', 'bolt', 'shield', 'temple', 'yard'].includes(d.plan.key);
+    const isPiece = d.plan.key.indexOf('piece-') === 0;
+    if ((isStruct && state.structures.length === structsBefore) ||
+        (isPiece && state.segments.size === segsBefore)) {
+      if (d.bad) d.bad.set(d.plan.key + '@' + d.plan.cell.join(','), now + 30);
+    }
     d.phase = null;
     d.nextAct = now + 0.9;
   }
