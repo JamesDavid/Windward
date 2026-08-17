@@ -148,6 +148,14 @@
     border-radius: 14px; padding: 8px; gap: 6px;
   }
   #confirmrow.shown { display: flex; justify-content: center; }
+  /* the wind readout rides ABOVE the row so CONFIRM keeps a fixed width
+     (a changing label made the clamped row jitter and overflow) */
+  #windread {
+    position: absolute; top: -24px; left: 50%; transform: translateX(-50%);
+    white-space: nowrap; font-size: 10px; letter-spacing: 2px; color: var(--gold);
+    background: rgba(16,21,26,0.92); border: 1px solid rgba(217,164,65,0.4);
+    border-radius: 9px; padding: 3px 10px; pointer-events: none;
+  }
   #confirmrow button {
     pointer-events: auto; font-family: inherit; font-size: 13px; letter-spacing: 1px;
     border-radius: 10px; padding: 8px 14px;
@@ -255,6 +263,7 @@
            live in the thumb context menu, the fleet upgrade in the yard
            dialog. The whole screen belongs to the map. -->
       <div id="confirmrow">
+        <div id="windread" class="hidden"></div>
         <button id="btn-confirm" class="hidden">CONFIRM</button>
         <button id="btn-rotate-l" class="hidden" title="turn left">&#8634;</button>
         <button id="btn-rotate" class="hidden" title="turn right">&#8635;</button>
@@ -277,13 +286,15 @@
       <button id="startsea">RIDE THE WAVES</button>
     </div>
     <button id="startdemo" style="background:none; color:var(--ivory); border:1px solid rgba(242,232,207,0.4); font-size:13px; padding:8px 18px;">WATCH A MATCH</button>
+    <button id="resumebtn" class="hidden" style="background:none; color:var(--gold); border:1px solid var(--gold); font-size:13px; padding:8px 18px;">RESUME YOUR MATCH</button>
   </div>
   <div id="endscreen" class="screen hidden">
     <h1 id="endtitle"></h1>
     <p id="endtext"></p>
     <div class="seedrow">SEED <span id="endseed" style="font-family:monospace"></span></div>
-    <div style="display:flex; gap:12px;">
+    <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
       <button id="resetbtn">AGAIN</button>
+      <button id="fightonbtn" class="hidden" style="background:none; color:var(--gold); border:1px solid var(--gold);">REFUSE — FIGHT ON</button>
       <button id="menubtn" style="background:none; color:var(--ivory); border:1px solid rgba(242,232,207,0.4);">BACK TO MENU</button>
     </div>
   </div>

@@ -190,9 +190,11 @@ function flowTick(state) {
   if (state.over === 'arbitration' && !f.arbShown) {
     f.arbShown = true;
     const sea = state.theme === 'sea';
-    endScreen('ZEUS CALLS THE MATTER SETTLED',
-      sea ? 'Nine tides of the sky and all its fury after — the lanes still stand. The sky withdraws.'
-          : 'Nine tides and his wrath behind them — the roads still stand. The sea withdraws.', state);
+    endScreen('ZEUS RULES IN YOUR FAVOR',
+      sea ? 'Victory. Nine tides of the sky and all its fury after — your lanes still stand. The matter is settled; the sky withdraws.'
+          : 'Victory. Nine tides and his wrath behind them — your roads still stand. The matter is settled; the sea withdraws.', state);
+    // the verdict may be refused (player-directed): fight to the end
+    document.getElementById('fightonbtn').classList.remove('hidden');
     audioPlay('victory');
   }
   // win / lose (§28) — worded for whichever god you served
@@ -218,6 +220,7 @@ function endScreen(title, text, state) {
   document.getElementById('endtitle').textContent = title;
   document.getElementById('endtext').textContent = text;
   document.getElementById('endseed').textContent = state.seed;
+  document.getElementById('fightonbtn').classList.add('hidden');   // arbitration unhides it
   document.getElementById('endscreen').classList.remove('hidden');
 }
 

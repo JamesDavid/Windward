@@ -296,11 +296,16 @@ function updateGhostMultiplier(state) {
   const avg = sum / p.segs.length;
   // say what the number means (player asked): this is the wind over the
   // new road in the direction drawn — fleets ride fast channels, and
-  // below the law's threshold they'd rather wait or loop another way
+  // below the law's threshold they'd rather wait or loop another way.
+  // It rides its OWN pill above the row: a changing CONFIRM label made
+  // the clamped row jitter and overflow (player report).
   const W = CONFIG.Wind;
   const closeAt = W.AIR_MIN + W.HAULER_MIN_FRAC * (W.AIR_MAX - W.AIR_MIN);
   const word = avg >= 1.1 ? 'TAILWIND' : avg >= closeAt ? 'FAIR WIND' : 'HEADWIND';
-  UI.els.confirm.textContent = 'CONFIRM · ' + word + ' ×' + avg.toFixed(2);
+  const wr = document.getElementById('windread');
+  const txt = word + ' ×' + avg.toFixed(2);
+  if (wr.textContent !== txt) wr.textContent = txt;
+  wr.classList.remove('hidden');
 }
 
 function confirmPlacement(state) {
@@ -353,6 +358,7 @@ function setConfirmVisible(v, anchorCell) {
   UI.els.rotateL.classList.toggle('hidden', !v || !canTurn);
   document.getElementById('confirmrow').classList.toggle('shown', v);
   if (v) UI.els.confirm.textContent = 'CONFIRM';
+  if (!v || UI.structMode) document.getElementById('windread').classList.add('hidden');
   if (v) placeConfirmRow(anchorCell);
 }
 

@@ -148,6 +148,14 @@
     border-radius: 14px; padding: 8px; gap: 6px;
   }
   #confirmrow.shown { display: flex; justify-content: center; }
+  /* the wind readout rides ABOVE the row so CONFIRM keeps a fixed width
+     (a changing label made the clamped row jitter and overflow) */
+  #windread {
+    position: absolute; top: -24px; left: 50%; transform: translateX(-50%);
+    white-space: nowrap; font-size: 10px; letter-spacing: 2px; color: var(--gold);
+    background: rgba(16,21,26,0.92); border: 1px solid rgba(217,164,65,0.4);
+    border-radius: 9px; padding: 3px 10px; pointer-events: none;
+  }
   #confirmrow button {
     pointer-events: auto; font-family: inherit; font-size: 13px; letter-spacing: 1px;
     border-radius: 10px; padding: 8px 14px;
@@ -255,6 +263,7 @@
            live in the thumb context menu, the fleet upgrade in the yard
            dialog. The whole screen belongs to the map. -->
       <div id="confirmrow">
+        <div id="windread" class="hidden"></div>
         <button id="btn-confirm" class="hidden">CONFIRM</button>
         <button id="btn-rotate-l" class="hidden" title="turn left">&#8634;</button>
         <button id="btn-rotate" class="hidden" title="turn right">&#8635;</button>
@@ -277,13 +286,15 @@
       <button id="startsea">RIDE THE WAVES</button>
     </div>
     <button id="startdemo" style="background:none; color:var(--ivory); border:1px solid rgba(242,232,207,0.4); font-size:13px; padding:8px 18px;">WATCH A MATCH</button>
+    <button id="resumebtn" class="hidden" style="background:none; color:var(--gold); border:1px solid var(--gold); font-size:13px; padding:8px 18px;">RESUME YOUR MATCH</button>
   </div>
   <div id="endscreen" class="screen hidden">
     <h1 id="endtitle"></h1>
     <p id="endtext"></p>
     <div class="seedrow">SEED <span id="endseed" style="font-family:monospace"></span></div>
-    <div style="display:flex; gap:12px;">
+    <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
       <button id="resetbtn">AGAIN</button>
+      <button id="fightonbtn" class="hidden" style="background:none; color:var(--gold); border:1px solid var(--gold);">REFUSE — FIGHT ON</button>
       <button id="menubtn" style="background:none; color:var(--ivory); border:1px solid rgba(242,232,207,0.4);">BACK TO MENU</button>
     </div>
   </div>
@@ -3499,7 +3510,10 @@ function wavesTick(state, dt) {
   // Zeus arbitrates: weather the ninth tide and five full wrath tides
   // with your Great Temple standing, and the matter is settled — no
   // match drifts on without a verdict
-  if (!state.over && w.index >= W.COUNT + W.ARBITRATION_WRATH_TIDES &&
+  // (a player may REFUSE the verdict — then the tides simply continue
+  // until one Great Temple actually falls)
+  if (!state.over && !state.arbitrationDeclined &&
+      w.index >= W.COUNT + W.ARBITRATION_WRATH_TIDES &&
       state.greatTemple.A.hp > 0) {
     state.over = 'arbitration';
     Events.emit('arbitration', {});
@@ -4247,9 +4261,11 @@ function flowTick(state) {
   if (state.over === 'arbitration' && !f.arbShown) {
     f.arbShown = true;
     const sea = state.theme === 'sea';
-    endScreen('ZEUS CALLS THE MATTER SETTLED',
-      sea ? 'Nine tides of the sky and all its fury after — the lanes still stand. The sky withdraws.'
-          : 'Nine tides and his wrath behind them — the roads still stand. The sea withdraws.', state);
+    endScreen('ZEUS RULES IN YOUR FAVOR',
+      sea ? 'Victory. Nine tides of the sky and all its fury after — your lanes still stand. The matter is settled; the sky withdraws.'
+          : 'Victory. Nine tides and his wrath behind them — your roads still stand. The matter is settled; the sea withdraws.', state);
+    // the verdict may be refused (player-directed): fight to the end
+    document.getElementById('fightonbtn').classList.remove('hidden');
     audioPlay('victory');
   }
   // win / lose (§28) — worded for whichever god you served
@@ -4275,6 +4291,7 @@ function endScreen(title, text, state) {
   document.getElementById('endtitle').textContent = title;
   document.getElementById('endtext').textContent = text;
   document.getElementById('endseed').textContent = state.seed;
+  document.getElementById('fightonbtn').classList.add('hidden');   // arbitration unhides it
   document.getElementById('endscreen').classList.remove('hidden');
 }
 
@@ -4284,6 +4301,151 @@ function endScreen(title, text, state) {
 // Temple entry on any island hold. His voice lives on the intro screen;
 // the board explains itself through tap-to-identify instead. ----
 function initCodex(state) { }
+
+// ============================================================
+// SAVE
+// ============================================================
+
+// ================================================================
+// SAVE / RESUME (player-directed: "this is a mobile game and life
+// happens"). Leaving the page mid-match snapshots the dynamic state
+// to localStorage; the title screen offers RESUME on the next visit.
+// The map itself is never stored — it regenerates from the seed.
+// ================================================================
+
+const SAVE_KEY = 'windward-resume';
+
+// Entities are stored as plain field copies; object references
+// (island temples, plot occupancy, craft targets) are re-linked or
+// re-acquired after load. Fog memory and AI plans are deliberately
+// dropped: the AI replans and craft retarget within a tick or two.
+function snapshotMatch(state) {
+  const seg = [];
+  for (const s of state.segments.values()) {
+    seg.push({
+      owner: s.owner, a: s.a, b: s.b, hp: s.hp,
+      supportState: s.supportState, collapseAt: s.collapseAt || 0
+    });
+  }
+  const noRefs = (ent, drop) => {
+    const o = {};
+    for (const k of Object.keys(ent)) {
+      if (drop.includes(k)) continue;
+      const v = ent[k];
+      if (typeof v === 'function' || (v && typeof v === 'object' && !Array.isArray(v))) continue;
+      o[k] = v;
+    }
+    // arrays of cells survive JSON fine
+    if (ent.path) o.path = ent.path;
+    return o;
+  };
+  return {
+    v: 1,
+    seed: state.seed,
+    theme: state.theme || 'air',
+    time: state.time,
+    res: state.res,
+    hydrogen: state.hydrogen,
+    hand: state.hand.slice(),
+    arbitrationDeclined: !!state.arbitrationDeclined,
+    wave: {
+      index: state.wave.index, nextAt: state.wave.nextAt,
+      telegraphed: false, wrath: state.wave.wrath
+    },
+    gtHp: { A: state.greatTemple.A.hp, P: state.greatTemple.P.hp },
+    powers: { tailwindUntil: state.powers.tailwindUntil },
+    islands: state.map.islands.map(isl => ({
+      owner: isl.owner, stockpile: isl.stockpile,
+      minedOut: isl.minedOut, reserve: isl.reserve
+    })),
+    segments: seg,
+    structures: state.structures.filter(st => st.hp > 0).map(st => noRefs(st, [])),
+    haulers: state.haulers.filter(h => h.state !== 'dead').map(h => noRefs(h, [])),
+    priests: {
+      A: state.priests.A ? noRefs(state.priests.A, []) : null,
+      P: state.priests.P ? noRefs(state.priests.P, []) : null
+    },
+    craft: state.craft.filter(c => !c.dead).map(c => noRefs(c, ['target', 'script'])),
+    explored: state.explored ? [...state.explored] : [],
+    stats: state.stats
+  };
+}
+
+function saveMatch(state) {
+  if (!state || state.over || state.demo) return;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(snapshotMatch(state))); } catch (e) { }
+}
+
+function clearSavedMatch() {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { }
+}
+
+function loadSavedMatch() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const snap = JSON.parse(raw);
+    return snap && snap.v === 1 && snap.seed ? snap : null;
+  } catch (e) { return null; }
+}
+
+// Apply a snapshot onto a FRESH state built from the same seed.
+function applySnapshot(state, snap) {
+  state.time = snap.time;
+  state.res = snap.res;
+  state.hydrogen = snap.hydrogen;
+  state.hand = snap.hand.slice();
+  state.arbitrationDeclined = !!snap.arbitrationDeclined;
+  Object.assign(state.wave, snap.wave, { origin: null });
+  state.greatTemple.A.hp = snap.gtHp.A;
+  state.greatTemple.P.hp = snap.gtHp.P;
+  state.powers.tailwindUntil = snap.powers.tailwindUntil || 0;
+  state.stats = snap.stats || state.stats;
+  snap.islands.forEach((si, i) => {
+    const isl = state.map.islands[i];
+    if (!isl) return;
+    isl.owner = si.owner;
+    isl.stockpile = si.stockpile;
+    isl.minedOut = si.minedOut;
+    if (si.reserve !== undefined) isl.reserve = si.reserve;
+    if (si.minedOut) {
+      // the depleted quarry's build pad survives the save
+      const [qx, qz] = isl.cells[0];
+      if (!isl.plots.some(p => p.x === qx && p.z === qz)) isl.plots.push({ x: qx, z: qz, structure: null });
+    }
+  });
+  for (const ss of snap.segments) {
+    const seg = makeSegment(state, ss.owner, ss.a, ss.b);
+    seg.hp = ss.hp;
+    seg.supportState = ss.supportState;
+    if (ss.collapseAt) seg.collapseAt = ss.collapseAt;
+    state.segments.set(ss.owner + ':' + seg.key, seg);
+  }
+  state.structures = snap.structures;
+  for (const st of state.structures) {
+    // re-link plots and island temples to their structures
+    if (st.islandId !== null && st.islandId !== undefined) {
+      const isl = state.map.islands[st.islandId];
+      if (isl) {
+        if (st.plotIdx !== null && st.plotIdx >= 0) {
+          while (isl.plots.length <= st.plotIdx) isl.plots.push({ x: st.cell[0], z: st.cell[1], structure: null });
+          isl.plots[st.plotIdx].structure = st;
+        }
+        if (st.type === 'temple') isl.temple = st;
+      }
+    }
+  }
+  state.haulers = snap.haulers;
+  if (snap.priests.A) state.priests.A = snap.priests.A;
+  if (snap.priests.P) state.priests.P = snap.priests.P;
+  state.craft = snap.craft;
+  state.explored = new Set(snap.explored);
+  // derived layers rebuild from what was restored
+  recalcSupport(state, 'A');
+  recalcSupport(state, 'P');
+  refreshInfluence(state);
+  fogTick(state, 1);
+}
 
 // ============================================================
 // AUDIO
@@ -7143,11 +7305,16 @@ function updateGhostMultiplier(state) {
   const avg = sum / p.segs.length;
   // say what the number means (player asked): this is the wind over the
   // new road in the direction drawn — fleets ride fast channels, and
-  // below the law's threshold they'd rather wait or loop another way
+  // below the law's threshold they'd rather wait or loop another way.
+  // It rides its OWN pill above the row: a changing CONFIRM label made
+  // the clamped row jitter and overflow (player report).
   const W = CONFIG.Wind;
   const closeAt = W.AIR_MIN + W.HAULER_MIN_FRAC * (W.AIR_MAX - W.AIR_MIN);
   const word = avg >= 1.1 ? 'TAILWIND' : avg >= closeAt ? 'FAIR WIND' : 'HEADWIND';
-  UI.els.confirm.textContent = 'CONFIRM · ' + word + ' ×' + avg.toFixed(2);
+  const wr = document.getElementById('windread');
+  const txt = word + ' ×' + avg.toFixed(2);
+  if (wr.textContent !== txt) wr.textContent = txt;
+  wr.classList.remove('hidden');
 }
 
 function confirmPlacement(state) {
@@ -7200,6 +7367,7 @@ function setConfirmVisible(v, anchorCell) {
   UI.els.rotateL.classList.toggle('hidden', !v || !canTurn);
   document.getElementById('confirmrow').classList.toggle('shown', v);
   if (v) UI.els.confirm.textContent = 'CONFIRM';
+  if (!v || UI.structMode) document.getElementById('windread').classList.add('hidden');
   if (v) placeConfirmRow(anchorCell);
 }
 
@@ -8238,6 +8406,52 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('endscreen').classList.add('hidden');
     document.getElementById('startscreen').classList.remove('hidden');
   });
+  // refuse Zeus's verdict (player-directed): the tides resume and only
+  // a fallen Great Temple ends the matter now
+  document.getElementById('fightonbtn').addEventListener('click', () => {
+    if (!STATE || STATE.over !== 'arbitration') return;
+    STATE.over = null;
+    STATE.arbitrationDeclined = true;
+    document.getElementById('endscreen').classList.add('hidden');
+    flashTicker('THE VERDICT IS REFUSED — THE SEA COMES ON');
+  });
+
+  // ---- save / resume (player-directed: life happens on mobile) ----
+  const resumeBtn = document.getElementById('resumebtn');
+  const offerResume = () => {
+    const snap = loadSavedMatch();
+    if (snap) {
+      resumeBtn.textContent = 'RESUME YOUR MATCH — WAVE ' + Math.min(snap.wave.index + 1, 99) + ' · ' + snap.seed;
+      resumeBtn.classList.remove('hidden');
+    } else resumeBtn.classList.add('hidden');
+  };
+  offerResume();
+  resumeBtn.addEventListener('click', () => {
+    const snap = loadSavedMatch();
+    if (!snap) { resumeBtn.classList.add('hidden'); return; }
+    audioInit();
+    startMatch(snap.seed, snap.theme);
+    applySnapshot(STATE, snap);
+    // no re-tutorial mid-match, and ids must not collide with restored ones
+    if (STATE.tut) { STATE.tut.active = false; }
+    document.getElementById('skipbtn').classList.add('hidden');
+    let maxId = 0;
+    for (const e of [...STATE.structures, ...STATE.haulers, ...STATE.craft]) maxId = Math.max(maxId, e.id || 0);
+    nextEntityId = Math.max(nextEntityId, maxId + 1);
+    buildHand(STATE);
+    refreshHUD(STATE);
+    refreshInfluenceView(STATE);
+    flashTicker('THE MATCH RESUMES — WAVE ' + Math.min(STATE.wave.index + 1, 99));
+  });
+  // leaving mid-match saves; a decided match clears its save
+  const persist = () => { if (STATE && !STATE.over && !STATE.demo) saveMatch(STATE); };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
+  window.addEventListener('pagehide', persist);
+  setInterval(() => {
+    if (STATE && STATE.over) clearSavedMatch();
+    if (!STATE) offerResume();   // back at the title: refresh the offer
+  }, 2000);
+
   requestAnimationFrame(frame);
 });
 

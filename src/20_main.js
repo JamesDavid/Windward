@@ -382,5 +382,51 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('endscreen').classList.add('hidden');
     document.getElementById('startscreen').classList.remove('hidden');
   });
+  // refuse Zeus's verdict (player-directed): the tides resume and only
+  // a fallen Great Temple ends the matter now
+  document.getElementById('fightonbtn').addEventListener('click', () => {
+    if (!STATE || STATE.over !== 'arbitration') return;
+    STATE.over = null;
+    STATE.arbitrationDeclined = true;
+    document.getElementById('endscreen').classList.add('hidden');
+    flashTicker('THE VERDICT IS REFUSED — THE SEA COMES ON');
+  });
+
+  // ---- save / resume (player-directed: life happens on mobile) ----
+  const resumeBtn = document.getElementById('resumebtn');
+  const offerResume = () => {
+    const snap = loadSavedMatch();
+    if (snap) {
+      resumeBtn.textContent = 'RESUME YOUR MATCH — WAVE ' + Math.min(snap.wave.index + 1, 99) + ' · ' + snap.seed;
+      resumeBtn.classList.remove('hidden');
+    } else resumeBtn.classList.add('hidden');
+  };
+  offerResume();
+  resumeBtn.addEventListener('click', () => {
+    const snap = loadSavedMatch();
+    if (!snap) { resumeBtn.classList.add('hidden'); return; }
+    audioInit();
+    startMatch(snap.seed, snap.theme);
+    applySnapshot(STATE, snap);
+    // no re-tutorial mid-match, and ids must not collide with restored ones
+    if (STATE.tut) { STATE.tut.active = false; }
+    document.getElementById('skipbtn').classList.add('hidden');
+    let maxId = 0;
+    for (const e of [...STATE.structures, ...STATE.haulers, ...STATE.craft]) maxId = Math.max(maxId, e.id || 0);
+    nextEntityId = Math.max(nextEntityId, maxId + 1);
+    buildHand(STATE);
+    refreshHUD(STATE);
+    refreshInfluenceView(STATE);
+    flashTicker('THE MATCH RESUMES — WAVE ' + Math.min(STATE.wave.index + 1, 99));
+  });
+  // leaving mid-match saves; a decided match clears its save
+  const persist = () => { if (STATE && !STATE.over && !STATE.demo) saveMatch(STATE); };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
+  window.addEventListener('pagehide', persist);
+  setInterval(() => {
+    if (STATE && STATE.over) clearSavedMatch();
+    if (!STATE) offerResume();   // back at the title: refresh the offer
+  }, 2000);
+
   requestAnimationFrame(frame);
 });

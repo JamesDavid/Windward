@@ -352,7 +352,10 @@ function wavesTick(state, dt) {
   // Zeus arbitrates: weather the ninth tide and five full wrath tides
   // with your Great Temple standing, and the matter is settled — no
   // match drifts on without a verdict
-  if (!state.over && w.index >= W.COUNT + W.ARBITRATION_WRATH_TIDES &&
+  // (a player may REFUSE the verdict — then the tides simply continue
+  // until one Great Temple actually falls)
+  if (!state.over && !state.arbitrationDeclined &&
+      w.index >= W.COUNT + W.ARBITRATION_WRATH_TIDES &&
       state.greatTemple.A.hp > 0) {
     state.over = 'arbitration';
     Events.emit('arbitration', {});
