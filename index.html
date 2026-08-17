@@ -394,7 +394,7 @@ const CONFIG = Object.freeze({
     HYDROGEN_DAMAGE_MULT: 1.25
   },
 
-  Tech: { HYDROGEN_COST_SUPPLY: 25, HYDROGEN_COST_FAVOR: 6 },
+  Tech: { HYDROGEN_COST_SUPPLY: 25, HYDROGEN_COST_FAVOR: 6 },   // swept flat 15-40 (test/opt_powers.js): price is not the lever, the refit's value is wind exemption
 
   Pieces: {
     HAND_SIZE: 3,
@@ -478,7 +478,7 @@ const CONFIG = Object.freeze({
   },
 
   Powers: {
-    TAILWIND:  { FAVOR: 3, DURATION: 15, SPEED_MULT: 2.0, ASSAULT_MULT: 2.0 },
+    TAILWIND:  { FAVOR: 3, DURATION: 15, SPEED_MULT: 2.0, ASSAULT_MULT: 2.0 },   // swept (test/opt_powers.js): 2-4 within noise, 5+ uniformly worse - keep it cheap enough to cast on instinct
     // the sanctioned siege tool: wall the site, raise the gun behind it.
     // One wall at a time — recasting moves it, nothing stacks.
     WIND_WALL: { FAVOR: 4, DURATION: 15, DAMAGE_REDUCTION: 0.75, RADIUS: 2.0 },
