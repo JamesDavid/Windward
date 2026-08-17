@@ -515,6 +515,7 @@ function menuButton(label, cost, fn, disabledReason, descKey, favorCost) {
   if (disabledReason) {
     // still tappable: a tap explains WHY it is refused (mobile has no tooltips)
     btn.style.opacity = 0.4;
+    btn.dataset.refused = '1';   // the demo puppeteer must not press these
     btn.addEventListener('click', () => flashTicker(disabledReason));
   } else {
     btn.addEventListener('click', () => { fn(); hideBuildMenu(); });
@@ -760,9 +761,11 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     if (hasYard) {
       const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
       const capped = fleet >= fleetCap(state, 'A');
-      groups.factory.push(menuButton('BUILD<br>HAULER', CONFIG.Hauler.COST, () => {
+      // show WHERE the mooring comes from (player report: a hauler
+      // "without having a mooring" — the Great Temple itself moors two)
+      groups.factory.push(menuButton('BUILD<br>HAULER<br><i style="font-size:9px">' + fleet + ' / ' + fleetCap(state, 'A') + ' MOORED</i>', CONFIG.Hauler.COST, () => {
         if (!buyHauler(state, 'A')) flashTicker('FLEET AT CAPACITY');
-      }, capped ? 'FLEET AT CAPACITY' : (state.res.A.supply < CONFIG.Hauler.COST ? 'NOT ENOUGH SUPPLY' : null), 'hauler'));
+      }, capped ? 'FLEET AT CAPACITY — RAISE A ' + (R.themeSea ? 'SHIPYARD' : 'MOORING YARD') : (state.res.A.supply < CONFIG.Hauler.COST ? 'NOT ENOUGH SUPPLY' : null), 'hauler'));
     }
   }
 

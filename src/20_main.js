@@ -114,6 +114,15 @@ function initDemo(state) {
 function demoPlan(state) {
   const d = state.demoCtl;
   const p = state.priests.A;
+  // a refused or failed action is blacklisted for a while so the
+  // demonstrator moves on instead of looping (player report: it kept
+  // pressing a refused CHAIN VANE)
+  if (!d.bad) d.bad = new Map();
+  const ok = (plan) => {
+    if (!plan) return null;
+    const until = d.bad.get(plan.key + '@' + plan.cell.join(','));
+    return until && state.time < until ? null : plan;
+  };
   // 1. priest toward the supply island (only once a road reaches it —
   // otherwise fall through and LAY the road), then its temple
   if (p.state === 'idle' && !d.supply.temple && p.islandId !== d.supply.id &&
@@ -121,7 +130,8 @@ function demoPlan(state) {
     // SEND PRIEST lives on the island-BODY menu, not the plot menu
     const isPlot = ([x, z]) => d.supply.plots.some(pl => pl.x === x && pl.z === z);
     const c = d.supply.cells.find(cc => !isPlot(cc)) || d.supply.cells[0];
-    return { cell: [c[0], c[1]], key: 'priest', kind: 'instant' };
+    const pl = ok({ cell: [c[0], c[1]], key: 'priest', kind: 'instant' });
+    if (pl) return pl;
   }
   // a cell is only worth tapping if the build would actually be legal
   // there — whyNotBuild knows about the Great Temple's own footprint,
@@ -131,14 +141,26 @@ function demoPlan(state) {
   if (p.state === 'idle' && p.islandId === d.supply.id && !d.supply.temple &&
     state.res.A.supply >= CONFIG.Structures.TEMPLE.COST) {
     const c = buildableCell(d.supply, 'temple');
-    if (c) return { cell: [c[0], c[1]], key: 'temple', kind: 'ghost' };
+    const pl = c && ok({ cell: [c[0], c[1]], key: 'temple', kind: 'ghost' });
+    if (pl) return pl;
   }
   // 2. one home vane, early
   const home = state.gtA;
   if (state.time > 12 && state.res.A.supply >= 12 &&
     !state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === home.id)) {
     const c = buildableCell(home, 'vane');
-    if (c) return { cell: [c[0], c[1]], key: 'vane', kind: 'ghost' };
+    const pl = c && ok({ cell: [c[0], c[1]], key: 'vane', kind: 'ghost' });
+    if (pl) return pl;
+  }
+  // 2b. a mooring yard BEFORE any hauler purchase — the Great Temple
+  // itself moors two, so buying early is legal, but the demo must show
+  // where haulers come from (player report: a hauler bought "without
+  // having a mooring")
+  if (state.time > 20 && state.res.A.supply >= CONFIG.Yard.COST + CONFIG.Hauler.COST &&
+    !state.structures.some(s => s.owner === 'A' && s.type === 'yard')) {
+    const c = buildableCell(home, 'yard');
+    const pl = c && ok({ cell: [c[0], c[1]], key: 'yard', kind: 'ghost' });
+    if (pl) return pl;
   }
   // 3. a forward bolt now and then (with a TURN for show)
   if (state.time - d.lastGun > 45 && state.res.A.supply >= 14) {
@@ -146,16 +168,20 @@ function demoPlan(state) {
     ends.sort((a, b) =>
       (Math.abs(b.cell[0] - d.gt[0]) + Math.abs(b.cell[1] - d.gt[1])) -
       (Math.abs(a.cell[0] - d.gt[0]) + Math.abs(a.cell[1] - d.gt[1])));
-    if (ends.length) { d.lastGun = state.time; return { cell: ends[0].cell.slice(), key: 'bolt', kind: 'ghost', turns: 1 }; }
+    const pl = ends.length && ok({ cell: ends[0].cell.slice(), key: 'bolt', kind: 'ghost', turns: 1 });
+    if (pl) { d.lastGun = state.time; return pl; }
   }
-  // 4. a hauler when the fleet has room
+  // 4. a hauler when the fleet has room — but only after the yard
+  // stands, so the audience sees the mooring before the balloon
   const fleet = state.haulers.filter(h => h.owner === 'A' && h.state !== 'dead').length;
-  if (fleet < fleetCap(state, 'A') && state.res.A.supply >= CONFIG.Hauler.COST + 10) {
+  const yardUp = state.structures.some(s => s.owner === 'A' && s.type === 'yard' && s.hp > 0 && s.buildProgress >= 1);
+  if (yardUp && fleet < fleetCap(state, 'A') && state.res.A.supply >= CONFIG.Hauler.COST + 10) {
     // the BUILD HAULER button lives on the island-body menu: pick a
     // home cell that is NOT a marked plot so that branch opens
     const isPlot = ([x, z]) => home.plots.some(pl => pl.x === x && pl.z === z);
     const c = home.cells.find(cc => !isPlot(cc)) || home.cells[0];
-    return { cell: [c[0], c[1]], key: 'hauler', kind: 'instant' };
+    const pl = ok({ cell: [c[0], c[1]], key: 'hauler', kind: 'instant' });
+    if (pl) return pl;
   }
   // 5. otherwise: lay a path toward the objective, through the real menu
   const target = d.supply.temple && d.supply.temple.buildProgress >= 1 ? d.choke.center : d.supply.center;
@@ -170,7 +196,8 @@ function demoPlan(state) {
         if (dd < bestD) { bestD = dd; bestSock = sock; bestIdx = i; }
       }
     }
-    if (bestSock) return { cell: bestSock.cell.slice(), key: 'piece-' + type, kind: 'ghost', turns: Math.min(bestIdx, 3) };
+    const pl = bestSock && ok({ cell: bestSock.cell.slice(), key: 'piece-' + type, kind: 'ghost', turns: Math.min(bestIdx, 3) });
+    if (pl) return pl;
   }
   return null;
 }
@@ -201,9 +228,15 @@ function demoTick(state, dt) {
       } else d.nextAct = now + 2;
     }
   } else if (d.phase === 'press' && now - d.phaseAt > 0.9) {
-    const btn = demoHighlight('#buildmenu button[data-key="' + d.plan.key + '"]');
-    if (!btn) { hideBuildMenu(); d.phase = null; d.nextAct = now + 1.5; }
-    else { d.phase = 'click'; d.phaseAt = now; }
+    const btn = document.querySelector('#buildmenu button[data-key="' + d.plan.key + '"]');
+    if (!btn || btn.dataset.refused) {
+      // absent or refused: never press it — blacklist and move on
+      if (d.bad) d.bad.set(d.plan.key + '@' + d.plan.cell.join(','), now + 30);
+      hideBuildMenu();
+      d.phase = null;
+      d.nextAct = now + 1.2;
+    }
+    else { btn.classList.add('demopress'); d.phase = 'click'; d.phaseAt = now; }
   } else if (d.phase === 'click' && now - d.phaseAt > 0.7) {
     const btn = document.querySelector('#buildmenu button[data-key="' + d.plan.key + '"]');
     if (btn) btn.click();
@@ -212,8 +245,13 @@ function demoTick(state, dt) {
     else { d.phase = 'turn'; d.phaseAt = now; d.turnsLeft = d.plan.turns || 0; }
   } else if (d.phase === 'turn' && now - d.phaseAt > 0.6) {
     // the press may have failed silently (cost, ground taken): only a
-    // live ghost earns a CONFIRM performance
-    if (UI.mode !== 'placing' && !UI.structMode) { d.phase = null; d.nextAct = now + 1.5; }
+    // live ghost earns a CONFIRM performance — and the failure is
+    // blacklisted so the demonstrator never loops on it
+    if (UI.mode !== 'placing' && !UI.structMode) {
+      if (d.bad) d.bad.set(d.plan.key + '@' + d.plan.cell.join(','), now + 30);
+      d.phase = null;
+      d.nextAct = now + 1.5;
+    }
     else if (d.turnsLeft > 0) {
       const rot = document.getElementById('btn-rotate');
       if (rot && !rot.classList.contains('hidden')) { rot.classList.add('demopress'); rot.click(); setTimeout(() => rot.classList.remove('demopress'), 400); }
