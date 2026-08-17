@@ -46,14 +46,12 @@ function startMatch(seedStr, theme, demo) {
   }
 
   initAI(STATE);
-  // dynamic skill matching (player-directed): real matches start at the
-  // persistent rating's rung and adjust silently at telegraphs; the
-  // demo plays FAIR, fixed
-  if (demo) applyAiTier(STATE, 1);
-  else {
-    STATE.dda = true;
-    applyAiTier(STATE, Math.round(loadSkillRating()));
-  }
+  // dynamic skill matching (player-directed): matches start at a rung
+  // and adjust silently at telegraphs. Real matches start at the
+  // persistent rating; the DEMO starts FAIR and climbs the same ladder
+  // as its champion dominates - the show escalates honestly.
+  STATE.dda = true;
+  applyAiTier(STATE, demo ? 1 : Math.round(loadSkillRating()));
   initFlow(STATE);
   initFxEvents(STATE);
   wireAudio();
@@ -562,7 +560,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (STATE && STATE.over) {
       clearSavedMatch();
       // a decided real match nudges the persistent skill rating, once
-      if (STATE.dda && !STATE._ratingSaved) { STATE._ratingSaved = true; updateSkillRating(STATE); }
+      // (never the demo's - its matches are not the player's)
+      if (STATE.dda && !STATE.demo && !STATE._ratingSaved) { STATE._ratingSaved = true; updateSkillRating(STATE); }
     }
     if (!STATE) offerResume();   // back at the title: refresh the offer
   }, 2000);
