@@ -862,6 +862,14 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     menu.appendChild(cap);
     for (const o of pieceOptions) menu.appendChild(o);
   }
+  // dismiss ✕ pinned to the lower-right corner (player-directed)
+  {
+    const x = document.createElement('button');
+    x.className = 'dismissx';
+    x.textContent = '✕';
+    x.addEventListener('click', (e) => { e.stopPropagation(); hideBuildMenu(); });
+    menu.appendChild(x);
+  }
   menu.classList.remove('hidden');
   if (UI.shimmerPending) {
     // the shimmer has now actually been seen — never again
@@ -875,8 +883,9 @@ function openContextMenu(state, cell, tapX, tapY, fx, fz) {
     menu.style.visibility = 'hidden';
     requestAnimationFrame(() => {
       const w = menu.offsetWidth, h = menu.offsetHeight;
-      const left = clamp(tapX - w / 2, 6, window.innerWidth - w - 6);
-      const top = clamp(tapY - h - 34, 6, window.innerHeight - h - 6);
+      // 18px margins right/bottom keep the overhanging dismiss ✕ on-screen
+      const left = clamp(tapX - w / 2, 6, window.innerWidth - w - 18);
+      const top = clamp(tapY - h - 34, 6, window.innerHeight - h - 18);
       menu.style.left = left + 'px';
       menu.style.top = top + 'px';
       menu.style.visibility = 'visible';
