@@ -294,7 +294,13 @@ function updateGhostMultiplier(state) {
     sum += state.wind.multiplier((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, dx / len, dz / len, true);
   }
   const avg = sum / p.segs.length;
-  UI.els.confirm.textContent = 'CONFIRM  ×' + avg.toFixed(2);
+  // say what the number means (player asked): this is the wind over the
+  // new road in the direction drawn — fleets ride fast channels, and
+  // below the law's threshold they'd rather wait or loop another way
+  const W = CONFIG.Wind;
+  const closeAt = W.AIR_MIN + W.HAULER_MIN_FRAC * (W.AIR_MAX - W.AIR_MIN);
+  const word = avg >= 1.1 ? 'TAILWIND' : avg >= closeAt ? 'FAIR WIND' : 'HEADWIND';
+  UI.els.confirm.textContent = 'CONFIRM · ' + word + ' ×' + avg.toFixed(2);
 }
 
 function confirmPlacement(state) {
