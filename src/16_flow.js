@@ -55,7 +55,7 @@ const TUT_STEPS = [
   },
   {
     key: 'done', timeout: 7,
-    text: () => 'You know the loop: paths, ore, temples, guns — and Favor for your god\'s aid in the thumb menu. The tide comes nine times. Hold.',
+    text: () => 'You know the loop: paths, ore, temples, guns — and Favor for your god\'s aid in the thumb menu. The tide comes nine times, then his wrath until one temple falls. Strike first.',
     target: () => null
   }
 ];
@@ -105,6 +105,20 @@ function initFlow(state) {
   // banner. Claims speak through the board itself (island bases tint).
   Events.on('waveTelegraph', () => audioPlay('telegraph'));
   Events.on('ageOfWrath', () => flashTicker('THE AGE OF WRATH — EVERYTHING HITS HARDER'));
+  Events.on('waveLaunched', ({ index }) => {
+    if (index === CONFIG.Waves.COUNT) flashTicker('THE NINTH TIDE HAS PASSED — HIS WRATH HAS NOT');
+  });
+  // the wind law made waits real: say them out loud, sparingly
+  Events.on('fleetWaits', ({ side }) => {
+    if (side !== 'A' || state.time < (state.flow.windNoteAt || 0)) return;
+    state.flow.windNoteAt = state.time + 30;
+    flashTicker('THE WIND SETS AGAINST THE ROAD — THE FLEET WAITS');
+  });
+  Events.on('fleetTacks', ({ side }) => {
+    if (side !== 'A' || state.time < (state.flow.tackNoteAt || 0)) return;
+    state.flow.tackNoteAt = state.time + 30;
+    flashTicker('NO FAIR WIND — THE FLEET CLAWS FORWARD');
+  });
   Events.on('convoyLost', ({ ent }) => { if (ent.owner === 'A') flashTicker('CONVOY LOST'); });
   Events.on('priestDead', ({ side }) => {
     if (side === 'A') flashTicker('THE PRIEST IS LOST — A SUCCESSOR IS INVESTED');
@@ -172,6 +186,15 @@ function flowTick(state) {
 
   // (wave-1 lore line removed with the rest of his mid-match voice)
 
+  // Zeus's arbitration (set in wavesTick): the survivor's verdict
+  if (state.over === 'arbitration' && !f.arbShown) {
+    f.arbShown = true;
+    const sea = state.theme === 'sea';
+    endScreen('ZEUS CALLS THE MATTER SETTLED',
+      sea ? 'Nine tides of the sky and all its fury after — the lanes still stand. The sky withdraws.'
+          : 'Nine tides and his wrath behind them — the roads still stand. The sea withdraws.', state);
+    audioPlay('victory');
+  }
   // win / lose (§28) — worded for whichever god you served
   if (!state.over) {
     const sea = state.theme === 'sea';

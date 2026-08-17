@@ -438,7 +438,8 @@ function identifyUnit(state, fx, fz) {
   };
   for (const h of state.haulers) {
     if (h.owner === 'A') {
-      consider(h, R.themeSea ? 'YOUR HAULER TRIREME' : (state.hydrogen.A ? 'YOUR DIRIGIBLE' : 'YOUR HOT-AIR HAULER'));
+      consider(h, (R.themeSea ? 'YOUR HAULER TRIREME' : (state.hydrogen.A ? 'YOUR DIRIGIBLE' : 'YOUR HOT-AIR HAULER')) +
+        (h.tacking ? ' — TACKING' : h.windWaitSince ? ' — WAITING ON THE WIND' : ''));
     } else if (state.vision.A.has(cellKey(Math.round(h.pos[0]), Math.round(h.pos[1])))) {
       consider(h, R.themeSea ? 'GUILD HAULER' : 'HIS HAULER');
     }
@@ -896,10 +897,12 @@ function refreshHUD(state) {
       (engaged ? 'ATTACKING' : 'EN ROUTE') + '</span>';
   }
   if (state.over) UI.els.waveinfo.textContent = '';
-  else if (w.index >= CONFIG.Waves.COUNT) UI.els.waveinfo.innerHTML = 'THE LAST TIDE HAS PASSED' + fleetLine;
   else {
     const remain = Math.max(0, w.nextAt - state.time);
-    UI.els.waveinfo.innerHTML = 'WAVE ' + (w.index + 1) + ' IN ' + Math.ceil(remain) + 's' + fleetLine;
+    const name = w.index >= CONFIG.Waves.COUNT
+      ? 'WRATH TIDE IN ' + Math.ceil(remain) + 's'   // past nine, the sea does not tire
+      : 'WAVE ' + (w.index + 1) + ' IN ' + Math.ceil(remain) + 's';
+    UI.els.waveinfo.innerHTML = name + fleetLine;
   }
   // keep the floating confirm row glued to its ghost through pans/zooms
   if (!UI.els.confirm.classList.contains('hidden')) placeConfirmRow();

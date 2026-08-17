@@ -8,6 +8,7 @@
 
 function waveInterval(index) {
   const W = CONFIG.Waves;
+  if (index >= W.COUNT) return W.WRATH_TIDE_INTERVAL;   // the sea does not tire
   if (index + 1 >= W.LATE_FROM_WAVE) return W.INTERVAL_LATE;
   if (index + 1 >= W.MID_FROM_WAVE) return W.INTERVAL_MID;
   return W.INTERVAL_EARLY;
@@ -24,7 +25,11 @@ function poseidonTempleCount(state) {
 
 function waveStrength(state) {
   const W = CONFIG.Waves;
-  return clamp(W.STRENGTH_BASE + W.STRENGTH_PER_TEMPLE * poseidonTempleCount(state), W.STRENGTH_MIN, W.STRENGTH_MAX);
+  // wrath tides (past the authored nine) escalate without his temples' help
+  const wrathTides = Math.max(0, state.wave.index - (W.COUNT - 1));
+  const cap = wrathTides > 0 ? W.WRATH_STRENGTH_CAP : W.STRENGTH_MAX;
+  return clamp(W.STRENGTH_BASE + W.STRENGTH_PER_TEMPLE * poseidonTempleCount(state) +
+    W.WRATH_STRENGTH_STEP * wrathTides, W.STRENGTH_MIN, cap);
 }
 
 // the player's most forward holding (largest distance from their temple)
@@ -134,7 +139,7 @@ function spawnCraft(state, kind, origin, script) {
 function launchWave(state) {
   const W = CONFIG.Waves;
   const idx = state.wave.index;               // 0-based
-  const comp = W.COMPOSITION[idx];
+  const comp = W.COMPOSITION[Math.min(idx, W.COMPOSITION.length - 1)];   // wrath tides reuse the ninth
   const mult = waveStrength(state);
   const origin = state.wave.origin || waveOrigin(state);
   const count = comp.map(n => Math.max(n > 0 ? 1 : 0, Math.round(n * mult)));
@@ -328,7 +333,9 @@ function wavesTick(state, dt) {
   // slides forward while it runs (browser-only; headless sims never
   // create state.tut, so nothing changes for tests and sweeps)
   if (state.tut && state.tut.active) w.nextAt += dt;
-  if (w.index < W.COUNT) {
+  // the tide never stops: past the authored nine, wrath tides force a
+  // conclusion — no match may drift into stalemate
+  {
     if (!w.telegraphed && state.time >= w.nextAt - W.TELEGRAPH) {
       w.telegraphed = true;
       w.origin = waveOrigin(state);
@@ -341,6 +348,14 @@ function wavesTick(state, dt) {
       w.origin = null;
       w.nextAt += waveInterval(w.index);
     }
+  }
+  // Zeus arbitrates: weather the ninth tide and five full wrath tides
+  // with your Great Temple standing, and the matter is settled — no
+  // match drifts on without a verdict
+  if (!state.over && w.index >= W.COUNT + W.ARBITRATION_WRATH_TIDES &&
+      state.greatTemple.A.hp > 0) {
+    state.over = 'arbitration';
+    Events.emit('arbitration', {});
   }
   for (const c of state.craft) updateCraft(state, c, dt);
   state.craft = state.craft.filter(c => !c.dead);

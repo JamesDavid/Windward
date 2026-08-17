@@ -30,7 +30,7 @@ function loadPatched(patches) {
   return sandbox;
 }
 
-function runTrial(G, seed) {
+function runTrial(G, seed, maxT = 480) {
   const state = G.newGameState(seed);
   G.recalcSupport(state, 'A');
   G.recalcSupport(state, 'P');
@@ -62,17 +62,47 @@ const segTouches = (pl) => [...state.segments.values()].some(s => s.owner === 'A
       if (pi >= 0) G.buildStructure(state, 'A', 'temple', { site: 'plot', islandId: supply.id, plotIdx: pi, cell: [supply.plots[pi].x, supply.plots[pi].z] });
     }
     const target = supply.temple && supply.temple.buildProgress >= 1 ? choke.center : supply.center;
-    const type = state.hand[0];
-    if (state.res.A.favor >= G.pieceCost(type)) {
-      let bestP = null, bestD = Infinity;
-      for (const sock of G.getSockets(state, 'A')) {
-        for (const pl of G.legalPlacements(state, 'A', type, sock)) {
-          const far = pl.segs[pl.segs.length - 1][1];
-          const d = Math.abs(far[0] - target[0]) + Math.abs(far[1] - target[1]);
-          if (d < bestD) { bestD = d; bestP = pl; }
+    // consider the WHOLE hand (extender, brancher, hub) — junctions get
+    // a small bonus since the wind law rewards loops and forks
+    {
+      let bestP = null, bestScore = -Infinity, bestSlot = -1;
+      for (let slot = 0; slot < state.hand.length; slot++) {
+        const type = state.hand[slot];
+        if (state.res.A.favor < G.pieceCost(type)) continue;
+        for (const sock of G.getSockets(state, 'A')) {
+          for (const pl of G.legalPlacements(state, 'A', type, sock)) {
+            const far = pl.segs[pl.segs.length - 1][1];
+            const d = Math.abs(far[0] - target[0]) + Math.abs(far[1] - target[1]);
+            const sc = -d + (G.piecePlugs(type) - 1) * 1.5;
+            if (sc > bestScore) { bestScore = sc; bestP = pl; bestSlot = slot; }
+          }
         }
       }
-      if (bestP) { G.placePiece(state, 'A', type, bestP.segs); state.hand[0] = G.drawPiece(); }
+      if (bestP) {
+        G.placePiece(state, 'A', state.hand[bestSlot], bestP.segs);
+        state.hand[bestSlot] = G.drawPiece(bestSlot);
+      }
+    }
+    // divine powers: wall the forward holding when a wave is telegraphed,
+    // tailwind a loaded convoy when favor is rich
+    const P = G.CONFIG.Powers;
+    if (state.wave.telegraphed && state.res.A.favor >= P.WIND_WALL.FAVOR + 6) {
+      let fwd = null, fd = -1;
+      for (const st of state.structures) {
+        if (st.owner !== 'A' || st.hp <= 0) continue;
+        const d = Math.abs(st.cell[0] - gt[0]) + Math.abs(st.cell[1] - gt[1]);
+        if (d > fd) { fd = d; fwd = st; }
+      }
+      if (fwd) G.castWindWall(state, fwd.cell);
+    }
+    if (state.res.A.favor >= P.TAILWIND.FAVOR + 12 &&
+      state.haulers.some(x => x.owner === 'A' && x.state === 'toHome' && x.cargo > 0)) {
+      G.castTailwind(state);
+    }
+    // the refit, once the economy stands
+    if (supply.temple && state.res.A.supply >= G.CONFIG.Tech.HYDROGEN_COST_SUPPLY + 20 &&
+      state.res.A.favor >= G.CONFIG.Tech.HYDROGEN_COST_FAVOR + 8) {
+      G.buyHydrogen(state, 'A');
     }
     const homeIsl = state.gtA;
     if (!state.structures.some(s => s.owner === 'A' && s.type === 'vane' && s.islandId === homeIsl.id) &&
@@ -98,7 +128,7 @@ const segTouches = (pl) => [...state.segments.values()].some(s => s.owner === 'A
   };
 
   const dt = 0.1;
-  for (let t = 0; t < 480 && !state.over; t += dt) {
+  for (let t = 0; t < maxT && !state.over; t += dt) {
     state.time = t;
     state.wind.tick(dt);
     G.economyTick(state, dt);

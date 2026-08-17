@@ -312,7 +312,10 @@ function updateHauler(state, h, dt) {
         let tack = false;
         if (!path) {
           // no favorable channel: wait for the shift, then tack anyway
-          if (!h.windWaitSince) h.windWaitSince = state.time;
+          if (!h.windWaitSince) {
+            h.windWaitSince = state.time;
+            Events.emit('fleetWaits', { side });
+          }
           if (state.time - h.windWaitSince > CONFIG.Wind.TACK_AFTER) {
             path = findNetPath(state, side, from, target.cells);
             tack = true;
@@ -321,6 +324,7 @@ function updateHauler(state, h, dt) {
         if (path && path.length > 1) {
           h.windWaitSince = null;
           h.tacking = tack;
+          if (tack) Events.emit('fleetTacks', { side });
           h.targetIsland = target.id;
           h.path = path; h.legIndex = 0; h.legT = 0;
           h.state = 'toIsland';
@@ -346,7 +350,10 @@ function updateHauler(state, h, dt) {
           if (plain) {
             // road home exists but the wind is against it: hold at the
             // mooring for the shift, then tack home under penalty
-            if (!h.windWaitSince) h.windWaitSince = state.time;
+            if (!h.windWaitSince) {
+              h.windWaitSince = state.time;
+              Events.emit('fleetWaits', { side });
+            }
             if (state.time - h.windWaitSince > CONFIG.Wind.TACK_AFTER) { path = plain; tack = true; }
             else { h.timer = 2; break; }
           }
@@ -355,6 +362,7 @@ function updateHauler(state, h, dt) {
         // load only on actual departure — a wind-wait must not re-take
         h.windWaitSince = null;
         h.tacking = tack;
+        if (tack) Events.emit('fleetTacks', { side });
         const isl = state.map.islands[h.targetIsland];
         const take = Math.min(h.capacity, Math.floor(isl ? isl.stockpile : 0));
         if (isl) isl.stockpile -= take;

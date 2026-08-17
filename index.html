@@ -494,6 +494,13 @@ const CONFIG = Object.freeze({
     INTERVAL_EARLY: 55.0, INTERVAL_MID: 45.0, INTERVAL_LATE: 35.0,
     MID_FROM_WAVE: 4, LATE_FROM_WAVE: 7,
     COUNT: 9,
+    // after the ninth tide his WRATH does not stop: waves keep coming at
+    // the final composition, escalating, until one Great Temple falls.
+    // Closes the stalemate gap — no match may drift into an anticlimax
+    // timeout (sims showed frequent full-HP timeouts before this).
+    WRATH_TIDE_INTERVAL: 30.0,                            // overtime, not a second act
+    WRATH_STRENGTH_STEP: 0.15, WRATH_STRENGTH_CAP: 1.8,   // census-tuned: 0.06/40s let full-HP turtles shrug off two tides and still stalemate
+    ARBITRATION_WRATH_TIDES: 5,                           // weather the ninth tide AND five full wrath tides and Zeus rules the matter settled — every match ENDS (census: fortress players survived 25 waves untouched; they deserve a verdict, not a fizzle)
     AI_REROUTE_DELAY: 2.0, AI_REROUTE_COOLDOWN: 20.0,
     // authored composition per wave: [transports, siphons, heavies]
     // horde-tuned (player-directed): transports come in numbers
@@ -2398,7 +2405,10 @@ function updateHauler(state, h, dt) {
         let tack = false;
         if (!path) {
           // no favorable channel: wait for the shift, then tack anyway
-          if (!h.windWaitSince) h.windWaitSince = state.time;
+          if (!h.windWaitSince) {
+            h.windWaitSince = state.time;
+            Events.emit('fleetWaits', { side });
+          }
           if (state.time - h.windWaitSince > CONFIG.Wind.TACK_AFTER) {
             path = findNetPath(state, side, from, target.cells);
             tack = true;
@@ -2407,6 +2417,7 @@ function updateHauler(state, h, dt) {
         if (path && path.length > 1) {
           h.windWaitSince = null;
           h.tacking = tack;
+          if (tack) Events.emit('fleetTacks', { side });
           h.targetIsland = target.id;
           h.path = path; h.legIndex = 0; h.legT = 0;
           h.state = 'toIsland';
@@ -2432,7 +2443,10 @@ function updateHauler(state, h, dt) {
           if (plain) {
             // road home exists but the wind is against it: hold at the
             // mooring for the shift, then tack home under penalty
-            if (!h.windWaitSince) h.windWaitSince = state.time;
+            if (!h.windWaitSince) {
+              h.windWaitSince = state.time;
+              Events.emit('fleetWaits', { side });
+            }
             if (state.time - h.windWaitSince > CONFIG.Wind.TACK_AFTER) { path = plain; tack = true; }
             else { h.timer = 2; break; }
           }
@@ -2441,6 +2455,7 @@ function updateHauler(state, h, dt) {
         // load only on actual departure — a wind-wait must not re-take
         h.windWaitSince = null;
         h.tacking = tack;
+        if (tack) Events.emit('fleetTacks', { side });
         const isl = state.map.islands[h.targetIsland];
         const take = Math.min(h.capacity, Math.floor(isl ? isl.stockpile : 0));
         if (isl) isl.stockpile -= take;
@@ -3131,6 +3146,7 @@ function combatTick(state, dt) {
 
 function waveInterval(index) {
   const W = CONFIG.Waves;
+  if (index >= W.COUNT) return W.WRATH_TIDE_INTERVAL;   // the sea does not tire
   if (index + 1 >= W.LATE_FROM_WAVE) return W.INTERVAL_LATE;
   if (index + 1 >= W.MID_FROM_WAVE) return W.INTERVAL_MID;
   return W.INTERVAL_EARLY;
@@ -3147,7 +3163,11 @@ function poseidonTempleCount(state) {
 
 function waveStrength(state) {
   const W = CONFIG.Waves;
-  return clamp(W.STRENGTH_BASE + W.STRENGTH_PER_TEMPLE * poseidonTempleCount(state), W.STRENGTH_MIN, W.STRENGTH_MAX);
+  // wrath tides (past the authored nine) escalate without his temples' help
+  const wrathTides = Math.max(0, state.wave.index - (W.COUNT - 1));
+  const cap = wrathTides > 0 ? W.WRATH_STRENGTH_CAP : W.STRENGTH_MAX;
+  return clamp(W.STRENGTH_BASE + W.STRENGTH_PER_TEMPLE * poseidonTempleCount(state) +
+    W.WRATH_STRENGTH_STEP * wrathTides, W.STRENGTH_MIN, cap);
 }
 
 // the player's most forward holding (largest distance from their temple)
@@ -3257,7 +3277,7 @@ function spawnCraft(state, kind, origin, script) {
 function launchWave(state) {
   const W = CONFIG.Waves;
   const idx = state.wave.index;               // 0-based
-  const comp = W.COMPOSITION[idx];
+  const comp = W.COMPOSITION[Math.min(idx, W.COMPOSITION.length - 1)];   // wrath tides reuse the ninth
   const mult = waveStrength(state);
   const origin = state.wave.origin || waveOrigin(state);
   const count = comp.map(n => Math.max(n > 0 ? 1 : 0, Math.round(n * mult)));
@@ -3451,7 +3471,9 @@ function wavesTick(state, dt) {
   // slides forward while it runs (browser-only; headless sims never
   // create state.tut, so nothing changes for tests and sweeps)
   if (state.tut && state.tut.active) w.nextAt += dt;
-  if (w.index < W.COUNT) {
+  // the tide never stops: past the authored nine, wrath tides force a
+  // conclusion — no match may drift into stalemate
+  {
     if (!w.telegraphed && state.time >= w.nextAt - W.TELEGRAPH) {
       w.telegraphed = true;
       w.origin = waveOrigin(state);
@@ -3464,6 +3486,14 @@ function wavesTick(state, dt) {
       w.origin = null;
       w.nextAt += waveInterval(w.index);
     }
+  }
+  // Zeus arbitrates: weather the ninth tide and five full wrath tides
+  // with your Great Temple standing, and the matter is settled — no
+  // match drifts on without a verdict
+  if (!state.over && w.index >= W.COUNT + W.ARBITRATION_WRATH_TIDES &&
+      state.greatTemple.A.hp > 0) {
+    state.over = 'arbitration';
+    Events.emit('arbitration', {});
   }
   for (const c of state.craft) updateCraft(state, c, dt);
   state.craft = state.craft.filter(c => !c.dead);
@@ -4073,7 +4103,7 @@ const TUT_STEPS = [
   },
   {
     key: 'done', timeout: 7,
-    text: () => 'You know the loop: paths, ore, temples, guns — and Favor for your god\'s aid in the thumb menu. The tide comes nine times. Hold.',
+    text: () => 'You know the loop: paths, ore, temples, guns — and Favor for your god\'s aid in the thumb menu. The tide comes nine times, then his wrath until one temple falls. Strike first.',
     target: () => null
   }
 ];
@@ -4123,6 +4153,20 @@ function initFlow(state) {
   // banner. Claims speak through the board itself (island bases tint).
   Events.on('waveTelegraph', () => audioPlay('telegraph'));
   Events.on('ageOfWrath', () => flashTicker('THE AGE OF WRATH — EVERYTHING HITS HARDER'));
+  Events.on('waveLaunched', ({ index }) => {
+    if (index === CONFIG.Waves.COUNT) flashTicker('THE NINTH TIDE HAS PASSED — HIS WRATH HAS NOT');
+  });
+  // the wind law made waits real: say them out loud, sparingly
+  Events.on('fleetWaits', ({ side }) => {
+    if (side !== 'A' || state.time < (state.flow.windNoteAt || 0)) return;
+    state.flow.windNoteAt = state.time + 30;
+    flashTicker('THE WIND SETS AGAINST THE ROAD — THE FLEET WAITS');
+  });
+  Events.on('fleetTacks', ({ side }) => {
+    if (side !== 'A' || state.time < (state.flow.tackNoteAt || 0)) return;
+    state.flow.tackNoteAt = state.time + 30;
+    flashTicker('NO FAIR WIND — THE FLEET CLAWS FORWARD');
+  });
   Events.on('convoyLost', ({ ent }) => { if (ent.owner === 'A') flashTicker('CONVOY LOST'); });
   Events.on('priestDead', ({ side }) => {
     if (side === 'A') flashTicker('THE PRIEST IS LOST — A SUCCESSOR IS INVESTED');
@@ -4190,6 +4234,15 @@ function flowTick(state) {
 
   // (wave-1 lore line removed with the rest of his mid-match voice)
 
+  // Zeus's arbitration (set in wavesTick): the survivor's verdict
+  if (state.over === 'arbitration' && !f.arbShown) {
+    f.arbShown = true;
+    const sea = state.theme === 'sea';
+    endScreen('ZEUS CALLS THE MATTER SETTLED',
+      sea ? 'Nine tides of the sky and all its fury after — the lanes still stand. The sky withdraws.'
+          : 'Nine tides and his wrath behind them — the roads still stand. The sea withdraws.', state);
+    audioPlay('victory');
+  }
   // win / lose (§28) — worded for whichever god you served
   if (!state.over) {
     const sea = state.theme === 'sea';
@@ -7223,7 +7276,8 @@ function identifyUnit(state, fx, fz) {
   };
   for (const h of state.haulers) {
     if (h.owner === 'A') {
-      consider(h, R.themeSea ? 'YOUR HAULER TRIREME' : (state.hydrogen.A ? 'YOUR DIRIGIBLE' : 'YOUR HOT-AIR HAULER'));
+      consider(h, (R.themeSea ? 'YOUR HAULER TRIREME' : (state.hydrogen.A ? 'YOUR DIRIGIBLE' : 'YOUR HOT-AIR HAULER')) +
+        (h.tacking ? ' — TACKING' : h.windWaitSince ? ' — WAITING ON THE WIND' : ''));
     } else if (state.vision.A.has(cellKey(Math.round(h.pos[0]), Math.round(h.pos[1])))) {
       consider(h, R.themeSea ? 'GUILD HAULER' : 'HIS HAULER');
     }
@@ -7681,10 +7735,12 @@ function refreshHUD(state) {
       (engaged ? 'ATTACKING' : 'EN ROUTE') + '</span>';
   }
   if (state.over) UI.els.waveinfo.textContent = '';
-  else if (w.index >= CONFIG.Waves.COUNT) UI.els.waveinfo.innerHTML = 'THE LAST TIDE HAS PASSED' + fleetLine;
   else {
     const remain = Math.max(0, w.nextAt - state.time);
-    UI.els.waveinfo.innerHTML = 'WAVE ' + (w.index + 1) + ' IN ' + Math.ceil(remain) + 's' + fleetLine;
+    const name = w.index >= CONFIG.Waves.COUNT
+      ? 'WRATH TIDE IN ' + Math.ceil(remain) + 's'   // past nine, the sea does not tire
+      : 'WAVE ' + (w.index + 1) + ' IN ' + Math.ceil(remain) + 's';
+    UI.els.waveinfo.innerHTML = name + fleetLine;
   }
   // keep the floating confirm row glued to its ghost through pans/zooms
   if (!UI.els.confirm.classList.contains('hidden')) placeConfirmRow();
