@@ -15,6 +15,9 @@ const GENS = parseInt(process.argv[2] || '14', 10);
 const POP = parseInt(process.argv[3] || '18', 10);
 const NW = parseInt(process.argv[4] || String(Math.max(2, Math.min(8, os.cpus().length - 2))), 10);
 const ELITE = 2, TOURN = 3, MUT_RATE = 0.3, MUT_SIGMA = 0.18, MAX_T = 600;
+// round 2 (player-directed): evolve against the SCALING Poseidon - he
+// starts STERN and climbs the ladder as the genome dominates
+const DDA_TIER = 1;
 
 let s = 1234567;
 const rng = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
@@ -29,7 +32,7 @@ function evalPopulation(genomes, seeds) {
   const tmp = path.join(os.tmpdir(), 'wind-ga-' + process.pid + '-');
   return Promise.all(chunks.filter(c => c.length).map((chunk, ci) => new Promise((res, rej) => {
     const f = tmp + ci + '.json';
-    fs.writeFileSync(f, JSON.stringify({ jobs: chunk, maxT: MAX_T }));
+    fs.writeFileSync(f, JSON.stringify({ jobs: chunk, maxT: MAX_T, ddaStartTier: DDA_TIER }));
     execFile('node', [path.join(__dirname, 'ga_worker.js'), f],
       { maxBuffer: 16 * 1024 * 1024, timeout: 30 * 60 * 1000 },
       (err, stdout) => {
@@ -57,9 +60,13 @@ const CKPT = path.join(__dirname, 'ga_checkpoint.json');
     console.log('resumed checkpoint at gen', startGen);
   }
   for (let i = pop.length; i < POP; i++) pop.push(randomGenome(rng));
-  // one baseline individual shaped like the current demo player
-  // (fresh runs only — never clobber a resumed elite)
+  // warm start: the reigning champion enters the arena, plus a baseline
+  // shaped like the old demo player (fresh runs only)
   if (startGen === 0) {
+    try {
+      pop[1] = JSON.parse(fs.readFileSync(path.join(__dirname, 'best_genome.json'), 'utf8')).genome;
+      console.log('champion warm-start seeded');
+    } catch (e) { }
     pop[0] = GENE_KEYS.map(k => ({
       vaneTime: 0.13, gunEvery: 0.55, gunReserve: 0.2, junctionBonus: 0.4,
       expandBias: 0.2, offenseAt: 0.9, defVanes: 0.2, shieldUse: 0.2,

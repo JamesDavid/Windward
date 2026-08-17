@@ -118,12 +118,13 @@ function initDemo(state) {
 // are the champion genome's scaled values; the shape of play they
 // drive: claim a temple chain toward his corner, defend what is held,
 // then drive lanes at his Great Temple and gun it from range.
-// Champion of 14 generations x 18 genomes (~800 headless matches),
-// validated 6-for-6 WINS on holdout seeds (127s-237s) including the
-// fortress seeds that used to stalemate. The evolved doctrine is a
-// BLITZ: offense from the first minute, a fat gun reserve, relentless
-// kill-shot spacing, a lean fleet, early refit - and almost no island
-// defense, because the best defense turned out to be tempo.
+// The ROUND-1 champion blitz. A stronger round-2 champion exists
+// (test/best_genome.json, co-evolved vs the scaling Poseidon, 6/6
+// holdout kills under 125s headless) but its no-war-chest sprint
+// doctrine NEEDS the headless act rate — the menu theatre performs one
+// staged action at a time, and live it collapsed into slow scatter
+// (judged against on the reference seed). Round-1's chunky-purchase
+// blitz fits the theatre and wins live (t184 on the reference seed).
 const DEMO_STRAT = {
   vaneTime: 30.2, gunEvery: 24.2, gunReserve: 43.5, junctionBonus: 1.07,
   expandBias: 0.39, offenseAt: 60, defVanes: 0.63, shieldUse: 0.7,
