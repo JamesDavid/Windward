@@ -3756,16 +3756,101 @@ function aiTick(state, dt) {
   if (lanceCount < 3 && state.time >= (ai.gunAt || 0) && res.supply >= structureStats('P', 'bolt').cost + 20) {
     ai.gunAt = state.time + 45;
     const targets = aiAttackTargets(state);
-    const ends = getSockets(state, 'P').filter(s => s.kind === 'end' && !structureAt(state, s.cell[0], s.cell[1]));
-    let best = null, bd = Infinity;
-    for (const e of ends) {
-      for (const k of targets) {
-        const [x, z] = keyCell(k);
-        const d = dist2d(e.cell[0], e.cell[1], x, z);
-        if (d < bd) { bd = d; best = e; }
+    if (targets.size) {
+      // (player-directed) an endpoint gun SEALS its cell, so it must
+      // never cork a through-lane: guns go only on STUBS — leaves
+      // hanging off a 3+way junction — and never on the strike tip or
+      // the lane he is still extending. No stub near the front? Bind a
+      // T piece there to FORK one, and gun it on a quick next pass.
+      const deg = new Map();
+      for (const s of state.segments.values()) {
+        if (s.owner !== 'P') continue;
+        for (const c of [s.a, s.b]) {
+          const k = cellKey(c[0], c[1]);
+          deg.set(k, (deg.get(k) || 0) + 1);
+        }
+      }
+      const distToTargets = (c) => {
+        let m = Infinity;
+        for (const k of targets) {
+          const [x, z] = keyCell(k);
+          m = Math.min(m, dist2d(c[0], c[1], x, z));
+        }
+        return m;
+      };
+      const ends = getSockets(state, 'P').filter(s => s.kind === 'end' && !structureAt(state, s.cell[0], s.cell[1]));
+      let tip = null, tipD = Infinity;
+      for (const e of ends) {
+        const d = distToTargets(e.cell);
+        if (d < tipD) { tipD = d; tip = e; }
+      }
+      const planTip = ai.plan && ai.plan[0];
+      const isStub = (e) => {
+        for (const s of state.segments.values()) {
+          if (s.owner !== 'P') continue;
+          const atA = s.a[0] === e.cell[0] && s.a[1] === e.cell[1];
+          const atB = s.b[0] === e.cell[0] && s.b[1] === e.cell[1];
+          if (!atA && !atB) continue;
+          const o = atA ? s.b : s.a;
+          if ((deg.get(cellKey(o[0], o[1])) || 0) >= 3) return true;
+        }
+        return false;
+      };
+      // a leaf is safe to seal unless it is the strike tip, the tip the
+      // lane is still growing from, or an island's coast link. Junction
+      // stubs are preferred (the intended shape); any other safe leaf
+      // is second choice — nothing routes THROUGH a dead end.
+      const nearLand = (c) => {
+        if (islandAt(state, c[0], c[1])) return true;
+        for (const [dx, dz] of DIRS4) if (islandAt(state, c[0] + dx, c[1] + dz)) return true;
+        return false;
+      };
+      let best = null, bd = Infinity, bestJunction = false;
+      for (const e of ends) {
+        if (e === tip) continue;
+        if (planTip && e.cell[0] === planTip[0] && e.cell[1] === planTip[1]) continue;
+        if (nearLand(e.cell)) continue;
+        const junction = isStub(e);
+        const d = distToTargets(e.cell);
+        if (junction && !bestJunction) { bd = d; best = e; bestJunction = true; }
+        else if (junction === bestJunction && d < bd) { bd = d; best = e; }
+      }
+      if (best && bd < 14) {
+        buildStructure(state, 'P', 'bolt', { site: 'endpoint', cell: best.cell });
+      } else if (tip && tipD < 12 && res.favor >= pieceCost('T')) {
+        // fork the front: the T's stem keeps the lane running toward
+        // the player, its side nubs become non-blocking gun stubs
+        let bestPl = null, bpd = Infinity;
+        for (const pl of legalPlacements(state, 'P', 'T', tip)) {
+          let far = Infinity;
+          for (const [a, b] of pl.segs) far = Math.min(far, distToTargets(b), distToTargets(a));
+          if (far < bpd) { bpd = far; bestPl = pl; }
+        }
+        if (bestPl && placePiece(state, 'P', 'T', bestPl.segs)) {
+          ai.plan = null;                 // the lane will replan from the fork
+          // arm the new stub NOW — at a contested front the fork can be
+          // shot away before any later pass returns to it. The nearest
+          // nub stays open as strike water; the farther one takes the gun.
+          const count = new Map();
+          for (const [a, b] of bestPl.segs) {
+            for (const c of [a, b]) {
+              const k = cellKey(c[0], c[1]);
+              count.set(k, (count.get(k) || 0) + 1);
+            }
+          }
+          const attach = bestPl.segs[0][0];
+          const leaves = [...count.entries()]
+            .filter(([k, n]) => n === 1 && k !== cellKey(attach[0], attach[1]))
+            .map(([k]) => keyCell(k))
+            .sort((a, b) => distToTargets(b) - distToTargets(a));
+          if (leaves.length && !structureAt(state, leaves[0][0], leaves[0][1])) {
+            buildStructure(state, 'P', 'bolt', { site: 'endpoint', cell: leaves[0] });
+          } else {
+            ai.gunAt = state.time + 8;    // fall back to a quick next pass
+          }
+        }
       }
     }
-    if (best && bd < 10) buildStructure(state, 'P', 'bolt', { site: 'endpoint', cell: best.cell });
   }
 
   // 4. masts along contested straits (§33C.6), between waves
@@ -3774,15 +3859,49 @@ function aiTick(state, dt) {
     // his supported endpoint nearest a player air segment over water
     const airSegs = [...state.segments.values()].filter(s => s.owner === 'A' && s.overWater);
     if (airSegs.length) {
+      // masts seal their cell too: stub leaves only (player-directed)
+      const deg = new Map();
+      for (const s of state.segments.values()) {
+        if (s.owner !== 'P') continue;
+        for (const c of [s.a, s.b]) {
+          const k = cellKey(c[0], c[1]);
+          deg.set(k, (deg.get(k) || 0) + 1);
+        }
+      }
+      const onJunction = (cell) => {
+        for (const s of state.segments.values()) {
+          if (s.owner !== 'P') continue;
+          const atA = s.a[0] === cell[0] && s.a[1] === cell[1];
+          const atB = s.b[0] === cell[0] && s.b[1] === cell[1];
+          if (!atA && !atB) continue;
+          const o = atA ? s.b : s.a;
+          if ((deg.get(cellKey(o[0], o[1])) || 0) >= 3) return true;
+        }
+        return false;
+      };
+      const planTip = ai.plan && ai.plan[0];
+      const nearLand = (c) => {
+        if (islandAt(state, c[0], c[1])) return true;
+        for (const [dx, dz] of DIRS4) if (islandAt(state, c[0] + dx, c[1] + dz)) return true;
+        return false;
+      };
       const sockets = getSockets(state, 'P').filter(s => s.kind === 'end');
-      let best = null, bd = Infinity;
+      // junction stubs first; any other safe leaf second — never the
+      // growing tip, never an island's coast link
+      let best = null, bd = Infinity, bestJ = false;
       for (const sock of sockets) {
         if (structureAt(state, sock.cell[0], sock.cell[1])) continue;
+        if (planTip && sock.cell[0] === planTip[0] && sock.cell[1] === planTip[1]) continue;
+        if (nearLand(sock.cell)) continue;
+        const j = onJunction(sock.cell);
+        if (!j && bestJ) continue;
+        let dmin = Infinity;
         for (const seg of airSegs) {
           const m = segMid(seg);
-          const d = dist2d(sock.cell[0], sock.cell[1], m[0], m[1]);
-          if (d < bd) { bd = d; best = sock; }
+          dmin = Math.min(dmin, dist2d(sock.cell[0], sock.cell[1], m[0], m[1]));
         }
+        if (j && !bestJ) { bd = dmin; best = sock; bestJ = true; }
+        else if (dmin < bd) { bd = dmin; best = sock; }
       }
       if (best && bd <= CONFIG.Craft.SIPHON_MAST.RANGE + 2) {
         buildStructure(state, 'P', 'mast', { site: 'endpoint', cell: best.cell });
