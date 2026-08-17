@@ -14,8 +14,12 @@ for (const job of jobs) {
     const G = loadPatched([]);
     const r = runMatch(G, seed, champion, maxT, overrides);
     total += fitnessP(r);
-    // from Poseidon's chair: 'w' means the PLAYER fell
-    outs.push(r.outcome === 'lose' ? 'w' + Math.round(r.t) : r.outcome[0]);
+    // from Poseidon's chair: w = player felled, j = judged for P,
+    // s = judged (settled) for the player, v = player killed his GT
+    outs.push(r.outcome === 'lose' ? 'w' + Math.round(r.t)
+      : r.outcome === 'arbitrationLoss' ? 'j'
+      : r.outcome === 'arbitration' ? 's'
+      : r.outcome === 'win' ? 'v' : r.outcome[0]);
   }
   out.push({ idx: job.idx, fit: total / job.seeds.length, outs });
 }

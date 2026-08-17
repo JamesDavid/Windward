@@ -252,15 +252,17 @@ const CONFIG = Object.freeze({
     ORE_BIAS: 1.0,                // island scoring: weight on reserves
     WAVE_STRENGTH_MULT: 1.0,      // multiplier on computed wave strength (0.75-1.35 sane)
     WAVE_INTERVAL_MULT: 1.0,      // multiplier on wave intervals (lower = faster tides)
-    // ---- the difficulty LADDER (player-directed): four Poseidon
-    // parameter sets graded by evolution against the champion Aeolus
-    // (test/opt_evolve_p.js -> opt_ladder.js). PROVISIONAL hand values
-    // until the evolved ladder is baked; FAIR = shipped defaults. ----
+    // ---- the difficulty LADDER (player-directed): four EVOLVED
+    // Poseidon parameter sets, graded by ~150 duels against the
+    // champion Aeolus (test/opt_evolve_p.js ~580 matches, then
+    // opt_ladder.js). GENTLE loses to strong play 6-of-6; CRUEL fells
+    // the champion half the time. Evolution's discovery: the hard
+    // tiers press with FASTER waves, not bigger ones. ----
     LADDER: [
-      { name: 'GENTLE', overrides: { GARRISON_DRUMS: 2, GARRISON_LANCES: 1, GUN_CADENCE: 65, DECISION_INTERVAL: 3.0, WAVE_STRENGTH_MULT: 0.8, WAVE_INTERVAL_MULT: 1.15 } },
-      { name: 'FAIR', overrides: {} },
-      { name: 'STERN', overrides: { GARRISON_DRUMS: 5, GARRISON_LANCES: 4, GUN_CADENCE: 32, DECISION_INTERVAL: 1.6, WAVE_STRENGTH_MULT: 1.12, WAVE_INTERVAL_MULT: 0.95 } },
-      { name: 'CRUEL', overrides: { GARRISON_DRUMS: 6, GARRISON_LANCES: 5, GUN_CADENCE: 24, DECISION_INTERVAL: 1.3, TOWARD_PLAYER_BIAS: 0.25, WAVE_STRENGTH_MULT: 1.3, WAVE_INTERVAL_MULT: 0.88 } }
+      { name: 'GENTLE', overrides: { DECISION_INTERVAL: 2.93, PLACE_INTERVAL: 1.98, GARRISON_DRUMS: 3, GARRISON_LANCES: 3, GUN_CADENCE: 43.4, GUN_NEAR: 12.3, MAST_INTERVAL: 31.3, TOWARD_PLAYER_BIAS: 0.24, ORE_BIAS: 1.11, WAVE_STRENGTH_MULT: 0.93, WAVE_INTERVAL_MULT: 0.96 } },
+      { name: 'FAIR', overrides: { DECISION_INTERVAL: 4.0, PLACE_INTERVAL: 2.01, GARRISON_DRUMS: 4, GARRISON_LANCES: 2, GUN_CADENCE: 41.0, GUN_NEAR: 8, MAST_INTERVAL: 35.8, TOWARD_PLAYER_BIAS: 0.35, ORE_BIAS: 0.53, WAVE_STRENGTH_MULT: 0.97, WAVE_INTERVAL_MULT: 0.89 } },
+      { name: 'STERN', overrides: { DECISION_INTERVAL: 3.43, PLACE_INTERVAL: 2.1, GARRISON_DRUMS: 3, GARRISON_LANCES: 2, GUN_CADENCE: 41.0, GUN_NEAR: 8, MAST_INTERVAL: 22.1, TOWARD_PLAYER_BIAS: 0.34, ORE_BIAS: 0.91, WAVE_STRENGTH_MULT: 0.75, WAVE_INTERVAL_MULT: 0.85 } },
+      { name: 'CRUEL', overrides: { DECISION_INTERVAL: 3.43, PLACE_INTERVAL: 2.1, GARRISON_DRUMS: 3, GARRISON_LANCES: 2, GUN_CADENCE: 41.0, GUN_NEAR: 12.5, MAST_INTERVAL: 22.1, TOWARD_PLAYER_BIAS: 0.34, ORE_BIAS: 1.05, WAVE_STRENGTH_MULT: 0.91, WAVE_INTERVAL_MULT: 0.85 } }
     ],
     // dynamic skill matching: at each telegraph, Zeus's scales decide —
     // a player who owns the board faces a harder Poseidon, silently
